@@ -1,41 +1,65 @@
-/// Search — minimax (negamax) with fixed depth and mate detection.
+/// Search — alpha-beta negamax with iterative deepening and
+/// optional time / node limits.
 ///
-/// This is the 0.5 search: no pruning, no ordering, no hashing.
-/// Every node re-generates its full legal-move list and walks every
-/// child. The point is to be *obviously correct* — a reader can
-/// trace `find_best` by hand on a two-move tree. Performance work
-/// begins in 0.6 with alpha-beta, then 0.7 with transposition
-/// tables.
+/// This is the 0.6 search. The algorithm is still a recognizable
+/// textbook negamax, but with two classical additions:
 ///
-/// Scoring conventions (all in centipawns, from the side-to-move's
-/// perspective, negamax style):
+///   * **Alpha-beta pruning.** At each node we carry a `[alpha,
+///     beta]` window. A child score that matches or beats `beta`
+///     (a "beta cutoff") proves the opponent will never allow
+///     this line, so we stop exploring siblings. Result: the
+///     same best move as plain negamax, but the tree can be up
+///     to an order of magnitude smaller.
+///     See https://www.chessprogramming.org/Alpha-Beta
 ///
-///   * Positional scores: evaluator output, typically within
-///     ±10000.
-///   * Mate scores: `±(MATE_SCORE - ply)`. A mate delivered at
-///     distance N plies from the root comes back as
-///     `MATE_SCORE - N` if *we* deliver it, `-(MATE_SCORE - N)` if
-///     the opponent does. This encoding lets the search *prefer
-///     faster mates* — `MATE - 1` (mate in 1 ply) beats `MATE - 3`
-///     (mate in 3 plies) which beats any non-mating score.
-///   * Stalemate: returns 0 at the ply where it is detected.
+///   * **Iterative deepening.** Rather than jumping straight to
+///     depth N, we call the search at depth 1, then 2, then 3,
+///     …, up to the requested depth or until a limit fires.
+///     The cost of the shallow iterations is dwarfed by the
+///     final one, and we get an anytime property: if the search
+///     is cut off, the best move from the last *completed* depth
+///     is still available.
+///     See https://www.chessprogramming.org/Iterative_Deepening
 ///
-/// `MATE_SCORE` is 32000, comfortably below `std::int16_t::max()`
-/// so the engine could drop to 16-bit scores in a future
-/// optimization without changing the API.
+/// Scoring is unchanged from 0.5 (mate = `±(MATE_SCORE - ply)`,
+/// stalemate = 0, evaluator otherwise). See `evaluator.hpp` for
+/// the static eval, and `is_mate_score` / `plies_to_mate` below
+/// for the interpretation helpers.
 ///
-/// Reference: https://www.chessprogramming.org/Negamax
+/// Not yet here (per HANDOFF): transposition table (0.7), move
+/// ordering beyond trivial (0.8), quiescence (0.8).
 #pragma once
 
 #include <chesserazade/move.hpp>
 
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace chesserazade {
 
 class Board;
+
+/// Optional limits on a search. Any combination may be set; the
+/// search stops at the earliest trigger. A default-constructed
+/// `Limits` is effectively unlimited (depth cap is the only hard
+/// stop — without it the search would recurse forever on a loop
+/// position).
+struct SearchLimits {
+    /// Maximum depth in plies. The search iterates up to (and
+    /// including) this depth. Clamped to `Search::MAX_DEPTH`.
+    int max_depth = 32;
+
+    /// Wall-clock budget. Zero means "no time limit". Checked
+    /// periodically during the search (not on every node, to
+    /// keep the check cheap).
+    std::chrono::milliseconds time_budget{0};
+
+    /// Soft cap on visited nodes. Zero means "no node limit".
+    /// Checked on the same cadence as `time_budget`.
+    std::uint64_t node_budget = 0;
+};
 
 struct SearchResult {
     /// Best move at the root. Default-constructed if the position
@@ -52,12 +76,19 @@ struct SearchResult {
     /// ply. `principal_variation[0] == best_move`.
     std::vector<Move> principal_variation;
 
-    /// Number of nodes visited in the search tree. Includes
-    /// interior nodes and leaves.
+    /// Number of nodes visited. Under iterative deepening this
+    /// is the *cumulative* count across all depths searched.
     std::uint64_t nodes = 0;
 
-    /// Wall-clock time for the search.
+    /// Wall-clock time for the whole search (all depths).
     std::chrono::milliseconds elapsed{0};
+
+    /// Deepest depth that *completed* — the result reflects this
+    /// depth, not necessarily `limits.max_depth`. When a time or
+    /// node limit cuts in, `completed_depth` is one less than
+    /// the iteration we abandoned, but `best_move` is still the
+    /// best move from the last fully completed iteration.
+    int completed_depth = 0;
 };
 
 class Search {
@@ -66,26 +97,29 @@ public:
     static constexpr int MATE_SCORE = 32000;
 
     /// Any positional score the evaluator produces must stay
-    /// strictly below this. Used as the initial -∞ / +∞ alpha-
-    /// beta window will use in 0.6.
+    /// strictly below this. Used as the initial ±∞ of the
+    /// alpha-beta window at the root.
     static constexpr int INF_SCORE = 32001;
 
-    /// Maximum search depth this engine will accept. Shallow
-    /// enough that the triangular PV table fits on the stack and
-    /// the pure negamax completes in a human-bearable time on a
-    /// mailbox board.
+    /// Maximum search depth this engine will accept. Bounds the
+    /// on-stack triangular PV table.
     static constexpr int MAX_DEPTH = 32;
 
-    /// Find the best move in `board` at the given fixed depth.
-    /// `board` is mutated during the search (make / unmake) and
-    /// restored on return.
+    /// Find the best move in `board`, iteratively deepening up
+    /// to `depth`. `board` is mutated during the search and
+    /// restored on return. Equivalent to calling the `Limits`
+    /// overload with `{ depth, 0ms, 0 }`.
     [[nodiscard]] static SearchResult find_best(Board& board, int depth);
+
+    /// Find the best move honoring the given limits. The search
+    /// runs iterative deepening from depth 1 up to
+    /// `limits.max_depth`; it stops before the next iteration
+    /// when the time or node budget has been exhausted.
+    [[nodiscard]] static SearchResult find_best(Board& board,
+                                                const SearchLimits& limits);
 
     /// True if `score` encodes a forced mate (won or lost).
     [[nodiscard]] static constexpr bool is_mate_score(int score) noexcept {
-        // A "mate within MAX_DEPTH" score is safely separated from
-        // any realistic positional score. The 1000-centipawn buffer
-        // is comfortable over what the evaluator can produce.
         return score > MATE_SCORE - 1000 || score < -(MATE_SCORE - 1000);
     }
 

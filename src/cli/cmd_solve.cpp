@@ -8,7 +8,9 @@
 #include <chesserazade/search.hpp>
 
 #include <charconv>
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
@@ -22,6 +24,8 @@ namespace {
 struct SolveOptions {
     std::string fen = std::string{STARTING_POSITION_FEN};
     int depth = -1;
+    int time_ms = 0;
+    std::uint64_t nodes = 0;
     bool show_help = false;
 };
 
@@ -47,42 +51,50 @@ ParseResult parse_solve_args(std::span<const std::string_view> args) {
             ++i;
             continue;
         }
-        if (a == "--depth") {
+        if (a == "--depth" || a == "--time-ms" || a == "--nodes") {
             if (i + 1 >= args.size()) {
-                r.error = "--depth requires a value";
+                r.error = std::string{a} + " requires a value";
                 return r;
             }
             const auto v = args[i + 1];
-            int n = 0;
+            long long n = 0;
             const auto [_, ec] =
                 std::from_chars(v.data(), v.data() + v.size(), n);
             if (ec != std::errc{} || n < 0) {
-                r.error = "--depth must be a non-negative integer";
+                r.error = std::string{a} + " must be a non-negative integer";
                 return r;
             }
-            r.options.depth = n;
+            if (a == "--depth")        r.options.depth   = static_cast<int>(n);
+            else if (a == "--time-ms") r.options.time_ms = static_cast<int>(n);
+            else                       r.options.nodes   =
+                static_cast<std::uint64_t>(n);
             ++i;
             continue;
         }
         r.error = "unknown option '" + std::string{a} + "'";
         return r;
     }
-    if (r.options.depth < 0) {
-        r.error = "--depth is required";
+    // At least one limit must be set. Depth is the common case;
+    // time / nodes are for "search until a budget runs out".
+    if (r.options.depth < 0 && r.options.time_ms == 0
+        && r.options.nodes == 0) {
+        r.error = "--depth, --time-ms, or --nodes is required";
     }
     return r;
 }
 
 void print_solve_help(std::ostream& out) {
-    out << "Usage: chesserazade solve --depth N [--fen <fen>]\n"
+    out << "Usage: chesserazade solve (--depth N | --time-ms T | --nodes N)\n"
+        << "                         [--fen <fen>]\n"
         << "\n"
-        << "Search for the best move in a position using plain minimax\n"
-        << "(negamax) at the given fixed depth. Output: best move in SAN\n"
-        << "and UCI, the score (centipawns or 'mate in N'), the principal\n"
-        << "variation, and node/time stats.\n"
+        << "Search for the best move using alpha-beta negamax with\n"
+        << "iterative deepening. At least one budget must be set; if\n"
+        << "several are given, whichever fires first stops the search.\n"
         << "\n"
         << "Options:\n"
-        << "  --depth N     Search depth in plies (required, >= 0).\n"
+        << "  --depth N     Cap on plies (iterative deepening runs 1..N).\n"
+        << "  --time-ms T   Wall-clock budget in milliseconds.\n"
+        << "  --nodes N     Visited-node budget.\n"
         << "  --fen <fen>   Starting position (default: standard start).\n"
         << "  -h, --help    Show this message.\n";
 }
@@ -155,12 +167,19 @@ int cmd_solve(std::span<const std::string_view> args) {
     // the intent local and cheap).
     const Board8x8Mailbox starting = *board;
 
-    const SearchResult r = Search::find_best(*board, parsed.options.depth);
+    SearchLimits limits;
+    limits.max_depth = parsed.options.depth > 0 ? parsed.options.depth
+                                                : Search::MAX_DEPTH;
+    limits.time_budget = std::chrono::milliseconds{parsed.options.time_ms};
+    limits.node_budget = parsed.options.nodes;
 
-    std::cout << "best: "
+    const SearchResult r = Search::find_best(*board, limits);
+
+    std::cout << "best:  "
               << to_san(*board, r.best_move) << "  ("
               << to_uci(r.best_move) << ")\n";
     std::cout << "score: " << format_score(r.score) << '\n';
+    std::cout << "depth: " << r.completed_depth << '\n';
     if (!r.principal_variation.empty()) {
         std::cout << "pv:    " << format_pv(starting, r.principal_variation)
                   << '\n';

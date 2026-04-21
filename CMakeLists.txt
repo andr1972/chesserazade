@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(chesserazade
-    VERSION 0.5.0
+    VERSION 0.6.0
     DESCRIPTION "Educational classical chess program"
     LANGUAGES CXX)
 

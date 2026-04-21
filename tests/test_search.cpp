@@ -98,6 +98,19 @@ TEST_CASE("Search: finds mate-in-1 (Q+K mate)", "[search][mate1]") {
 // Mate-in-2 (3 plies)
 // ---------------------------------------------------------------------------
 
+TEST_CASE("Search: finds a forced mate-in-3 (5 plies)", "[search][mate3]") {
+    // K+Q vs K, white king two steps short of the mating square.
+    // Several equivalent forced sequences all reach mate in 5
+    // plies (e.g. 1.Kc5 or 1.Kd5, both followed by Kc6 and Qb7#).
+    // Depth 6 is enough: 5 plies for the mate, plus 1 for the
+    // depth=0 evaluator floor.
+    auto b = board_from("k7/8/8/1Q6/3K4/8/8/8 w - - 0 1");
+    const SearchResult r = Search::find_best(b, 6);
+    REQUIRE(Search::is_mate_score(r.score));
+    REQUIRE(r.score > 0);
+    REQUIRE(Search::plies_to_mate(r.score) == 5);
+}
+
 TEST_CASE("Search: finds a forced mate-in-2 (3 plies)", "[search][mate2]") {
     // K+Q vs K with the white king one step short of the mating
     // square. The only forced mate is 1.Kc6 Ka7 2.Qb7#.
@@ -138,6 +151,26 @@ TEST_CASE("Search: depth 0 returns a legal move with evaluator score",
     // start.
     REQUIRE(r.nodes >= 1);
     REQUIRE(r.score == 0);
+}
+
+TEST_CASE("Search: iterative deepening reports completed_depth", "[search][id]") {
+    auto b = board_from(std::string{STARTING_POSITION_FEN});
+    const SearchResult r = Search::find_best(b, 4);
+    REQUIRE(r.completed_depth == 4);
+    REQUIRE_FALSE(r.principal_variation.empty());
+}
+
+TEST_CASE("Search: node limit cuts the search early", "[search][limits]") {
+    auto b = board_from(std::string{STARTING_POSITION_FEN});
+    SearchLimits l;
+    l.max_depth = 6;
+    l.node_budget = 500; // tiny — will fire during the depth-2 or 3 iteration
+    const SearchResult r = Search::find_best(b, l);
+    // We may not have completed depth 6 but we must still have a
+    // playable best move from whichever depth did complete.
+    REQUIRE(r.completed_depth >= 1);
+    REQUIRE(r.completed_depth < 6);
+    REQUIRE(r.best_move.from != Square::None);
 }
 
 TEST_CASE("Search: picks the move that wins a queen at depth 2",

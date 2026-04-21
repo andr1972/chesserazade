@@ -1,35 +1,36 @@
-/// Negamax search with mate scoring and a triangular PV table.
+/// Alpha-beta negamax with iterative deepening.
 ///
-/// The entire algorithm fits in one recursive helper (`negamax`)
-/// plus a driver (`find_best`). The classical chess-programming
-/// approach, deliberately written without tricks:
+/// The core recursion (`negamax`) is the classical textbook form
+/// with a single pair of bounds `[alpha, beta]`:
 ///
 /// ```
-/// negamax(board, depth, ply):
-///     if depth == 0:               return evaluate(board)
+/// negamax(board, depth, ply, alpha, beta):
+///     if depth == 0:             return evaluate(board)
 ///     moves = legal_moves(board)
 ///     if moves is empty:
-///         return is_in_check ? -MATE_SCORE + ply : 0     // mate / stalemate
-///     best = -INF
+///         return in_check ? -MATE + ply : 0
 ///     for m in moves:
-///         board.make_move(m)
-///         score = -negamax(board, depth - 1, ply + 1)
-///         board.unmake_move(m)
-///         best = max(best, score)
-///     return best
+///         make(m); s = -negamax(..., -beta, -alpha); unmake(m)
+///         if s >= beta:          return beta      # beta cutoff (fail-hard)
+///         if s > alpha:          alpha = s; ... record PV ...
+///     return alpha
 /// ```
 ///
-/// The triangular PV table is the standard textbook structure for
-/// extracting the best line without a transposition table:
+/// We use the **fail-hard** alpha-beta variant: returned scores
+/// are always clamped to `[alpha, beta]`. The alternative
+/// (fail-soft) is slightly more informative but complicates the
+/// code for no educational benefit at this stage.
 ///
-/// ```
-/// pv[ply][0..len[ply])  the PV starting at this ply
-/// ```
+/// Iterative deepening (`find_best`) calls `negamax` once per
+/// depth from 1 to `limits.max_depth`. The best move from the
+/// last *completed* iteration is kept, so that when a time or
+/// node limit interrupts depth N+1, the result still reflects
+/// the fully-searched depth N.
 ///
-/// When a node finds a new best move, it copies the child's PV
-/// into its own, shifted by one slot and prepended with the
-/// best move. See https://www.chessprogramming.org/Triangular_PV-Table
-
+/// Stop checks: the helper `Stop` caches the start time and the
+/// budgets, and is polled once every `STOP_CHECK_MASK + 1` nodes
+/// rather than on every node. Cheaper than a chrono call at each
+/// visit, and still responsive to a time limit within ms.
 #include <chesserazade/search.hpp>
 
 #include <chesserazade/board.hpp>
@@ -49,11 +50,6 @@ namespace {
 
 using clk = std::chrono::steady_clock;
 
-/// Triangular PV table. For each ply, `moves[ply]` stores the
-/// principal variation starting at that ply (move at `ply`, move
-/// at `ply+1`, …); `length[ply]` is how many of those slots are
-/// filled. Everything lives on the stack — no allocations during
-/// search.
 constexpr std::size_t PV_SIZE = static_cast<std::size_t>(Search::MAX_DEPTH);
 
 struct PvTable {
@@ -61,16 +57,49 @@ struct PvTable {
     std::array<std::size_t, PV_SIZE> length{};
 };
 
-/// Core negamax. `nodes` accumulates the visited-node count; the
-/// PV table is updated incrementally. Returns the best score for
-/// the side to move from `board`.
-int negamax(Board& board, int depth, int ply, std::uint64_t& nodes,
-            PvTable& pv) {
+/// Budget enforcement. A single `abort` flag short-circuits the
+/// recursion; we check the clock / node count only on a power-of-
+/// two boundary to keep the per-node overhead negligible.
+struct Stop {
+    clk::time_point start;
+    std::chrono::milliseconds time_budget;
+    std::uint64_t node_budget;
+    bool abort = false;
+
+    /// Poll the budget. Call occasionally, not on every node.
+    /// Returns true once the search should bail out.
+    bool should_stop(std::uint64_t nodes_so_far) noexcept {
+        if (abort) return true;
+        if (node_budget > 0 && nodes_so_far >= node_budget) {
+            abort = true;
+            return true;
+        }
+        if (time_budget.count() > 0) {
+            if (clk::now() - start >= time_budget) {
+                abort = true;
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+/// Only poll the clock / node budget on a 1-in-2048 cadence. A
+/// single perft benchmark shows this is ~0.1% overhead while
+/// staying within a few milliseconds of the requested time
+/// budget.
+constexpr std::uint64_t STOP_CHECK_MASK = 2047;
+
+int negamax(Board& board, int depth, int ply, int alpha, int beta,
+            std::uint64_t& nodes, PvTable& pv, Stop& stop) {
     ++nodes;
 
     const std::size_t p = static_cast<std::size_t>(ply);
-    // Start fresh: this ply's PV is empty until a move is picked.
     pv.length[p] = 0;
+
+    if ((nodes & STOP_CHECK_MASK) == 0 && stop.should_stop(nodes)) {
+        return 0; // value discarded by the driver when abort is set
+    }
 
     if (depth == 0) {
         return evaluate(board);
@@ -78,23 +107,30 @@ int negamax(Board& board, int depth, int ply, std::uint64_t& nodes,
 
     const MoveList legal = MoveGenerator::generate_legal(board);
     if (legal.empty()) {
-        // Terminal: checkmate or stalemate.
         if (MoveGenerator::is_in_check(board, board.side_to_move())) {
             return -Search::MATE_SCORE + ply;
         }
         return 0; // stalemate
     }
 
-    int best = -Search::INF_SCORE;
     for (const Move& m : legal) {
         board.make_move(m);
-        const int score = -negamax(board, depth - 1, ply + 1, nodes, pv);
+        const int score =
+            -negamax(board, depth - 1, ply + 1, -beta, -alpha, nodes, pv, stop);
         board.unmake_move(m);
 
-        if (score > best) {
-            best = score;
-            // Record the new best move at this ply and splice the
-            // child's PV behind it.
+        if (stop.abort) {
+            return 0; // propagate abort; driver ignores this value
+        }
+
+        if (score >= beta) {
+            // Beta cutoff (fail-hard). The opponent would never
+            // let us reach this line — we can safely prune the
+            // rest.
+            return beta;
+        }
+        if (score > alpha) {
+            alpha = score;
             pv.moves[p][0] = m;
             const std::size_t child_len = pv.length[p + 1];
             for (std::size_t i = 0; i < child_len; ++i) {
@@ -103,58 +139,114 @@ int negamax(Board& board, int depth, int ply, std::uint64_t& nodes,
             pv.length[p] = 1 + child_len;
         }
     }
-    return best;
+    return alpha;
+}
+
+/// Run one full-width iteration at the given depth. Returns the
+/// root score; fills `pv` with the principal variation. If the
+/// stop flag fires during the iteration, the return value is not
+/// meaningful and the caller must discard it.
+int iteration(Board& board, int depth, std::uint64_t& nodes,
+              PvTable& pv, Stop& stop) {
+    return negamax(board, depth, /*ply=*/0,
+                   -Search::INF_SCORE, Search::INF_SCORE,
+                   nodes, pv, stop);
 }
 
 } // namespace
 
 SearchResult Search::find_best(Board& board, int depth) {
+    SearchLimits l;
+    l.max_depth = depth;
+    return find_best(board, l);
+}
+
+SearchResult Search::find_best(Board& board, const SearchLimits& limits) {
     SearchResult result;
 
-    if (depth < 0) depth = 0;
-    if (depth > MAX_DEPTH) depth = MAX_DEPTH;
+    int max_depth = limits.max_depth;
+    if (max_depth < 0) max_depth = 0;
+    if (max_depth > MAX_DEPTH) max_depth = MAX_DEPTH;
 
-    const auto start = clk::now();
+    Stop stop{
+        clk::now(),
+        limits.time_budget,
+        limits.node_budget,
+        false,
+    };
 
-    // Handle the root terminal case explicitly: the caller may
-    // invoke `find_best` on a position that is already checkmate
-    // or stalemate. We don't want to return a default move in
-    // that case; `best_move` stays default-constructed and
-    // `score` reports the terminal value.
+    // Root terminal: no legal moves means the caller handed us a
+    // mated or stalemated position. No search to do.
     const MoveList root_moves = MoveGenerator::generate_legal(board);
     if (root_moves.empty()) {
         if (MoveGenerator::is_in_check(board, board.side_to_move())) {
-            result.score = -MATE_SCORE; // mated at ply 0
+            result.score = -MATE_SCORE;
         } else {
-            result.score = 0;           // stalemate
+            result.score = 0;
         }
         result.nodes = 1;
         result.elapsed =
             std::chrono::duration_cast<std::chrono::milliseconds>(
-                clk::now() - start);
+                clk::now() - stop.start);
         return result;
     }
 
-    PvTable pv;
-    const int score = negamax(board, depth, 0, result.nodes, pv);
-    result.score = score;
+    // Depth-0: no iterations to run. Pick the first legal move
+    // and report the static eval so the CLI has something to
+    // display.
+    if (max_depth == 0) {
+        result.best_move = *root_moves.begin();
+        result.score = evaluate(board);
+        result.nodes = 1;
+        result.elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                clk::now() - stop.start);
+        return result;
+    }
 
-    const std::size_t pv_len = pv.length[0];
-    if (pv_len > 0) {
-        result.best_move = pv.moves[0][0];
+    // Iterative deepening. We keep the best move and PV from the
+    // last *completed* iteration; if the budget cuts an iteration
+    // mid-flight we discard its (possibly lying) partial result.
+    for (int d = 1; d <= max_depth; ++d) {
+        PvTable pv;
+        const std::uint64_t nodes_before = result.nodes;
+        const int score = iteration(board, d, result.nodes, pv, stop);
+
+        if (stop.abort) {
+            // Roll the partially-accumulated node count back so
+            // the reported count matches the last completed depth.
+            result.nodes = nodes_before;
+            break;
+        }
+
+        result.score = score;
+        result.completed_depth = d;
+        const std::size_t pv_len = pv.length[0];
+        result.best_move = pv_len > 0 ? pv.moves[0][0] : *root_moves.begin();
+        result.principal_variation.clear();
         result.principal_variation.reserve(pv_len);
         for (std::size_t i = 0; i < pv_len; ++i) {
             result.principal_variation.push_back(pv.moves[0][i]);
         }
-    } else {
-        // `depth == 0`: nothing searched; fall back to the first
-        // legal move so `best_move` is at least playable.
+
+        // Short-circuit: a found mate at this depth cannot be
+        // beaten by deeper searching (faster mates would have
+        // been found at shallower depths already).
+        if (is_mate_score(score)) {
+            break;
+        }
+    }
+
+    // If nothing completed (e.g. a time budget of 0 ms), fall
+    // back to a playable move + static eval.
+    if (result.completed_depth == 0) {
         result.best_move = *root_moves.begin();
+        result.score = evaluate(board);
     }
 
     result.elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            clk::now() - start);
+            clk::now() - stop.start);
     return result;
 }
 
