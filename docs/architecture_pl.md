@@ -1,6 +1,6 @@
 # Chesserazade — Architektura
 
-Szkic: 0.4 (odzwierciedla kod do tagu `v0.4.0`). Aktualizowane
+Szkic: 0.5 (odzwierciedla kod do tagu `v0.5.0`). Aktualizowane
 przy każdej wersji.
 
 Ten dokument jest dla czytelnika, który sklonował drzewo i chce
@@ -39,7 +39,14 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
 |                       CLI / main                          |
 |   src/main.cpp + src/cli/ — rozsyłanie argumentów, jeden  |
 |   cmd_*.cpp na podkomendę: show, moves, perft, repl/play, |
-|   version                                                 |
+|   solve, version                                          |
++-------------------------+---------------------------------+
+                          |
++-------------------------v---------------------------------+
+|             Search + Evaluator   (nowe w 0.5)             |
+|   Search::find_best — negamax na stałej głębokości        |
+|   ze scoringiem matów + triangularna tablica PV           |
+|   evaluate(board) — materiał + tablice piece-square       |
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
@@ -69,11 +76,11 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
 
 Warstwy, których **jeszcze nie ma** (planowane wg HANDOFF §9):
 
-- **Evaluator** (0.5) — przyjmuje `const Board&`, zwraca wynik
-  w centypionach.
-- **Search** (0.5+) — minimax → alfa-beta → iterative deepening.
+- **Alfa-beta + iteracyjne pogłębianie + kontrola czasu**
+  (0.6) — wpina się w to samo miejsce wywołania co negamax.
 - **Zobrist + TT** (0.7).
-- **Puzzle solver, analizator, net fetcher** (0.8 / 0.9 / 1.0).
+- **Sortowanie ruchów + quiescence + puzzle solver** (0.8).
+- **Analizator gier** (0.9), **net fetcher** (1.0).
 
 Każda z nich wchodzi *pomiędzy* generator ruchów a CLI, bez
 potrzeby zmian poniżej.

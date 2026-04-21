@@ -1,6 +1,6 @@
 # Chesserazade — Architecture
 
-Draft: 0.4 (reflects code through `v0.4.0`). Updated every version.
+Draft: 0.5 (reflects code through `v0.5.0`). Updated every version.
 
 This document is for the reader who has `git clone`d the tree and
 wants a map before diving into the source. It complements
@@ -38,7 +38,14 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 |                       CLI / main                          |
 |   src/main.cpp + src/cli/ — argument dispatch, one        |
 |   cmd_*.cpp per subcommand: show, moves, perft, repl/play,|
-|   version                                                 |
+|   solve, version                                          |
++-------------------------+---------------------------------+
+                          |
++-------------------------v---------------------------------+
+|             Search + Evaluator   (new in 0.5)             |
+|   Search::find_best — fixed-depth negamax with mate       |
+|   scoring + triangular PV table                           |
+|   evaluate(board) — material + piece-square tables        |
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
@@ -68,11 +75,11 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 
 Layers that **do not yet exist** (planned per HANDOFF §9):
 
-- **Evaluator** (0.5) — takes `const Board&`, returns centipawn
-  score.
-- **Search** (0.5+) — minimax → alpha-beta → iterative deepening.
+- **Alpha-beta + iterative deepening + time control** (0.6) —
+  drops in at the same call site as negamax.
 - **Zobrist + TT** (0.7).
-- **Puzzle solver, analyzer, net fetcher** (0.8 / 0.9 / 1.0).
+- **Move ordering + quiescence + puzzle solver** (0.8).
+- **Game analyzer** (0.9), **net fetcher** (1.0).
 
 Each of these slots in *between* Move Generator and the CLI, without
 requiring changes below it.
