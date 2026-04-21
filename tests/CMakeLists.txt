@@ -26,6 +26,7 @@ add_executable(chesserazade_tests
     test_quiescence.cpp
     test_analyzer.cpp
     test_fetch.cpp
+    test_bitboard.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE

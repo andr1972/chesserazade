@@ -45,6 +45,7 @@ endif()
 # trapped inside the executable.
 # --------------------------------------------------------------------------
 add_library(chesserazade_core STATIC
+    src/board/bitboard.cpp
     src/board/board8x8_mailbox.cpp
     src/board/zobrist.cpp
     src/eval/evaluator.cpp
