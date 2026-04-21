@@ -2,6 +2,7 @@
 
 #include "cli/cmd_moves.hpp"
 #include "cli/cmd_perft.hpp"
+#include "cli/cmd_repl.hpp"
 #include "cli/cmd_show.hpp"
 #include "cli/cmd_version.hpp"
 
@@ -19,6 +20,8 @@ void print_top_level_help(std::ostream& out) {
         << "  show      Render a position given by a FEN string.\n"
         << "  moves     List legal moves from a FEN position (UCI).\n"
         << "  perft     Count leaf nodes at a given depth from a position.\n"
+        << "  repl      Interactive text session (play | PGN I/O).\n"
+        << "  play      Alias for `repl`.\n"
         << "  version   Print the program version.\n"
         << "\n"
         << "Run `chesserazade <subcommand> --help` for subcommand-specific options.\n";
@@ -42,6 +45,9 @@ int dispatch(std::span<const std::string_view> args) {
     }
     if (name == "perft") {
         return cmd_perft(rest);
+    }
+    if (name == "repl" || name == "play") {
+        return cmd_repl(rest);
     }
     if (name == "version") {
         return cmd_version(rest);
