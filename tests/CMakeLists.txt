@@ -15,6 +15,7 @@ add_executable(chesserazade_tests
     test_move.cpp
     test_board.cpp
     test_fen.cpp
+    test_perft.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE
