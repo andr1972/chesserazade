@@ -23,8 +23,10 @@
 /// benchmark around: it becomes the baseline to measure against.
 #include "board/board8x8_mailbox.hpp"
 #include "board/board_bitboard.hpp"
+#include "board/magic.hpp"
 
 #include <chesserazade/move_generator.hpp>
+#include <chesserazade/bitboard.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -111,40 +113,79 @@ double time_perft(Board& b, int depth, std::uint64_t& out_nodes) {
     return std::chrono::duration<double>(end - start).count();
 }
 
+[[nodiscard]] double mnps_of(std::uint64_t n, double s) noexcept {
+    return s > 0.0 ? static_cast<double>(n) / s / 1.0e6 : 0.0;
+}
+
+/// Run perft on `fen` at `depth` against a fresh
+/// `BoardBitboard` and return (nodes, seconds). The current
+/// global slider-attack implementation is whatever the caller
+/// switched to — we do not re-init here.
+void time_bb(std::string_view fen, int depth,
+             std::uint64_t& out_nodes, double& out_secs) {
+    auto r = BoardBitboard::from_fen(fen);
+    BoardBitboard b = *r;
+    out_secs = time_perft(b, depth, out_nodes);
+}
+
 void run_one(const BenchPosition& p, int depth) {
-    auto mb = Board8x8Mailbox::from_fen(p.fen);
-    auto bb = BoardBitboard::from_fen(p.fen);
-    if (!mb || !bb) {
+    auto mb_r = Board8x8Mailbox::from_fen(p.fen);
+    if (!mb_r) {
         std::fprintf(stderr, "%s: bad FEN\n", p.name.data());
         return;
     }
-    Board8x8Mailbox b_mb = *mb;
-    BoardBitboard    b_bb = *bb;
+    Board8x8Mailbox b_mb = *mb_r;
 
     std::uint64_t nodes_mb = 0;
     const double t_mb = time_perft(b_mb, depth, nodes_mb);
-    std::uint64_t nodes_bb = 0;
-    const double t_bb = time_perft(b_bb, depth, nodes_bb);
 
-    const double mnps_mb = t_mb > 0.0
-        ? static_cast<double>(nodes_mb) / t_mb / 1.0e6 : 0.0;
-    const double mnps_bb = t_bb > 0.0
-        ? static_cast<double>(nodes_bb) / t_bb / 1.0e6 : 0.0;
-    const double speedup = (t_bb > 0.0) ? t_mb / t_bb : 0.0;
+    // Force the loop-based slider path and time the bitboard.
+    reset_magic_attacks();
+    Attacks::set_rook_attack_fn(&Attacks::rook_loop);
+    Attacks::set_bishop_attack_fn(&Attacks::bishop_loop);
+    std::uint64_t nodes_loop = 0;
+    double t_loop = 0;
+    time_bb(p.fen, depth, nodes_loop, t_loop);
 
-    std::printf(
-        "%-9s d=%d  n=%12llu  "
-        "mailbox=%6.2fs (%5.2f Mnps)  bitboard=%6.2fs (%5.2f Mnps)  "
-        "x%4.2f\n",
-        p.name.data(), depth,
-        static_cast<unsigned long long>(nodes_mb),
-        t_mb, mnps_mb, t_bb, mnps_bb, speedup);
+    // Switch to magic (file / generate) and time again.
+    double t_magic = 0;
+    std::uint64_t nodes_magic = 0;
+    bool has_magic =
+        init_magic_attacks_from_default_locations() || init_magic_attacks();
+    if (has_magic) {
+        time_bb(p.fen, depth, nodes_magic, t_magic);
+    }
 
-    if (nodes_mb != nodes_bb) {
-        std::fprintf(stderr,
-                     "  WARNING: node-count mismatch (mailbox %llu, bitboard %llu)\n",
-                     static_cast<unsigned long long>(nodes_mb),
-                     static_cast<unsigned long long>(nodes_bb));
+    // Switch to PEXT (if compiled and CPU supports it) and
+    // time again. Init returns false on non-PEXT builds — the
+    // block then stays unevaluated.
+    double t_pext = 0;
+    std::uint64_t nodes_pext = 0;
+    const bool has_pext = init_pext_attacks();
+    if (has_pext) {
+        time_bb(p.fen, depth, nodes_pext, t_pext);
+    }
+
+    std::printf("%-9s d=%d  n=%12llu\n", p.name.data(), depth,
+                static_cast<unsigned long long>(nodes_mb));
+    std::printf("  mailbox        %6.2fs  %5.2f Mnps\n",
+                t_mb, mnps_of(nodes_mb, t_mb));
+    std::printf("  bb loop        %6.2fs  %5.2f Mnps  (x%.2f vs mailbox)\n",
+                t_loop, mnps_of(nodes_loop, t_loop), t_mb / t_loop);
+    if (has_magic) {
+        std::printf("  bb magic       %6.2fs  %5.2f Mnps  (x%.2f vs mailbox)\n",
+                    t_magic, mnps_of(nodes_magic, t_magic), t_mb / t_magic);
+    }
+    if (has_pext) {
+        std::printf("  bb pext(BMI2)  %6.2fs  %5.2f Mnps  (x%.2f vs mailbox)\n",
+                    t_pext, mnps_of(nodes_pext, t_pext), t_mb / t_pext);
+    }
+
+    // Node-count sanity check.
+    if (nodes_loop != nodes_mb ||
+        (has_magic && nodes_magic != nodes_mb) ||
+        (has_pext  && nodes_pext  != nodes_mb)) {
+        std::fprintf(stderr, "  WARNING: node-count mismatch across paths\n");
     }
 }
 

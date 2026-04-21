@@ -100,7 +100,13 @@ bool g_ready = false;
 // vertical rays. For bishops, both edge ranks and both edge
 // files are excluded on every ray.
 
-[[nodiscard]] Bitboard rook_relevant_mask(Square sq) noexcept {
+} // namespace
+
+// ---------------------------------------------------------------------------
+// Slider-table helpers (exported to `attacks_pext.cpp`).
+// ---------------------------------------------------------------------------
+
+Bitboard rook_relevant_mask(Square sq) noexcept {
     const int r = static_cast<int>(rank_of(sq));
     const int f = static_cast<int>(file_of(sq));
     Bitboard m = 0;
@@ -115,7 +121,7 @@ bool g_ready = false;
     return m;
 }
 
-[[nodiscard]] Bitboard bishop_relevant_mask(Square sq) noexcept {
+Bitboard bishop_relevant_mask(Square sq) noexcept {
     const int r = static_cast<int>(rank_of(sq));
     const int f = static_cast<int>(file_of(sq));
     Bitboard m = 0;
@@ -130,15 +136,9 @@ bool g_ready = false;
     return m;
 }
 
-// ---------------------------------------------------------------------------
-// Occupancy subset enumeration
-// ---------------------------------------------------------------------------
-//
-// Given a mask of `n` set bits, enumerate all `2^n` subsets by
-// "spreading" an integer `0..(2^n-1)` across the mask's bit
-// positions. Classical pdep-style trick without the intrinsic.
-
-[[nodiscard]] Bitboard index_to_occupancy(int index, Bitboard mask) noexcept {
+/// Spread an integer `index` across the set bits of `mask`.
+/// Classical "index → occupancy" for enumerating subsets.
+Bitboard index_to_occupancy(int index, Bitboard mask) noexcept {
     Bitboard occ = 0;
     int bit = 0;
     Bitboard m = mask;
@@ -151,6 +151,8 @@ bool g_ready = false;
     }
     return occ;
 }
+
+namespace {
 
 // ---------------------------------------------------------------------------
 // Magic finder
@@ -526,6 +528,32 @@ namespace {
 }
 
 } // namespace
+
+// ---------------------------------------------------------------------------
+// PEXT stub (only when CHESSERAZADE_USE_PEXT is NOT defined)
+// ---------------------------------------------------------------------------
+//
+// The real PEXT implementation lives in `attacks_pext.cpp`
+// and is compiled in only when the CMake option
+// CHESSERAZADE_USE_PEXT is ON. Without that the symbol
+// `init_pext_attacks` must still exist so `init_slider_attacks`
+// links; the stub below simply says "PEXT not available".
+
+#ifndef CHESSERAZADE_USE_PEXT
+bool init_pext_attacks() { return false; }
+bool pext_attacks_available() noexcept { return false; }
+#endif
+
+// ---------------------------------------------------------------------------
+// Unified slider-attack init
+// ---------------------------------------------------------------------------
+
+std::string_view init_slider_attacks() {
+    if (init_pext_attacks())                         return "pext";
+    if (init_magic_attacks_from_default_locations()) return "magic-file";
+    if (init_magic_attacks())                        return "magic-gen";
+    return "loop";
+}
 
 bool init_magic_attacks_from_default_locations() {
     namespace fs = std::filesystem;

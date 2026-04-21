@@ -44,6 +44,10 @@ endif()
 # executable and the test binary link against it, so no engine code is
 # trapped inside the executable.
 # --------------------------------------------------------------------------
+option(CHESSERAZADE_USE_PEXT
+    "Build the BMI2 (PEXT) slider-attacks variant. Requires a CPU with BMI2."
+    OFF)
+
 add_library(chesserazade_core STATIC
     src/board/bitboard.cpp
     src/board/board8x8_mailbox.cpp
@@ -77,6 +81,15 @@ target_include_directories(chesserazade_core
 target_compile_definitions(chesserazade_core PRIVATE
     CHESSERAZADE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
+# PEXT path — opt-in via -DCHESSERAZADE_USE_PEXT=ON. Adds the
+# BMI2 TU and passes -mbmi2 to that file only, keeping the
+# rest of the library portable to non-BMI2 CPUs.
+if(CHESSERAZADE_USE_PEXT)
+    target_sources(chesserazade_core PRIVATE src/board/attacks_pext.cpp)
+    target_compile_definitions(chesserazade_core PRIVATE CHESSERAZADE_USE_PEXT)
+    set_source_files_properties(src/board/attacks_pext.cpp
+        PROPERTIES COMPILE_OPTIONS "-mbmi2")
+endif()
 target_link_libraries(chesserazade_core
     PRIVATE chesserazade_warnings
 )

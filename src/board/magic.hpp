@@ -36,6 +36,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace chesserazade {
 
@@ -49,6 +50,13 @@ struct MagicEntry {
     unsigned  shift          = 0;
     std::size_t attacks_offset = 0;
 };
+
+// Slider-table helpers shared between `magic.cpp` and the
+// optional `attacks_pext.cpp`. Private to `src/board/` —
+// public callers still go through `Attacks::rook` / bishop.
+[[nodiscard]] Bitboard rook_relevant_mask(Square sq) noexcept;
+[[nodiscard]] Bitboard bishop_relevant_mask(Square sq) noexcept;
+[[nodiscard]] Bitboard index_to_occupancy(int index, Bitboard mask) noexcept;
 
 /// Initialize the global magic tables by brute-force search
 /// and swap `Attacks::rook/bishop` to the magic lookup.
@@ -90,5 +98,48 @@ bool init_magic_attacks();
 /// Reset to the uninitialized state — used by tests that want
 /// to exercise a different init path within the same process.
 void reset_magic_attacks() noexcept;
+
+// ---------------------------------------------------------------------------
+// PEXT slider attacks (optional, BMI2-only)
+// ---------------------------------------------------------------------------
+//
+// Compiled only when the CMake option CHESSERAZADE_USE_PEXT is
+// ON and the target CPU supports BMI2. Uses the x86 `PEXT`
+// instruction to extract the relevant occupancy bits into a
+// contiguous index — one `pext` + one load per lookup, no magic
+// multiply needed. Slightly faster than magic on hardware where
+// PEXT is native (Intel Haswell+, AMD Zen 3+); notably slow on
+// pre-Zen-3 AMD where PEXT is microcoded.
+//
+// The two init functions below are stubs on non-PEXT builds —
+// they always return false, and the caller falls back to the
+// magic / loop path.
+
+/// Initialize PEXT-based slider attacks. Returns false if:
+///   * the build does not include PEXT support, or
+///   * the CPU does not advertise the BMI2 feature bit.
+/// On success swaps `Attacks::rook / bishop` to the PEXT path.
+[[nodiscard]] bool init_pext_attacks();
+
+/// True once `init_pext_attacks()` has succeeded.
+[[nodiscard]] bool pext_attacks_available() noexcept;
+
+// ---------------------------------------------------------------------------
+// Unified init entry
+// ---------------------------------------------------------------------------
+
+/// Initialize the fastest slider-attack implementation this
+/// build + CPU supports. Priority:
+///   1. PEXT (if compiled in and CPU supports BMI2).
+///   2. Magic bitboards loaded from a `data/magics.txt` found
+///      via the standard lookup chain.
+///   3. Magic bitboards generated in memory (brute-force,
+///      ~100 ms).
+///   4. Loop-based — no init required; the default pointer
+///      already points here.
+///
+/// Returns the name of the selected path as one of:
+///   "pext" | "magic-file" | "magic-gen" | "loop"
+[[nodiscard]] std::string_view init_slider_attacks();
 
 } // namespace chesserazade
