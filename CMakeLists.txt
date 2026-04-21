@@ -66,6 +66,8 @@ target_link_libraries(chesserazade_core
 add_executable(chesserazade
     src/main.cpp
     src/cli/command_dispatch.cpp
+    src/cli/cmd_moves.cpp
+    src/cli/cmd_perft.cpp
     src/cli/cmd_show.cpp
     src/cli/cmd_version.cpp
 )
