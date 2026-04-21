@@ -79,6 +79,20 @@ target_link_libraries(chesserazade
 )
 
 # --------------------------------------------------------------------------
+# Perft benchmark — a separate executable, not part of the test suite.
+# Measures speed, not correctness. Tests fail on wrong node counts;
+# the benchmark is expected to be run manually for timing feedback.
+# --------------------------------------------------------------------------
+option(CHESSERAZADE_BUILD_TOOLS "Build developer tools (perft_bench, ...)" ON)
+if(CHESSERAZADE_BUILD_TOOLS)
+    add_executable(perft_bench tools/perft_bench.cpp)
+    target_include_directories(perft_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(perft_bench
+        PRIVATE chesserazade_core chesserazade_warnings
+    )
+endif()
+
+# --------------------------------------------------------------------------
 # Tests — pulled via FetchContent so the dev only needs a network once.
 # --------------------------------------------------------------------------
 option(CHESSERAZADE_BUILD_TESTS "Build the test suite" ON)
