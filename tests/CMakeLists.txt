@@ -18,6 +18,7 @@ add_executable(chesserazade_tests
     test_perft.cpp
     test_game.cpp
     test_san.cpp
+    test_pgn.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE
