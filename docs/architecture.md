@@ -1,6 +1,6 @@
 # Chesserazade — Architecture
 
-Draft: 0.8 (reflects code through `v0.8.0`). Updated every version.
+Draft: 0.9 (reflects code through `v0.9.0`). Updated every version.
 
 This document is for the reader who has `git clone`d the tree and
 wants a map before diving into the source. It complements
@@ -50,6 +50,7 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 |   TranspositionTable — Zobrist-keyed entry cache          |
 |   PuzzleSolver::solve_mate_in — wraps Search for "mate    |
 |   in N" puzzle semantics (0.8)                            |
+|   GameAnalyzer::analyze — per-ply eval + NAG tagging (0.9)|
 |   evaluate(board) — material + piece-square tables        |
 +-------------------------+---------------------------------+
                           |
@@ -80,7 +81,7 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 
 Layers that **do not yet exist** (planned per HANDOFF §9):
 
-- **Game analyzer** (0.9), **net fetcher** (1.0).
+- **Net fetcher** (1.0).
 - **Bitboard Board** (1.1), **Qt6 GUI** (1.2).
 
 Each of these slots in *between* Move Generator and the CLI, without

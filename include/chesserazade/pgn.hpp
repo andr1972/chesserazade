@@ -91,6 +91,15 @@ struct PgnError {
 [[nodiscard]] std::expected<PgnGame, PgnError>
 parse_pgn(std::string_view text);
 
+/// Per-move annotation attached to an output PGN. One entry per
+/// ply, in play order. Both fields are optional — an empty
+/// `suffix` skips the NAG, an empty `comment` skips the `{…}`
+/// block after the move.
+struct MoveAnnotation {
+    std::string suffix;   // "!", "?", "!!", "??", "!?", "?!" or ""
+    std::string comment;  // free text for a `{…}` block, or ""
+};
+
 /// Serialize a `Game` plus a tag set into PGN. The STR tags
 /// (Event / Site / Date / Round / White / Black / Result) are
 /// emitted in the canonical order; any other tags follow in the
@@ -102,5 +111,16 @@ parse_pgn(std::string_view text);
     const Game& game,
     const std::vector<std::pair<std::string, std::string>>& tags,
     std::string_view termination);
+
+/// Annotated variant: each ply optionally gets a suffix glyph
+/// (appended to the SAN, e.g. `Nf3?!`) and/or a post-move
+/// `{comment}` block. `annotations.size()` must equal
+/// `game.moves().size()`; trailing entries can be empty if no
+/// annotation is desired for those plies.
+[[nodiscard]] std::string write_pgn(
+    const Game& game,
+    const std::vector<std::pair<std::string, std::string>>& tags,
+    std::string_view termination,
+    const std::vector<MoveAnnotation>& annotations);
 
 } // namespace chesserazade

@@ -24,6 +24,7 @@ add_executable(chesserazade_tests
     test_zobrist.cpp
     test_tt.cpp
     test_quiescence.cpp
+    test_analyzer.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE

@@ -389,6 +389,15 @@ std::string write_pgn(
     const Game& game,
     const std::vector<std::pair<std::string, std::string>>& tags,
     std::string_view termination) {
+    return write_pgn(game, tags, termination,
+                     std::vector<MoveAnnotation>{});
+}
+
+std::string write_pgn(
+    const Game& game,
+    const std::vector<std::pair<std::string, std::string>>& tags,
+    std::string_view termination,
+    const std::vector<MoveAnnotation>& annotations) {
     std::string out;
 
     // ---- Tag block ------------------------------------------------------
@@ -440,8 +449,22 @@ std::string write_pgn(
             append_wrapped(out, std::to_string(move_number) + "...", col);
         }
 
-        const std::string san = to_san(board, m);
+        std::string san = to_san(board, m);
+        // Append a trailing NAG-like suffix if the caller
+        // supplied one (e.g. "?!" or "??"). SAN is re-generated
+        // per-move anyway so glueing the suffix here keeps the
+        // glyph attached to its move when lines wrap.
+        if (i < annotations.size() && !annotations[i].suffix.empty()) {
+            san += annotations[i].suffix;
+        }
         append_wrapped(out, san, col);
+
+        // Post-move {comment}, if supplied. Kept on the same
+        // logical "token" so it wraps sensibly.
+        if (i < annotations.size() && !annotations[i].comment.empty()) {
+            std::string brace = "{" + annotations[i].comment + "}";
+            append_wrapped(out, brace, col);
+        }
 
         board.make_move(m);
         if (!white_to_move) ++move_number;
