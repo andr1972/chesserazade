@@ -39,3 +39,26 @@
 
 # debug information files
 *.dwo
+
+# Build directories
+build/
+build-*/
+out/
+cmake-build-*/
+
+# Editor / IDE
+.vscode/
+.idea/
+.cache/
+compile_commands.json
+.ccls-cache/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+
+# macOS
+.DS_Store
