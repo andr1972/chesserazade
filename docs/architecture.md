@@ -1,6 +1,6 @@
 # Chesserazade — Architecture
 
-Draft: 0.3 (reflects code through `v0.3.0`). Updated every version.
+Draft: 0.4 (reflects code through `v0.4.0`). Updated every version.
 
 This document is for the reader who has `git clone`d the tree and
 wants a map before diving into the source. It complements
@@ -37,7 +37,15 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 +-----------------------------------------------------------+
 |                       CLI / main                          |
 |   src/main.cpp + src/cli/ — argument dispatch, one        |
-|   cmd_*.cpp per subcommand (show, moves, perft, version)  |
+|   cmd_*.cpp per subcommand: show, moves, perft, repl/play,|
+|   version                                                 |
++-------------------------+---------------------------------+
+                          |
++-------------------------v---------------------------------+
+|              Game + PGN / SAN   (new in 0.4)              |
+|   Game: Board + starting pos + vector<Move> history       |
+|   SAN: parse/write Standard Algebraic Notation            |
+|   PGN: parse/write Portable Game Notation                 |
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
@@ -64,7 +72,6 @@ Layers that **do not yet exist** (planned per HANDOFF §9):
   score.
 - **Search** (0.5+) — minimax → alpha-beta → iterative deepening.
 - **Zobrist + TT** (0.7).
-- **PGN, Game, repl / play** (0.4).
 - **Puzzle solver, analyzer, net fetcher** (0.8 / 0.9 / 1.0).
 
 Each of these slots in *between* Move Generator and the CLI, without

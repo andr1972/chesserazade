@@ -1,6 +1,6 @@
 # Chesserazade — Architektura
 
-Szkic: 0.3 (odzwierciedla kod do tagu `v0.3.0`). Aktualizowane
+Szkic: 0.4 (odzwierciedla kod do tagu `v0.4.0`). Aktualizowane
 przy każdej wersji.
 
 Ten dokument jest dla czytelnika, który sklonował drzewo i chce
@@ -38,7 +38,15 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
 +-----------------------------------------------------------+
 |                       CLI / main                          |
 |   src/main.cpp + src/cli/ — rozsyłanie argumentów, jeden  |
-|   cmd_*.cpp na podkomendę (show, moves, perft, version)   |
+|   cmd_*.cpp na podkomendę: show, moves, perft, repl/play, |
+|   version                                                 |
++-------------------------+---------------------------------+
+                          |
++-------------------------v---------------------------------+
+|              Game + PGN / SAN   (nowe w 0.4)              |
+|   Game: Board + pozycja startowa + vector<Move> historia  |
+|   SAN: parse/write Standard Algebraic Notation            |
+|   PGN: parse/write Portable Game Notation                 |
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
@@ -65,7 +73,6 @@ Warstwy, których **jeszcze nie ma** (planowane wg HANDOFF §9):
   w centypionach.
 - **Search** (0.5+) — minimax → alfa-beta → iterative deepening.
 - **Zobrist + TT** (0.7).
-- **PGN, Game, repl / play** (0.4).
 - **Puzzle solver, analizator, net fetcher** (0.8 / 0.9 / 1.0).
 
 Każda z nich wchodzi *pomiędzy* generator ruchów a CLI, bez
