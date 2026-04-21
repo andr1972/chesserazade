@@ -8,18 +8,23 @@
 /// — 1.1 adds a bitboard implementation — but it is the most
 /// transparent, and correctness is easier to reason about here.
 ///
-/// The class is a thin struct with getters and setters. FEN I/O drives
-/// it directly; later versions layer move generation and make/unmake
-/// on top without changing the data layout.
+/// `make_move` / `unmake_move` are implemented by maintaining a small
+/// internal history stack of `StateSnapshot` entries. The snapshot
+/// captures the position fields that a Move cannot reconstruct on its
+/// own: the previous EP square, castling rights, and halfmove clock.
+/// Everything else (pieces on squares, side to move, fullmove number)
+/// is directly derivable from the Move fields and the current state.
 #pragma once
 
 #include <chesserazade/board.hpp>
 #include <chesserazade/fen.hpp>
+#include <chesserazade/move.hpp>
 #include <chesserazade/types.hpp>
 
 #include <array>
 #include <expected>
 #include <string_view>
+#include <vector>
 
 namespace chesserazade {
 
@@ -30,13 +35,12 @@ public:
     /// parsing overwrites every field.
     Board8x8Mailbox() = default;
 
-    /// Construct a mailbox board from a FEN string. Returns a
-    /// human-readable `FenError` if the input is malformed. ASCII
-    /// only — Unicode piece glyphs are rejected.
+    /// Construct from FEN. Returns FenError if the string is malformed.
+    /// Input is ASCII only — Unicode piece glyphs are rejected.
     [[nodiscard]] static std::expected<Board8x8Mailbox, FenError>
     from_fen(std::string_view fen);
 
-    // Board interface -------------------------------------------------
+    // Board interface — read-only queries -----------------------------
     [[nodiscard]] Piece piece_at(Square s) const noexcept override;
     [[nodiscard]] Color side_to_move() const noexcept override { return side_to_move_; }
     [[nodiscard]] CastlingRights castling_rights() const noexcept override {
@@ -46,25 +50,22 @@ public:
     [[nodiscard]] int halfmove_clock() const noexcept override { return halfmove_clock_; }
     [[nodiscard]] int fullmove_number() const noexcept override { return fullmove_number_; }
 
-    // Mutators --------------------------------------------------------
+    // Board interface — mutation ---------------------------------------
+    void make_move(const Move& m) noexcept override;
+    void unmake_move(const Move& m) noexcept override;
 
-    /// Clear every square and reset state to the same values as a
-    /// default-constructed board.
+    // FEN-level setters (used by the FEN parser and unit tests) -------
     void clear() noexcept;
-
-    /// Place `p` on `s`. Passing `Piece::none()` empties the square.
     void set_piece_at(Square s, Piece p) noexcept;
-
     void set_side_to_move(Color c) noexcept { side_to_move_ = c; }
     void set_castling_rights(CastlingRights r) noexcept { castling_ = r; }
     void set_en_passant_square(Square s) noexcept { ep_square_ = s; }
     void set_halfmove_clock(int v) noexcept { halfmove_clock_ = v; }
     void set_fullmove_number(int v) noexcept { fullmove_number_ = v; }
 
-    /// Equality of concrete mailbox boards is field-wise. Two boards
-    /// with the same position but different move histories compare
-    /// equal — `Board` has no history of its own in 0.1. Written out
-    /// by hand because the polymorphic base suppresses `= default`.
+    /// Position equality is field-wise. Two boards with identical
+    /// pieces, side, castling, EP, and clocks compare equal; the
+    /// internal history stack is NOT compared (it is ephemeral).
     friend bool operator==(const Board8x8Mailbox& a,
                            const Board8x8Mailbox& b) noexcept {
         return a.squares_ == b.squares_
@@ -76,12 +77,25 @@ public:
     }
 
 private:
+    /// State that is not derivable from the Move alone during unmake.
+    /// One entry is pushed by make_move and popped by unmake_move.
+    struct StateSnapshot {
+        Square ep_square = Square::None;
+        CastlingRights castling{};
+        int halfmove_clock = 0;
+    };
+
     std::array<Piece, NUM_SQUARES> squares_{};
     Color side_to_move_ = Color::White;
     CastlingRights castling_{};
     Square ep_square_ = Square::None;
     int halfmove_clock_ = 0;
     int fullmove_number_ = 1;
+
+    /// History stack for unmake_move. Each make_move pushes one entry;
+    /// each unmake_move pops one. The depth is bounded by the search
+    /// depth, which for a mailbox engine is modest (≤ 100 plies).
+    std::vector<StateSnapshot> history_;
 };
 
 } // namespace chesserazade

@@ -1,11 +1,13 @@
 /// Abstract Board interface.
 ///
 /// `Board` is the single shared view that every higher-level subsystem
-/// (move generator, evaluator, search, I/O) uses. It exposes enough of
-/// a chess position for 0.1 — piece placement, side to move, castling
-/// rights, en-passant target, clocks — but no mutators and no
-/// `make_move` / `unmake_move` yet; those arrive in 0.2 when there is a
-/// move generator to exercise them.
+/// (move generator, evaluator, search, I/O) uses. It exposes:
+///
+///   * Read-only queries: piece placement, side to move, castling
+///     rights, en-passant target, halfmove clock, fullmove number.
+///   * `make_move` / `unmake_move`: apply and roll back a move. The
+///     callers (move generator, search) always go through this pair;
+///     they never touch the board's internal arrays directly.
 ///
 /// The interface is abstract so that 1.1 can introduce `BoardBitboard`
 /// alongside `Board8x8Mailbox` without touching the rest of the code.
@@ -16,6 +18,7 @@
 /// classical taxonomy of chess board representations.
 #pragma once
 
+#include <chesserazade/move.hpp>
 #include <chesserazade/types.hpp>
 
 namespace chesserazade {
@@ -40,18 +43,17 @@ struct CastlingRights {
                                      const CastlingRights&) = default;
 };
 
-/// Read-only abstract view of a chess position.
-///
-/// Mutators (`make_move`, `unmake_move`, piece edits) belong to the
-/// concrete implementation and are not part of the interface; the
-/// move generator in 0.2 will add a small mutation API on the concrete
-/// `Board8x8Mailbox` and document it there.
+/// Mutable abstract view of a chess position.
 class Board {
 public:
     virtual ~Board() = default;
 
+    // ------------------------------------------------------------------
+    // Read-only queries
+    // ------------------------------------------------------------------
+
     /// Returns the piece on `s`, or `Piece::none()` if the square is
-    /// empty. Behavior is undefined if `s == Square::None`.
+    /// empty. Undefined behavior if `s == Square::None`.
     [[nodiscard]] virtual Piece piece_at(Square s) const noexcept = 0;
 
     /// The color whose turn it is to move.
@@ -70,6 +72,30 @@ public:
     /// Full-move counter, starting at 1 and incremented after every
     /// black move (standard FEN convention).
     [[nodiscard]] virtual int fullmove_number() const noexcept = 0;
+
+    // ------------------------------------------------------------------
+    // Mutation
+    // ------------------------------------------------------------------
+
+    /// Apply `m` to the position. The move must be legal (the caller is
+    /// the move generator or search after legality filtering). After
+    /// this call the side to move has flipped, the clocks are updated,
+    /// and any captured or rook-moved squares are cleared.
+    ///
+    /// The board pushes sufficient state onto an internal history stack
+    /// so that `unmake_move(m)` can restore the position exactly.
+    virtual void make_move(const Move& m) noexcept = 0;
+
+    /// Undo `m`, exactly reversing the last `make_move` call.
+    ///
+    /// The caller must pass the *same* `Move` object that was passed to
+    /// the matching `make_move`; the board uses `m.moved_piece`,
+    /// `m.captured_piece`, and `m.kind` together with its internal
+    /// history stack to restore every field of the position.
+    ///
+    /// Behavior is undefined if `unmake_move` is called without a
+    /// preceding `make_move`, or if `m` does not match the last move.
+    virtual void unmake_move(const Move& m) noexcept = 0;
 
 protected:
     Board() = default;
