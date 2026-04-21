@@ -49,6 +49,7 @@ add_library(chesserazade_core STATIC
     src/game/game.cpp
     src/io/fen.cpp
     src/io/move.cpp
+    src/io/san.cpp
     src/move_generator/move_generator.cpp
 )
 target_include_directories(chesserazade_core
