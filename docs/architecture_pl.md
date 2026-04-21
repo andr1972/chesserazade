@@ -1,6 +1,6 @@
 # Chesserazade — Architektura
 
-Szkic: 1.0 (odzwierciedla kod do tagu `v1.0.0`). Aktualizowane
+Szkic: 1.1 (odzwierciedla kod do tagu `v1.1.0`). Aktualizowane
 przy każdej wersji.
 
 Ten dokument jest dla czytelnika, który sklonował drzewo i chce
@@ -70,7 +70,7 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
                           |
 +-------------------------v---------------------------------+
 |                    Board (interfejs)                      |
-|   Board8x8Mailbox (0.1+)  |   BoardBitboard (plan 1.1)    |
+|   Board8x8Mailbox (0.1+)  |   BoardBitboard (1.1)         |
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
@@ -82,7 +82,12 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
 
 Warstwy, których **jeszcze nie ma** (planowane wg HANDOFF §9):
 
-- **Bitboardowy Board** (1.1), **Qt6 GUI** (1.2).
+- **Qt6 GUI** (1.2).
+
+Opcjonalny polish post-1.1: magic / PEXT bitboards dla
+funkcji ataków sliderów. Obecne slidery to loop-based
+O(odległość) walks po promieniach — poprawne i dydaktyczne;
+magic bitboards zamieniają pętlę na lookup O(1) w tabeli.
 
 Interfejs `NetFetcher` z 1.0 (`include/chesserazade/net_fetcher.hpp`)
 siedzi z boku rdzenia — jest używany tylko przez podkomendę

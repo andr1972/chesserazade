@@ -1,10 +1,13 @@
 #include "cli/cmd_perft.hpp"
 
 #include "board/board8x8_mailbox.hpp"
+#include "board/board_bitboard.hpp"
 
 #include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
 #include <chesserazade/move_generator.hpp>
+
+#include <memory>
 
 #include <algorithm>
 #include <charconv>
@@ -19,10 +22,13 @@ namespace chesserazade::cli {
 
 namespace {
 
+enum class BoardKind { Mailbox, Bitboard };
+
 struct PerftOptions {
     std::string fen = std::string{STARTING_POSITION_FEN};
     int depth = -1;
     bool divide = false;
+    BoardKind board_kind = BoardKind::Mailbox;
     bool show_help = false;
 };
 
@@ -49,6 +55,21 @@ ParseResult parse_perft_args(std::span<const std::string_view> args) {
                 return r;
             }
             r.options.fen = std::string{args[i + 1]};
+            ++i;
+            continue;
+        }
+        if (arg == "--board") {
+            if (i + 1 >= args.size()) {
+                r.error = "--board requires a value";
+                return r;
+            }
+            const auto v = args[i + 1];
+            if (v == "mailbox")       r.options.board_kind = BoardKind::Mailbox;
+            else if (v == "bitboard") r.options.board_kind = BoardKind::Bitboard;
+            else {
+                r.error = "--board must be 'mailbox' or 'bitboard'";
+                return r;
+            }
             ++i;
             continue;
         }
@@ -81,6 +102,7 @@ ParseResult parse_perft_args(std::span<const std::string_view> args) {
 
 void print_perft_help(std::ostream& out) {
     out << "Usage: chesserazade perft --depth N [--fen <fen>] [--divide]\n"
+        << "                          [--board mailbox|bitboard]\n"
         << "\n"
         << "Count leaf nodes at depth N from the given position.\n"
         << "\n"
@@ -89,6 +111,8 @@ void print_perft_help(std::ostream& out) {
         << "  --fen <fen>   Position to search from. Defaults to the\n"
         << "                standard starting position.\n"
         << "  --divide      Print per-root-move counts, not just the total.\n"
+        << "  --board K     'mailbox' (classical array, default) or\n"
+        << "                'bitboard' (64-bit piece sets — faster).\n"
         << "  -h, --help    Show this message.\n";
 }
 
@@ -123,10 +147,24 @@ int cmd_perft(std::span<const std::string_view> args) {
         return 1;
     }
 
-    auto board = Board8x8Mailbox::from_fen(parsed.options.fen);
-    if (!board.has_value()) {
-        std::cerr << "perft: " << board.error().message << '\n';
-        return 1;
+    // Build the requested concrete Board and hold it through a
+    // Board* for the perft helpers — both implementations share
+    // the same interface.
+    std::unique_ptr<Board> board;
+    if (parsed.options.board_kind == BoardKind::Bitboard) {
+        auto r = BoardBitboard::from_fen(parsed.options.fen);
+        if (!r.has_value()) {
+            std::cerr << "perft: " << r.error().message << '\n';
+            return 1;
+        }
+        board = std::make_unique<BoardBitboard>(std::move(*r));
+    } else {
+        auto r = Board8x8Mailbox::from_fen(parsed.options.fen);
+        if (!r.has_value()) {
+            std::cerr << "perft: " << r.error().message << '\n';
+            return 1;
+        }
+        board = std::make_unique<Board8x8Mailbox>(std::move(*r));
     }
 
     const int depth = parsed.options.depth;

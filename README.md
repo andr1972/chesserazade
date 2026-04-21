@@ -139,10 +139,12 @@ These are deliberate scope choices, not bugs. They are
 summarized here so a reader of the source does not go hunting
 for them.
 
-- **Mailbox board only.** The `Board` interface is abstract;
-  `Board8x8Mailbox` is the sole concrete implementation. A
-  bitboard implementation is on the 1.1 roadmap; the mailbox
-  will stay in the tree as the reference.
+- **Two board implementations.** `Board8x8Mailbox` is the
+  classical mailbox reference; `BoardBitboard` (1.1) is the
+  bitboard alternative (~2.5–3× faster on perft). The CLI
+  `perft --board mailbox|bitboard` picks between them. The
+  slider attack helpers use a loop-based ray walk; magic /
+  PEXT bitboards are an optional post-1.1 polish.
 - **No opening book, no endgame tablebase.** The engine plays
   every position from search + evaluator.
 - **No UCI-protocol adapter.** You cannot drop chesserazade

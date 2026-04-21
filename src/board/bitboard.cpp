@@ -140,22 +140,52 @@ namespace {
 
 } // namespace
 
-Bitboard Attacks::rook(Square sq, Bitboard occ) noexcept {
+// ---------------------------------------------------------------------------
+// Reference (loop-based) slider attacks — always available as
+// the "if anything goes wrong, we can still compute this"
+// baseline. The public `Attacks::rook/bishop` call through a
+// function pointer so that magic-bitboards / PEXT init paths
+// can swap in faster implementations at program startup.
+// ---------------------------------------------------------------------------
+
+Bitboard Attacks::rook_loop(Square sq, Bitboard occ) noexcept {
     return ray(sq, +1,  0, occ)   // N
          | ray(sq, -1,  0, occ)   // S
          | ray(sq,  0, +1, occ)   // E
          | ray(sq,  0, -1, occ);  // W
 }
 
-Bitboard Attacks::bishop(Square sq, Bitboard occ) noexcept {
+Bitboard Attacks::bishop_loop(Square sq, Bitboard occ) noexcept {
     return ray(sq, +1, +1, occ)   // NE
          | ray(sq, +1, -1, occ)   // NW
          | ray(sq, -1, +1, occ)   // SE
          | ray(sq, -1, -1, occ);  // SW
 }
 
-Bitboard Attacks::queen(Square sq, Bitboard occ) noexcept {
-    return rook(sq, occ) | bishop(sq, occ);
+namespace {
+Attacks::SliderFn g_rook_attack   = &Attacks::rook_loop;
+Attacks::SliderFn g_bishop_attack = &Attacks::bishop_loop;
+} // namespace
+
+Bitboard Attacks::rook(Square sq, Bitboard occ) noexcept {
+    return g_rook_attack(sq, occ);
 }
+
+Bitboard Attacks::bishop(Square sq, Bitboard occ) noexcept {
+    return g_bishop_attack(sq, occ);
+}
+
+Bitboard Attacks::queen(Square sq, Bitboard occ) noexcept {
+    return g_rook_attack(sq, occ) | g_bishop_attack(sq, occ);
+}
+
+void Attacks::set_rook_attack_fn(SliderFn fn) noexcept {
+    g_rook_attack = fn;
+}
+void Attacks::set_bishop_attack_fn(SliderFn fn) noexcept {
+    g_bishop_attack = fn;
+}
+Attacks::SliderFn Attacks::rook_fn() noexcept { return g_rook_attack; }
+Attacks::SliderFn Attacks::bishop_fn() noexcept { return g_bishop_attack; }
 
 } // namespace chesserazade

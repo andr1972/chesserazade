@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(chesserazade
-    VERSION 1.0.0
+    VERSION 1.1.0
     DESCRIPTION "Educational classical chess program"
     LANGUAGES CXX)
 
@@ -48,6 +48,7 @@ add_library(chesserazade_core STATIC
     src/board/bitboard.cpp
     src/board/board8x8_mailbox.cpp
     src/board/board_bitboard.cpp
+    src/board/magic.cpp
     src/board/zobrist.cpp
     src/eval/evaluator.cpp
     src/game/game.cpp

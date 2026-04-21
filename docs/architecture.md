@@ -1,6 +1,6 @@
 # Chesserazade — Architecture
 
-Draft: 1.0 (reflects code through `v1.0.0`). Updated every version.
+Draft: 1.1 (reflects code through `v1.1.0`). Updated every version.
 
 This document is for the reader who has `git clone`d the tree and
 wants a map before diving into the source. It complements
@@ -69,7 +69,7 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
                           |
 +-------------------------v---------------------------------+
 |                     Board (interface)                     |
-|   Board8x8Mailbox (0.1+)  |   BoardBitboard (planned 1.1) |
+|   Board8x8Mailbox (0.1+)  |   BoardBitboard (1.1)         |
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
@@ -81,7 +81,12 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 
 Layers that **do not yet exist** (planned per HANDOFF §9):
 
-- **Bitboard Board** (1.1), **Qt6 GUI** (1.2).
+- **Qt6 GUI** (1.2).
+
+Optional post-1.1 polish: magic / PEXT bitboards for the
+slider attack helpers. Current sliders are loop-based O(distance)
+ray walks — correct and educational; magic bitboards trade the
+loop for an O(1) table lookup.
 
 The 1.0 `NetFetcher` interface (`include/chesserazade/net_fetcher.hpp`)
 sits off to the side of the core — it is used only by the

@@ -167,6 +167,26 @@ public:
     /// Queen attacks — `rook(sq, occ) | bishop(sq, occ)`.
     [[nodiscard]] static Bitboard queen(Square sq, Bitboard occ) noexcept;
 
+    /// Runtime-swappable slider-attack function type. See
+    /// `set_rook_attack_fn` / `set_bishop_attack_fn`.
+    using SliderFn = Bitboard (*)(Square, Bitboard) noexcept;
+
+    /// Replace the rook-attack implementation. Called once by
+    /// magic-bitboards / PEXT init paths to upgrade from the
+    /// default loop-based walk. Not thread-safe — invoke before
+    /// any search begins.
+    static void set_rook_attack_fn(SliderFn fn) noexcept;
+    static void set_bishop_attack_fn(SliderFn fn) noexcept;
+
+    /// The current function (for the benchmark/diagnostics).
+    [[nodiscard]] static SliderFn rook_fn() noexcept;
+    [[nodiscard]] static SliderFn bishop_fn() noexcept;
+
+    /// Reference implementation kept reachable so magic/PEXT
+    /// init paths can validate their outputs against it.
+    [[nodiscard]] static Bitboard rook_loop(Square sq, Bitboard occ) noexcept;
+    [[nodiscard]] static Bitboard bishop_loop(Square sq, Bitboard occ) noexcept;
+
     Attacks() = delete;
 };
 

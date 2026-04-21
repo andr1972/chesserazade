@@ -22,6 +22,7 @@
 /// one to two orders of magnitude — that is the point of keeping the
 /// benchmark around: it becomes the baseline to measure against.
 #include "board/board8x8_mailbox.hpp"
+#include "board/board_bitboard.hpp"
 
 #include <chesserazade/move_generator.hpp>
 
@@ -89,6 +90,10 @@ void print_help() {
         "Usage: perft_bench [options]\n"
         "\n"
         "Run perft on the six standard positions and print timings.\n"
+        "Each position is run twice — once against the mailbox board\n"
+        "and once against the bitboard board — and the speedup is\n"
+        "shown side-by-side. Node counts must agree; a mismatch is\n"
+        "flagged on stderr.\n"
         "\n"
         "Options:\n"
         "  --depth N     Cap the depth on all positions at N (default: each\n"
@@ -98,28 +103,49 @@ void print_help() {
         "  -h, --help    Show this message.\n");
 }
 
+/// Time a single perft run on `b` at `depth`. Returns seconds.
+double time_perft(Board& b, int depth, std::uint64_t& out_nodes) {
+    const auto start = clk::now();
+    out_nodes = perft(b, depth);
+    const auto end = clk::now();
+    return std::chrono::duration<double>(end - start).count();
+}
+
 void run_one(const BenchPosition& p, int depth) {
-    auto result = Board8x8Mailbox::from_fen(p.fen);
-    if (!result.has_value()) {
-        std::fprintf(stderr, "%s: bad FEN (%s)\n", p.name.data(),
-                     result.error().message.c_str());
+    auto mb = Board8x8Mailbox::from_fen(p.fen);
+    auto bb = BoardBitboard::from_fen(p.fen);
+    if (!mb || !bb) {
+        std::fprintf(stderr, "%s: bad FEN\n", p.name.data());
         return;
     }
-    Board8x8Mailbox b = *result;
+    Board8x8Mailbox b_mb = *mb;
+    BoardBitboard    b_bb = *bb;
 
-    const auto start = clk::now();
-    const std::uint64_t nodes = perft(b, depth);
-    const auto end = clk::now();
+    std::uint64_t nodes_mb = 0;
+    const double t_mb = time_perft(b_mb, depth, nodes_mb);
+    std::uint64_t nodes_bb = 0;
+    const double t_bb = time_perft(b_bb, depth, nodes_bb);
 
-    const double secs =
-        std::chrono::duration<double>(end - start).count();
-    const double mnps = secs > 0.0
-                            ? static_cast<double>(nodes) / secs / 1.0e6
-                            : 0.0;
+    const double mnps_mb = t_mb > 0.0
+        ? static_cast<double>(nodes_mb) / t_mb / 1.0e6 : 0.0;
+    const double mnps_bb = t_bb > 0.0
+        ? static_cast<double>(nodes_bb) / t_bb / 1.0e6 : 0.0;
+    const double speedup = (t_bb > 0.0) ? t_mb / t_bb : 0.0;
 
-    std::printf("%-9s depth=%d  nodes=%14llu  time=%7.2fs  Mnps=%6.2f\n",
-                p.name.data(), depth,
-                static_cast<unsigned long long>(nodes), secs, mnps);
+    std::printf(
+        "%-9s d=%d  n=%12llu  "
+        "mailbox=%6.2fs (%5.2f Mnps)  bitboard=%6.2fs (%5.2f Mnps)  "
+        "x%4.2f\n",
+        p.name.data(), depth,
+        static_cast<unsigned long long>(nodes_mb),
+        t_mb, mnps_mb, t_bb, mnps_bb, speedup);
+
+    if (nodes_mb != nodes_bb) {
+        std::fprintf(stderr,
+                     "  WARNING: node-count mismatch (mailbox %llu, bitboard %llu)\n",
+                     static_cast<unsigned long long>(nodes_mb),
+                     static_cast<unsigned long long>(nodes_bb));
+    }
 }
 
 } // namespace
