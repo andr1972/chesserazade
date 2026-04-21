@@ -6,11 +6,13 @@
 #include <chesserazade/move.hpp>
 #include <chesserazade/san.hpp>
 #include <chesserazade/search.hpp>
+#include <chesserazade/transposition_table.hpp>
 
 #include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
@@ -173,7 +175,11 @@ int cmd_solve(std::span<const std::string_view> args) {
     limits.time_budget = std::chrono::milliseconds{parsed.options.time_ms};
     limits.node_budget = parsed.options.nodes;
 
-    const SearchResult r = Search::find_best(*board, limits);
+    // Allocate a default 1M-entry TT (~16 MiB). 0.7 has no
+    // control knob for this — a future --hash flag will expose
+    // it when the engine benefits from larger tables.
+    TranspositionTable tt;
+    const SearchResult r = Search::find_best(*board, limits, &tt);
 
     std::cout << "best:  "
               << to_san(*board, r.best_move) << "  ("
@@ -185,6 +191,15 @@ int cmd_solve(std::span<const std::string_view> args) {
                   << '\n';
     }
     std::cout << "nodes: " << r.nodes << '\n';
+    if (r.tt_probes > 0) {
+        const double hit_rate =
+            100.0 * static_cast<double>(r.tt_hits)
+                  / static_cast<double>(r.tt_probes);
+        std::printf("tt:    %llu probes, %llu hits (%.1f%%)\n",
+                    static_cast<unsigned long long>(r.tt_probes),
+                    static_cast<unsigned long long>(r.tt_hits),
+                    hit_rate);
+    }
     std::cout << "time:  " << r.elapsed.count() << " ms\n";
     return 0;
 }

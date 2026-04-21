@@ -40,6 +40,7 @@
 namespace chesserazade {
 
 class Board;
+class TranspositionTable;
 
 /// Optional limits on a search. Any combination may be set; the
 /// search stops at the earliest trigger. A default-constructed
@@ -89,6 +90,11 @@ struct SearchResult {
     /// the iteration we abandoned, but `best_move` is still the
     /// best move from the last fully completed iteration.
     int completed_depth = 0;
+
+    /// Transposition-table statistics for this search. When no
+    /// TT is supplied to `find_best`, these remain zero.
+    std::uint64_t tt_probes = 0;
+    std::uint64_t tt_hits   = 0;
 };
 
 class Search {
@@ -117,6 +123,16 @@ public:
     /// when the time or node budget has been exhausted.
     [[nodiscard]] static SearchResult find_best(Board& board,
                                                 const SearchLimits& limits);
+
+    /// Find the best move using the given transposition table.
+    /// The table is owned by the caller so it can be re-used
+    /// across calls (iterative deepening already re-uses it
+    /// across depths, but a REPL session might want to share one
+    /// across user moves). Pass `nullptr` to search without a
+    /// TT — identical behavior to the non-TT overloads.
+    [[nodiscard]] static SearchResult find_best(Board& board,
+                                                const SearchLimits& limits,
+                                                TranspositionTable* tt);
 
     /// True if `score` encodes a forced mate (won or lost).
     [[nodiscard]] static constexpr bool is_mate_score(int score) noexcept {

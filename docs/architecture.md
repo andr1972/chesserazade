@@ -1,6 +1,6 @@
 # Chesserazade — Architecture
 
-Draft: 0.5 (reflects code through `v0.5.0`). Updated every version.
+Draft: 0.7 (reflects code through `v0.7.0`). Updated every version.
 
 This document is for the reader who has `git clone`d the tree and
 wants a map before diving into the source. It complements
@@ -42,9 +42,10 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
-|             Search + Evaluator   (new in 0.5)             |
-|   Search::find_best — fixed-depth negamax with mate       |
-|   scoring + triangular PV table                           |
+|         Search + Evaluator + TT   (new in 0.5–0.7)        |
+|   Search::find_best — alpha-beta negamax with iterative   |
+|   deepening (0.6), mate scoring, triangular PV table      |
+|   TranspositionTable — Zobrist-keyed entry cache (0.7)    |
 |   evaluate(board) — material + piece-square tables        |
 +-------------------------+---------------------------------+
                           |
@@ -75,11 +76,9 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 
 Layers that **do not yet exist** (planned per HANDOFF §9):
 
-- **Alpha-beta + iterative deepening + time control** (0.6) —
-  drops in at the same call site as negamax.
-- **Zobrist + TT** (0.7).
 - **Move ordering + quiescence + puzzle solver** (0.8).
 - **Game analyzer** (0.9), **net fetcher** (1.0).
+- **Bitboard Board** (1.1), **Qt6 GUI** (1.2).
 
 Each of these slots in *between* Move Generator and the CLI, without
 requiring changes below it.

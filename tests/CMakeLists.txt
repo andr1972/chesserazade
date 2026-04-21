@@ -22,6 +22,7 @@ add_executable(chesserazade_tests
     test_evaluator.cpp
     test_search.cpp
     test_zobrist.cpp
+    test_tt.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE
