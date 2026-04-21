@@ -13,6 +13,7 @@
 #include <chesserazade/fen.hpp>
 
 #include "board/board8x8_mailbox.hpp"
+#include "io/fen_fields.hpp"
 
 #include <array>
 #include <charconv>
@@ -71,10 +72,11 @@ namespace {
 }
 
 /// Parse a single rank string (between '/' delimiters). Writes pieces
-/// into squares `[rank*8, rank*8+8)` of `b`.
-[[nodiscard]] std::expected<void, FenError> parse_rank(Board8x8Mailbox& b,
-                                                      std::string_view rank_str,
-                                                      int rank_from_top) {
+/// into `squares[rank*8, rank*8+8)`.
+[[nodiscard]] std::expected<void, FenError> parse_rank(
+    std::array<Piece, NUM_SQUARES>& squares,
+    std::string_view rank_str,
+    int rank_from_top) {
     const int rank_index = 7 - rank_from_top; // FEN gives rank 8 first.
     int file = 0;
     for (char c : rank_str) {
@@ -100,7 +102,7 @@ namespace {
                              + " has too many files");
         }
         const auto sq = make_square(static_cast<File>(file), static_cast<Rank>(rank_index));
-        b.set_piece_at(sq, *piece);
+        squares[to_index(sq)] = *piece;
         ++file;
     }
     if (file != 8) {
@@ -110,8 +112,9 @@ namespace {
     return {};
 }
 
-[[nodiscard]] std::expected<void, FenError> parse_placement(Board8x8Mailbox& b,
-                                                            std::string_view placement) {
+[[nodiscard]] std::expected<void, FenError> parse_placement(
+    std::array<Piece, NUM_SQUARES>& squares,
+    std::string_view placement) {
     // Split on '/' into exactly 8 ranks, rank 8 first.
     std::array<std::string_view, 8> ranks{};
     std::size_t start = 0;
@@ -130,7 +133,7 @@ namespace {
                          + " ranks found, expected 8");
     }
     for (std::size_t i = 0; i < 8; ++i) {
-        auto r = parse_rank(b, ranks[i], static_cast<int>(i));
+        auto r = parse_rank(squares, ranks[i], static_cast<int>(i));
         if (!r.has_value()) {
             return r;
         }
@@ -262,56 +265,68 @@ void serialize_castling(const CastlingRights& r, std::string& out) {
 // Public API
 // ---------------------------------------------------------------------------
 
-std::expected<Board8x8Mailbox, FenError> Board8x8Mailbox::from_fen(std::string_view fen) {
+std::expected<FenFields, FenError>
+parse_fen_fields(std::string_view fen) {
     const auto fields = split_whitespace(fen);
     if (fields.size() != 6) {
         return fen_error("FEN: expected 6 whitespace-separated fields, got "
                          + std::to_string(fields.size()));
     }
 
-    Board8x8Mailbox board;
-    board.clear();
+    FenFields out;
 
-    if (auto r = parse_placement(board, fields[0]); !r.has_value()) {
+    if (auto r = parse_placement(out.squares, fields[0]); !r.has_value()) {
         return std::unexpected(r.error());
     }
-
     if (auto r = parse_side(fields[1])) {
-        board.set_side_to_move(*r);
+        out.side = *r;
     } else {
         return std::unexpected(r.error());
     }
-
     if (auto r = parse_castling(fields[2])) {
-        board.set_castling_rights(*r);
+        out.castling = *r;
     } else {
         return std::unexpected(r.error());
     }
-
     if (auto r = parse_ep(fields[3])) {
-        board.set_en_passant_square(*r);
+        out.ep = *r;
     } else {
         return std::unexpected(r.error());
     }
-
     if (auto r = parse_nonneg_int(fields[4], "halfmove-clock")) {
-        board.set_halfmove_clock(*r);
+        out.halfmove = *r;
     } else {
         return std::unexpected(r.error());
     }
-
     if (auto r = parse_nonneg_int(fields[5], "fullmove-number")) {
         if (*r < 1) {
             return fen_error("FEN fullmove-number: must be at least 1, got "
                              + std::to_string(*r));
         }
-        board.set_fullmove_number(*r);
+        out.fullmove = *r;
     } else {
         return std::unexpected(r.error());
     }
+    return out;
+}
 
-    // All fields placed via setters; the incremental Zobrist key
-    // has not been tracked. Recompute once here.
+std::expected<Board8x8Mailbox, FenError> Board8x8Mailbox::from_fen(std::string_view fen) {
+    auto fields = parse_fen_fields(fen);
+    if (!fields) return std::unexpected(fields.error());
+
+    Board8x8Mailbox board;
+    board.clear();
+    for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
+        const Piece p = fields->squares[i];
+        if (!p.is_none()) {
+            board.set_piece_at(static_cast<Square>(i), p);
+        }
+    }
+    board.set_side_to_move(fields->side);
+    board.set_castling_rights(fields->castling);
+    board.set_en_passant_square(fields->ep);
+    board.set_halfmove_clock(fields->halfmove);
+    board.set_fullmove_number(fields->fullmove);
     board.recompute_zobrist();
     return board;
 }
