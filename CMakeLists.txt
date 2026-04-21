@@ -70,6 +70,13 @@ target_include_directories(chesserazade_core
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+# Bake the repo root into the library so the magic-bitboards
+# loader can find data/magics.txt from any cwd even when the
+# CHESSERAZADE_MAGICS env var is unset and the binary has
+# moved out of its usual build-tree neighbourhood.
+target_compile_definitions(chesserazade_core PRIVATE
+    CHESSERAZADE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
 target_link_libraries(chesserazade_core
     PRIVATE chesserazade_warnings
 )
@@ -82,6 +89,7 @@ add_executable(chesserazade
     src/cli/command_dispatch.cpp
     src/cli/cmd_analyze.cpp
     src/cli/cmd_fetch.cpp
+    src/cli/cmd_magics_gen.cpp
     src/cli/cmd_moves.cpp
     src/cli/cmd_perft.cpp
     src/cli/cmd_repl.cpp

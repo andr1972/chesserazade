@@ -35,6 +35,7 @@
 #include <chesserazade/types.hpp>
 
 #include <cstdint>
+#include <string>
 
 namespace chesserazade {
 
@@ -49,19 +50,45 @@ struct MagicEntry {
     std::size_t attacks_offset = 0;
 };
 
-/// Initialize the global magic tables and swap
-/// `Attacks::rook/bishop` to use the magic lookup. Safe to
-/// call more than once (idempotent). Runs a brute-force search
-/// for magic constants in memory; typical cost < 100 ms on a
-/// modern machine.
-///
-/// Returns true on success. On failure (unable to find a magic
-/// for some square — statistically extremely unlikely with the
-/// search parameters used here), the dispatch stays on the
-/// loop-based baseline and returns false.
+/// Initialize the global magic tables by brute-force search
+/// and swap `Attacks::rook/bishop` to the magic lookup.
+/// Idempotent; typical cost < 100 ms. Returns true on success.
 bool init_magic_attacks();
 
-/// True once `init_magic_attacks()` has succeeded.
+/// Same as `init_magic_attacks()` but populates the tables
+/// from the magic constants listed in `path` instead of
+/// searching. Faster on cold start (~ms vs ~100 ms) and
+/// deterministic. Returns true on success; false if the file
+/// is missing, malformed, or contains a constant that fails
+/// the collision-free check (which would mean the file is
+/// corrupted or hand-edited incorrectly).
+[[nodiscard]] bool init_magic_attacks_from_file(const std::string& path);
+
+/// Walk the standard lookup chain and initialize from the
+/// first file found:
+///
+///    $CHESSERAZADE_MAGICS         (explicit override)
+///    $ORIGIN/data/magics.txt      (binary's sibling data dir)
+///    $ORIGIN/../data/magics.txt
+///    $ORIGIN/../../data/magics.txt  (works from build/<preset>/)
+///    <CMAKE_SOURCE_DIR>/data/magics.txt  (baked absolute path)
+///
+/// Returns true if any path loads successfully. Does NOT fall
+/// back to brute-force generation — that is an explicit
+/// opt-in via `init_magic_attacks()` or the `magics-gen` CLI.
+[[nodiscard]] bool init_magic_attacks_from_default_locations();
+
+/// Serialize the current magic constants + masks + shifts to
+/// `path` in the human-readable format consumed by
+/// `init_magic_attacks_from_file`. Precondition: magics are
+/// initialized. Returns true on successful write.
+[[nodiscard]] bool write_magics_to_file(const std::string& path);
+
+/// True once any `init_magic_attacks*` call has succeeded.
 [[nodiscard]] bool magic_attacks_available() noexcept;
+
+/// Reset to the uninitialized state — used by tests that want
+/// to exercise a different init path within the same process.
+void reset_magic_attacks() noexcept;
 
 } // namespace chesserazade

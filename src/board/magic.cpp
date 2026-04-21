@@ -27,9 +27,16 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <random>
+#include <sstream>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace chesserazade {
@@ -280,5 +287,284 @@ bool init_magic_attacks() {
 }
 
 bool magic_attacks_available() noexcept { return g_ready; }
+
+void reset_magic_attacks() noexcept {
+    g_rook_entries = {};
+    g_bishop_entries = {};
+    g_rook_table.clear();
+    g_bishop_table.clear();
+    g_ready = false;
+    Attacks::set_rook_attack_fn(&Attacks::rook_loop);
+    Attacks::set_bishop_attack_fn(&Attacks::bishop_loop);
+}
+
+// ---------------------------------------------------------------------------
+// File format
+// ---------------------------------------------------------------------------
+//
+//   # chesserazade magic bitboards
+//   # format: section square magic(hex) mask(hex) shift(dec)
+//   [rook]
+//   a1 0x... 0x... 52
+//   ...
+//   [bishop]
+//   a1 0x... 0x... 58
+//   ...
+//
+// Attack tables are not in the file — they are derived on
+// load from (magic, mask, shift). `load` validates every
+// (square, occupancy-subset) maps to exactly one attack set,
+// so a hand-edited / corrupted file is rejected, not blindly
+// trusted.
+
+namespace {
+
+/// Populate `out.attacks_offset` and the attack-table slice
+/// at that offset using the already-set (mask, magic, shift).
+/// Returns false if the magic is not collision-free (which
+/// means we should reject the loaded file).
+bool build_table_slice(Square sq, bool is_rook, MagicEntry& out,
+                       std::vector<Bitboard>& table) {
+    const int n = std::popcount(out.mask);
+    const std::size_t size = std::size_t{1} << n;
+    const std::size_t offset = table.size();
+    table.resize(offset + size);
+
+    std::vector<Bitboard> used(size);
+    for (std::size_t i = 0; i < size; ++i) {
+        const Bitboard occ =
+            index_to_occupancy(static_cast<int>(i), out.mask);
+        const Bitboard ref = is_rook ? rook_ref(sq, occ) : bishop_ref(sq, occ);
+        const std::uint64_t idx = (occ * out.magic) >> out.shift;
+        if (used[idx] == 0) {
+            used[idx] = ref;
+            table[offset + idx] = ref;
+        } else if (used[idx] != ref) {
+            // Collision with a different attack set — the
+            // supplied magic is invalid for this square.
+            return false;
+        }
+    }
+    out.attacks_offset = offset;
+    return true;
+}
+
+[[nodiscard]] std::string_view trim(std::string_view s) noexcept {
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t'
+                          || s.front() == '\r')) s.remove_prefix(1);
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t'
+                          || s.back() == '\r')) s.remove_suffix(1);
+    return s;
+}
+
+[[nodiscard]] bool parse_hex64(std::string_view s, std::uint64_t& out) noexcept {
+    if (s.starts_with("0x") || s.starts_with("0X")) s.remove_prefix(2);
+    if (s.empty() || s.size() > 16) return false;
+    std::uint64_t v = 0;
+    for (char c : s) {
+        v <<= 4;
+        if (c >= '0' && c <= '9')       v |= static_cast<std::uint64_t>(c - '0');
+        else if (c >= 'a' && c <= 'f')  v |= static_cast<std::uint64_t>(10 + (c - 'a'));
+        else if (c >= 'A' && c <= 'F')  v |= static_cast<std::uint64_t>(10 + (c - 'A'));
+        else return false;
+    }
+    out = v;
+    return true;
+}
+
+[[nodiscard]] bool parse_square(std::string_view s, Square& out) noexcept {
+    if (s.size() != 2) return false;
+    if (s[0] < 'a' || s[0] > 'h') return false;
+    if (s[1] < '1' || s[1] > '8') return false;
+    out = make_square(static_cast<File>(s[0] - 'a'),
+                      static_cast<Rank>(s[1] - '1'));
+    return true;
+}
+
+} // namespace
+
+bool init_magic_attacks_from_file(const std::string& path) {
+    std::ifstream f(path);
+    if (!f) return false;
+
+    reset_magic_attacks();
+
+    enum class Section { None, Rook, Bishop };
+    Section section = Section::None;
+
+    std::string line;
+    while (std::getline(f, line)) {
+        std::string_view s = trim(line);
+        if (s.empty()) continue;
+        if (s.front() == '#') continue;
+        if (s == "[rook]")   { section = Section::Rook;   continue; }
+        if (s == "[bishop]") { section = Section::Bishop; continue; }
+
+        // Expect: <square> <magic_hex> <mask_hex> <shift_dec>
+        std::istringstream is{std::string{s}};
+        std::string sq_tok, magic_tok, mask_tok;
+        int shift = 0;
+        if (!(is >> sq_tok >> magic_tok >> mask_tok >> shift)) {
+            reset_magic_attacks();
+            return false;
+        }
+
+        Square sq{};
+        std::uint64_t magic = 0, mask = 0;
+        if (!parse_square(sq_tok, sq) || !parse_hex64(magic_tok, magic)
+            || !parse_hex64(mask_tok, mask) || shift < 0 || shift > 63) {
+            reset_magic_attacks();
+            return false;
+        }
+
+        MagicEntry entry;
+        entry.mask = mask;
+        entry.magic = magic;
+        entry.shift = static_cast<unsigned>(shift);
+
+        std::vector<Bitboard>& table =
+            (section == Section::Rook) ? g_rook_table : g_bishop_table;
+        const bool is_rook = (section == Section::Rook);
+
+        if (section == Section::None) {
+            reset_magic_attacks();
+            return false;
+        }
+
+        // Validate the mask matches what the square demands
+        // (defends against file corruption).
+        const Bitboard expected_mask =
+            is_rook ? rook_relevant_mask(sq) : bishop_relevant_mask(sq);
+        if (mask != expected_mask) {
+            reset_magic_attacks();
+            return false;
+        }
+
+        if (!build_table_slice(sq, is_rook, entry, table)) {
+            reset_magic_attacks();
+            return false;
+        }
+        auto& arr = is_rook ? g_rook_entries : g_bishop_entries;
+        arr[to_index(sq)] = entry;
+    }
+
+    // Sanity: every square in both sections must have been set.
+    for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
+        if (g_rook_entries[i].magic == 0
+            || g_bishop_entries[i].magic == 0) {
+            reset_magic_attacks();
+            return false;
+        }
+    }
+
+    Attacks::set_rook_attack_fn(&magic_rook);
+    Attacks::set_bishop_attack_fn(&magic_bishop);
+    g_ready = true;
+    return true;
+}
+
+namespace {
+void emit_magic_section(
+    std::ofstream& f, const char* name,
+    const std::array<MagicEntry, NUM_SQUARES>& arr) {
+    f << "[" << name << "]\n";
+    for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
+        const Square sq = static_cast<Square>(i);
+        const MagicEntry& e = arr[i];
+        const char sq_buf[3] = {
+            static_cast<char>('a' + static_cast<int>(file_of(sq))),
+            static_cast<char>('1' + static_cast<int>(rank_of(sq))),
+            '\0'
+        };
+        char line[128];
+        std::snprintf(line, sizeof(line),
+                      "%s 0x%016lx 0x%016lx %u\n",
+                      sq_buf,
+                      static_cast<unsigned long>(e.magic),
+                      static_cast<unsigned long>(e.mask),
+                      e.shift);
+        f << line;
+    }
+    f << '\n';
+}
+} // namespace
+
+bool write_magics_to_file(const std::string& path) {
+    if (!g_ready) return false;
+    std::ofstream f(path);
+    if (!f) return false;
+
+    f << "# chesserazade magic bitboards\n"
+      << "# format: section square magic(hex) mask(hex) shift(dec)\n"
+      << "# generated by: chesserazade magics-gen\n\n";
+
+    emit_magic_section(f, "rook",   g_rook_entries);
+    emit_magic_section(f, "bishop", g_bishop_entries);
+    return f.good();
+}
+
+namespace {
+
+/// Return the directory the current executable lives in, or
+/// empty on error. Linux-specific (`readlink /proc/self/exe`).
+[[nodiscard]] std::filesystem::path binary_dir() noexcept {
+    std::error_code ec;
+    auto p = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (ec) return {};
+    return p.parent_path();
+}
+
+/// Compile-time baked path: the repo-root `data/magics.txt`
+/// so a developer-built binary always works without setting
+/// the env var.
+[[nodiscard]] std::filesystem::path baked_default_path() noexcept {
+#ifdef CHESSERAZADE_SOURCE_DIR
+    return std::filesystem::path(CHESSERAZADE_SOURCE_DIR) / "data" / "magics.txt";
+#else
+    return {};
+#endif
+}
+
+} // namespace
+
+bool init_magic_attacks_from_default_locations() {
+    namespace fs = std::filesystem;
+
+    // 1. Explicit env var override.
+    if (const char* env = std::getenv("CHESSERAZADE_MAGICS")) {
+        if (env[0] != '\0' && init_magic_attacks_from_file(env)) {
+            return true;
+        }
+    }
+
+    // 2–4. Relative to the binary.
+    const fs::path bd = binary_dir();
+    if (!bd.empty()) {
+        const fs::path candidates[] = {
+            bd / "data" / "magics.txt",
+            bd / ".." / "data" / "magics.txt",
+            bd / ".." / ".." / "data" / "magics.txt",
+        };
+        for (const fs::path& rel : candidates) {
+            std::error_code ec;
+            if (fs::exists(rel, ec)
+                && init_magic_attacks_from_file(rel.string())) {
+                return true;
+            }
+        }
+    }
+
+    // 5. Baked absolute path from the CMake source dir.
+    const fs::path baked = baked_default_path();
+    if (!baked.empty()) {
+        std::error_code ec;
+        if (fs::exists(baked, ec)
+            && init_magic_attacks_from_file(baked.string())) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 } // namespace chesserazade

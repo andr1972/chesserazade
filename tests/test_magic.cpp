@@ -101,3 +101,54 @@ TEST_CASE("Magic bitboards: perft parity at depth 4", "[magic][perft]") {
         REQUIRE(perft(b, 4) == p.expected);
     }
 }
+
+// ---------------------------------------------------------------------------
+// File I/O — write the current magics, clear state, reload from
+// the file, verify we still agree with the loop reference.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Magic bitboards: write then reload round-trips",
+          "[magic][file]") {
+    // First ensure we have generated magics.
+    REQUIRE(init_magic_attacks());
+
+    const std::string tmp = "/tmp/chesserazade-test-magics.txt";
+    REQUIRE(write_magics_to_file(tmp));
+
+    // Reset to the uninitialized (loop) baseline and reload.
+    reset_magic_attacks();
+    REQUIRE_FALSE(magic_attacks_available());
+    REQUIRE(Attacks::rook_fn() == &Attacks::rook_loop);
+
+    REQUIRE(init_magic_attacks_from_file(tmp));
+    REQUIRE(magic_attacks_available());
+    REQUIRE(Attacks::rook_fn() != &Attacks::rook_loop);
+
+    // Parity check (again — the *loaded* tables must be as
+    // good as the generated ones).
+    for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
+        const Square sq = static_cast<Square>(i);
+        REQUIRE(Attacks::rook(sq, 0)   == Attacks::rook_loop(sq, 0));
+        REQUIRE(Attacks::bishop(sq, 0) == Attacks::bishop_loop(sq, 0));
+    }
+}
+
+TEST_CASE("Magic bitboards: missing file returns false", "[magic][file]") {
+    reset_magic_attacks();
+    REQUIRE_FALSE(
+        init_magic_attacks_from_file("/nonexistent/path/magics.txt"));
+    REQUIRE_FALSE(magic_attacks_available());
+    // Fallback: Attacks::rook still works via the loop baseline.
+    REQUIRE(Attacks::rook_fn() == &Attacks::rook_loop);
+}
+
+TEST_CASE("Magic bitboards: default-locations init finds the shipped file",
+          "[magic][file]") {
+    reset_magic_attacks();
+    // The repo ships data/magics.txt, and the library was
+    // compiled with CHESSERAZADE_SOURCE_DIR baked in — the
+    // default-locations init must find it even when the test
+    // binary is run from anywhere.
+    REQUIRE(init_magic_attacks_from_default_locations());
+    REQUIRE(magic_attacks_available());
+}

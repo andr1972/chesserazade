@@ -2,6 +2,7 @@
 
 #include "cli/cmd_analyze.hpp"
 #include "cli/cmd_fetch.hpp"
+#include "cli/cmd_magics_gen.hpp"
 #include "cli/cmd_moves.hpp"
 #include "cli/cmd_perft.hpp"
 #include "cli/cmd_repl.hpp"
@@ -28,6 +29,7 @@ void print_top_level_help(std::ostream& out) {
         << "  solve     Search for the best move in a position.\n"
         << "  analyze   Annotate a PGN's moves with engine verdicts.\n"
         << "  fetch     Download a PGN / puzzle to the local cache.\n"
+        << "  magics-gen  Regenerate the magic-bitboards constants file.\n"
         << "  version   Print the program version.\n"
         << "\n"
         << "Run `chesserazade <subcommand> --help` for subcommand-specific options.\n";
@@ -63,6 +65,9 @@ int dispatch(std::span<const std::string_view> args) {
     }
     if (name == "fetch") {
         return cmd_fetch(rest);
+    }
+    if (name == "magics-gen") {
+        return cmd_magics_gen(rest);
     }
     if (name == "version") {
         return cmd_version(rest);
