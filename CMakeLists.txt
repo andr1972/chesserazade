@@ -53,6 +53,7 @@ add_library(chesserazade_core STATIC
     src/io/pgn.cpp
     src/io/san.cpp
     src/move_generator/move_generator.cpp
+    src/search/search.cpp
 )
 target_include_directories(chesserazade_core
     PUBLIC
