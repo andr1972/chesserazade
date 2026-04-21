@@ -99,9 +99,11 @@ TEST_CASE("Search + TT: same best move, fewer nodes", "[tt][search]") {
     SearchLimits l; l.max_depth = 4;
     const SearchResult with = Search::find_best(board_b, l, &tt);
 
-    // Score and best move must match (alpha-beta with or without
-    // TT is a sound transformation).
-    REQUIRE(with.best_move == without.best_move);
+    // Alpha-beta with or without TT is a sound transformation —
+    // the *score* must match. `best_move` can differ when
+    // multiple moves share the same score: with move ordering
+    // and TT hints in play, the search may pick a different
+    // (but equally good) first move on ties.
     REQUIRE(with.score == without.score);
 
     // The TT run must save work. On iterative deepening, each

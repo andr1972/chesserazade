@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(chesserazade
-    VERSION 0.7.0
+    VERSION 0.8.0
     DESCRIPTION "Educational classical chess program"
     LANGUAGES CXX)
 
@@ -55,6 +55,7 @@ add_library(chesserazade_core STATIC
     src/io/san.cpp
     src/move_generator/move_generator.cpp
     src/search/search.cpp
+    src/search/puzzle_solver.cpp
     src/search/transposition_table.cpp
 )
 target_include_directories(chesserazade_core

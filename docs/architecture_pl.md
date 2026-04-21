@@ -1,6 +1,6 @@
 # Chesserazade — Architektura
 
-Szkic: 0.7 (odzwierciedla kod do tagu `v0.7.0`). Aktualizowane
+Szkic: 0.8 (odzwierciedla kod do tagu `v0.8.0`). Aktualizowane
 przy każdej wersji.
 
 Ten dokument jest dla czytelnika, który sklonował drzewo i chce
@@ -43,10 +43,14 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
 +-------------------------+---------------------------------+
                           |
 +-------------------------v---------------------------------+
-|        Search + Evaluator + TT   (nowe w 0.5–0.7)         |
-|   Search::find_best — negamax alfa-beta + iteracyjne      |
-|   pogłębianie (0.6), scoring matów, triangularna PV       |
-|   TranspositionTable — cache wpisów z kluczem Zobrist(0.7)|
+|        Search + TT + PuzzleSolver   (0.5–0.8)             |
+|   Search::find_best — alfa-beta negamax z iteracyjnym     |
+|   pogłębianiem, scoringiem matów, triangularną PV,        |
+|   odcięciami TT, sortowaniem ruchów (TT move + MVV-LVA    |
+|   + killery), quiescence na biciach (0.8)                 |
+|   TranspositionTable — cache wpisów z kluczem Zobrist     |
+|   PuzzleSolver::solve_mate_in — opakowuje Search dla      |
+|   semantyki puzzli „mat w N" (0.8)                        |
 |   evaluate(board) — materiał + tablice piece-square       |
 +-------------------------+---------------------------------+
                           |
@@ -77,7 +81,6 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
 
 Warstwy, których **jeszcze nie ma** (planowane wg HANDOFF §9):
 
-- **Sortowanie ruchów + quiescence + puzzle solver** (0.8).
 - **Analizator gier** (0.9), **net fetcher** (1.0).
 - **Bitboardowy Board** (1.1), **Qt6 GUI** (1.2).
 

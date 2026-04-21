@@ -1,36 +1,36 @@
-/// Alpha-beta negamax with iterative deepening.
+/// Alpha-beta negamax with iterative deepening, TT cutoffs,
+/// move ordering, and quiescence search.
 ///
-/// The core recursion (`negamax`) is the classical textbook form
-/// with a single pair of bounds `[alpha, beta]`:
+/// Algorithmic layers, in the order they were added:
+///   0.5 — plain negamax.
+///   0.6 — alpha-beta pruning, iterative deepening, time/node
+///         limits.
+///   0.7 — Zobrist-keyed transposition table (probe + store).
+///   0.8 — move ordering (TT move first, MVV-LVA for captures,
+///         two killer-move slots per ply), quiescence search on
+///         captures at the horizon.
 ///
-/// ```
-/// negamax(board, depth, ply, alpha, beta):
-///     if depth == 0:             return evaluate(board)
-///     moves = legal_moves(board)
-///     if moves is empty:
-///         return in_check ? -MATE + ply : 0
-///     for m in moves:
-///         make(m); s = -negamax(..., -beta, -alpha); unmake(m)
-///         if s >= beta:          return beta      # beta cutoff (fail-hard)
-///         if s > alpha:          alpha = s; ... record PV ...
-///     return alpha
-/// ```
+/// Why move ordering matters: alpha-beta is maximally effective
+/// when the best move is searched first — in the theoretical
+/// optimum the tree shrinks from `b^d` to `b^(d/2)`, a square-
+/// root speedup. Without ordering we probe the same positions in
+/// "whichever order the generator happens to emit"; with it the
+/// TT-suggested move and high-MVV captures get searched first and
+/// prune the rest.
 ///
-/// We use the **fail-hard** alpha-beta variant: returned scores
-/// are always clamped to `[alpha, beta]`. The alternative
-/// (fail-soft) is slightly more informative but complicates the
-/// code for no educational benefit at this stage.
+/// Why quiescence: the horizon effect. Without it, a search that
+/// ends in a position where a capture sequence is in flight will
+/// score the pre-capture material as final ("I'll evaluate before
+/// the queen gets traded off"). Quiescence keeps searching
+/// *tactical* (capture) moves past the nominal depth until the
+/// position is calm, so the evaluator only runs on truly quiet
+/// leaves.
 ///
-/// Iterative deepening (`find_best`) calls `negamax` once per
-/// depth from 1 to `limits.max_depth`. The best move from the
-/// last *completed* iteration is kept, so that when a time or
-/// node limit interrupts depth N+1, the result still reflects
-/// the fully-searched depth N.
-///
-/// Stop checks: the helper `Stop` caches the start time and the
-/// budgets, and is polled once every `STOP_CHECK_MASK + 1` nodes
-/// rather than on every node. Cheaper than a chrono call at each
-/// visit, and still responsive to a time limit within ms.
+/// References:
+///   https://www.chessprogramming.org/Move_Ordering
+///   https://www.chessprogramming.org/MVV-LVA
+///   https://www.chessprogramming.org/Killer_Heuristic
+///   https://www.chessprogramming.org/Quiescence_Search
 #include <chesserazade/search.hpp>
 
 #include <chesserazade/board.hpp>
@@ -39,6 +39,7 @@
 #include <chesserazade/move_generator.hpp>
 #include <chesserazade/transposition_table.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -58,6 +59,15 @@ struct PvTable {
     std::array<std::size_t, PV_SIZE> length{};
 };
 
+/// Two killer-move slots per ply. A "killer" is a quiet move that
+/// caused a beta cutoff at the same ply of a sibling node — the
+/// heuristic bet is that it will cut again here. We keep only the
+/// two most recent and never duplicate the slot-0 killer into
+/// slot-1.
+struct KillerTable {
+    std::array<std::array<Move, 2>, PV_SIZE> killers{};
+};
+
 /// Budget enforcement. A single `abort` flag short-circuits the
 /// recursion; we check the clock / node count only on a power-of-
 /// two boundary to keep the per-node overhead negligible.
@@ -67,8 +77,6 @@ struct Stop {
     std::uint64_t node_budget;
     bool abort = false;
 
-    /// Poll the budget. Call occasionally, not on every node.
-    /// Returns true once the search should bail out.
     bool should_stop(std::uint64_t nodes_so_far) noexcept {
         if (abort) return true;
         if (node_budget > 0 && nodes_so_far >= node_budget) {
@@ -85,17 +93,12 @@ struct Stop {
     }
 };
 
-/// Only poll the clock / node budget on a 1-in-2048 cadence. A
-/// single perft benchmark shows this is ~0.1% overhead while
-/// staying within a few milliseconds of the requested time
-/// budget.
 constexpr std::uint64_t STOP_CHECK_MASK = 2047;
 
-/// Mate scores are stored ply-relative so that a cached entry
-/// found at a different root distance still means the right
-/// thing. On *store*: shift a mate-against-us score away from 0
-/// by `ply` plies (so it becomes a larger-magnitude "mate soon
-/// from this node"); on *probe*: shift back by the current ply.
+// ---------------------------------------------------------------------------
+// Mate-score translation (unchanged from 0.7)
+// ---------------------------------------------------------------------------
+
 [[nodiscard]] int to_tt_score(int score, int ply) noexcept {
     if (score >= Search::MATE_SCORE - 1000) return score + ply;
     if (score <= -(Search::MATE_SCORE - 1000)) return score - ply;
@@ -107,40 +110,181 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
     return score;
 }
 
+// ---------------------------------------------------------------------------
+// Move classification + ordering
+// ---------------------------------------------------------------------------
+
+[[nodiscard]] bool is_capture(const Move& m) noexcept {
+    return m.kind == MoveKind::Capture
+        || m.kind == MoveKind::EnPassant
+        || m.kind == MoveKind::PromotionCapture;
+}
+
+/// MVV-LVA score: 10 * value(victim) - value(attacker). Rewards
+/// trading our cheap piece for their expensive one. En-passant
+/// captures always take a pawn so we plug in PAWN explicitly.
+[[nodiscard]] int mvv_lva(const Move& m) noexcept {
+    const PieceType victim =
+        (m.kind == MoveKind::EnPassant) ? PieceType::Pawn
+                                        : m.captured_piece.type;
+    return 10 * piece_value(victim) - piece_value(m.moved_piece.type);
+}
+
+/// Ordering priority buckets. Higher is earlier.
+///   ~10'000'000 — TT move (the previous best move at this key).
+///   ~ 1'000'000 — captures (spread by MVV-LVA).
+///   ~   900'000 — first killer.
+///   ~   800'000 — second killer.
+///   ~    50'000 — promotions without capture.
+///              0 — plain quiet moves.
+[[nodiscard]] int score_move(const Move& m, const Move& tt_move,
+                             const KillerTable& killers,
+                             std::size_t ply) noexcept {
+    if (m == tt_move && tt_move.from != Square::None) {
+        return 10'000'000;
+    }
+    if (is_capture(m)) {
+        return 1'000'000 + mvv_lva(m);
+    }
+    if (m == killers.killers[ply][0]) return 900'000;
+    if (m == killers.killers[ply][1]) return 800'000;
+    if (m.kind == MoveKind::Promotion) {
+        return 50'000 + piece_value(m.promotion);
+    }
+    return 0;
+}
+
+struct ScoredMove {
+    Move move;
+    int score;
+};
+
+[[nodiscard]] bool scored_desc(const ScoredMove& a,
+                               const ScoredMove& b) noexcept {
+    return a.score > b.score;
+}
+
+/// Fill `buf` with `(move, score)` pairs and sort it in
+/// descending order. Returns the number of entries written.
+std::size_t score_and_sort(const MoveList& legal,
+                           std::array<ScoredMove, MoveList::CAPACITY>& buf,
+                           const Move& tt_move,
+                           const KillerTable& killers,
+                           std::size_t ply) noexcept {
+    const std::size_t n = legal.count;
+    for (std::size_t i = 0; i < n; ++i) {
+        const Move& m = legal.moves[i];
+        buf[i] = {m, score_move(m, tt_move, killers, ply)};
+    }
+    std::sort(buf.begin(), buf.begin() + n, scored_desc);
+    return n;
+}
+
+/// Record a killer at `ply`. Drop the previous slot-0 into
+/// slot-1 (no duplicate). Skip captures — they already sort high
+/// via MVV-LVA and a killer slot is scarce.
+void remember_killer(KillerTable& killers, std::size_t ply,
+                     const Move& m) noexcept {
+    if (is_capture(m)) return;
+    if (killers.killers[ply][0] == m) return;
+    killers.killers[ply][1] = killers.killers[ply][0];
+    killers.killers[ply][0] = m;
+}
+
+// ---------------------------------------------------------------------------
+// Quiescence search
+// ---------------------------------------------------------------------------
+//
+// At the horizon of the main search we do not trust the static
+// evaluator in the middle of a capture sequence. Instead we
+// continue searching *tactical* replies only (captures, for 0.8)
+// until the position stabilises.
+//
+// The classical "stand-pat" technique: take the static eval as a
+// lower bound on the value of this node. If it already exceeds
+// beta we can cut; otherwise use it as the initial alpha while we
+// look for captures that improve on it.
+
+int quiesce(Board& board, int alpha, int beta,
+            std::uint64_t& nodes, Stop& stop);
+
+int quiesce(Board& board, int alpha, int beta,
+            std::uint64_t& nodes, Stop& stop) {
+    ++nodes;
+    if ((nodes & STOP_CHECK_MASK) == 0 && stop.should_stop(nodes)) {
+        return 0;
+    }
+
+    const int stand_pat = evaluate(board);
+    if (stand_pat >= beta) return beta;
+    if (stand_pat > alpha) alpha = stand_pat;
+
+    const MoveList legal = MoveGenerator::generate_legal(board);
+
+    // Score only captures; skip quiet moves entirely.
+    std::array<ScoredMove, MoveList::CAPACITY> buf;
+    std::size_t n = 0;
+    for (std::size_t i = 0; i < legal.count; ++i) {
+        const Move& m = legal.moves[i];
+        if (!is_capture(m)) continue;
+        buf[n++] = {m, mvv_lva(m)};
+    }
+    std::sort(buf.begin(), buf.begin() + n, scored_desc);
+
+    for (std::size_t i = 0; i < n; ++i) {
+        const Move& m = buf[i].move;
+        board.make_move(m);
+        const int score = -quiesce(board, -beta, -alpha, nodes, stop);
+        board.unmake_move(m);
+        if (stop.abort) return 0;
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+    }
+    return alpha;
+}
+
+// ---------------------------------------------------------------------------
+// Main negamax
+// ---------------------------------------------------------------------------
+
 int negamax(Board& board, int depth, int ply, int alpha, int beta,
-            std::uint64_t& nodes, PvTable& pv, Stop& stop,
-            TranspositionTable* tt) {
+            std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
+            Stop& stop, TranspositionTable* tt) {
     ++nodes;
 
     const std::size_t p = static_cast<std::size_t>(ply);
     pv.length[p] = 0;
 
     if ((nodes & STOP_CHECK_MASK) == 0 && stop.should_stop(nodes)) {
-        return 0; // value discarded by the driver when abort is set
+        return 0;
     }
 
     // --- TT probe -----------------------------------------------------
-    // Only cut off at non-root nodes (ply > 0). At the root we
-    // always want a completed search so we can return a full PV;
-    // a TT cutoff at ply 0 would leave `pv` empty.
     const ZobristKey key = board.zobrist_key();
-    if (tt != nullptr && ply > 0) {
+    Move tt_move{};
+    if (tt != nullptr) {
         const TtProbe probe = tt->probe(key);
-        if (probe.hit && static_cast<int>(probe.entry.depth) >= depth) {
-            const int s = from_tt_score(probe.entry.score, ply);
-            switch (probe.entry.bound()) {
-                case TtBound::Exact: return s;
-                case TtBound::Lower: if (s >= beta)  return s; break;
-                case TtBound::Upper: if (s <= alpha) return s; break;
-                case TtBound::None:  break;
+        if (probe.hit) {
+            tt_move = probe.entry.move;
+            if (ply > 0
+                && static_cast<int>(probe.entry.depth) >= depth) {
+                const int s = from_tt_score(probe.entry.score, ply);
+                switch (probe.entry.bound()) {
+                    case TtBound::Exact: return s;
+                    case TtBound::Lower: if (s >= beta)  return s; break;
+                    case TtBound::Upper: if (s <= alpha) return s; break;
+                    case TtBound::None:  break;
+                }
             }
         }
     }
 
+    // --- Horizon: quiesce ---------------------------------------------
     if (depth == 0) {
-        return evaluate(board);
+        return quiesce(board, alpha, beta, nodes, stop);
     }
 
+    // --- Legality + terminal ------------------------------------------
     const MoveList legal = MoveGenerator::generate_legal(board);
     if (legal.empty()) {
         if (MoveGenerator::is_in_check(board, board.side_to_move())) {
@@ -149,24 +293,26 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         return 0; // stalemate
     }
 
+    // --- Move ordering ------------------------------------------------
+    std::array<ScoredMove, MoveList::CAPACITY> buf;
+    const std::size_t n =
+        score_and_sort(legal, buf, tt_move, killers, p);
+
     const int original_alpha = alpha;
     Move best_move{};
 
-    for (const Move& m : legal) {
+    for (std::size_t i = 0; i < n; ++i) {
+        const Move& m = buf[i].move;
         board.make_move(m);
         const int score =
-            -negamax(board, depth - 1, ply + 1, -beta, -alpha, nodes, pv, stop, tt);
+            -negamax(board, depth - 1, ply + 1, -beta, -alpha,
+                     nodes, pv, killers, stop, tt);
         board.unmake_move(m);
 
-        if (stop.abort) {
-            return 0;
-        }
+        if (stop.abort) return 0;
 
         if (score >= beta) {
-            // Beta cutoff (fail-hard). The opponent would never
-            // let us reach this line — we can safely prune the
-            // rest. Store as a LOWER bound: the true value is
-            // at least `beta`, possibly higher.
+            remember_killer(killers, p, m);
             if (tt != nullptr) {
                 tt->store(key, depth, to_tt_score(beta, ply),
                           TtBound::Lower, m);
@@ -178,17 +324,13 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
             best_move = m;
             pv.moves[p][0] = m;
             const std::size_t child_len = pv.length[p + 1];
-            for (std::size_t i = 0; i < child_len; ++i) {
-                pv.moves[p][i + 1] = pv.moves[p + 1][i];
+            for (std::size_t j = 0; j < child_len; ++j) {
+                pv.moves[p][j + 1] = pv.moves[p + 1][j];
             }
             pv.length[p] = 1 + child_len;
         }
     }
 
-    // --- TT store -----------------------------------------------------
-    // Exact if we raised alpha at least once (best_move is set);
-    // Upper bound (fail-low) if every move returned at or below
-    // the original alpha.
     if (tt != nullptr) {
         const TtBound bound = (alpha > original_alpha)
                                   ? TtBound::Exact
@@ -199,15 +341,12 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
     return alpha;
 }
 
-/// Run one full-width iteration at the given depth. Returns the
-/// root score; fills `pv` with the principal variation. If the
-/// stop flag fires during the iteration, the return value is not
-/// meaningful and the caller must discard it.
 int iteration(Board& board, int depth, std::uint64_t& nodes,
-              PvTable& pv, Stop& stop, TranspositionTable* tt) {
+              PvTable& pv, KillerTable& killers,
+              Stop& stop, TranspositionTable* tt) {
     return negamax(board, depth, /*ply=*/0,
                    -Search::INF_SCORE, Search::INF_SCORE,
-                   nodes, pv, stop, tt);
+                   nodes, pv, killers, stop, tt);
 }
 
 } // namespace
@@ -237,8 +376,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         false,
     };
 
-    // Root terminal: no legal moves means the caller handed us a
-    // mated or stalemated position. No search to do.
+    // Root terminal.
     const MoveList root_moves = MoveGenerator::generate_legal(board);
     if (root_moves.empty()) {
         if (MoveGenerator::is_in_check(board, board.side_to_move())) {
@@ -253,9 +391,6 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         return result;
     }
 
-    // Depth-0: no iterations to run. Pick the first legal move
-    // and report the static eval so the CLI has something to
-    // display.
     if (max_depth == 0) {
         result.best_move = *root_moves.begin();
         result.score = evaluate(board);
@@ -266,24 +401,23 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         return result;
     }
 
-    // Bump the TT age for this new root search so stored
-    // entries from the previous call become replaceable.
     if (tt != nullptr) tt->new_search();
 
     const std::uint64_t probes_before = tt != nullptr ? tt->probes() : 0;
     const std::uint64_t hits_before   = tt != nullptr ? tt->hits()   : 0;
 
-    // Iterative deepening. We keep the best move and PV from the
-    // last *completed* iteration; if the budget cuts an iteration
-    // mid-flight we discard its (possibly lying) partial result.
+    // Killers are kept across ID iterations of the same search —
+    // a move that cut the sibling at ply N in depth D-1 is still
+    // a plausible cut at depth D.
+    KillerTable killers;
+
     for (int d = 1; d <= max_depth; ++d) {
         PvTable pv;
         const std::uint64_t nodes_before = result.nodes;
-        const int score = iteration(board, d, result.nodes, pv, stop, tt);
+        const int score =
+            iteration(board, d, result.nodes, pv, killers, stop, tt);
 
         if (stop.abort) {
-            // Roll the partially-accumulated node count back so
-            // the reported count matches the last completed depth.
             result.nodes = nodes_before;
             break;
         }
@@ -291,23 +425,17 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         result.score = score;
         result.completed_depth = d;
         const std::size_t pv_len = pv.length[0];
-        result.best_move = pv_len > 0 ? pv.moves[0][0] : *root_moves.begin();
+        result.best_move =
+            pv_len > 0 ? pv.moves[0][0] : *root_moves.begin();
         result.principal_variation.clear();
         result.principal_variation.reserve(pv_len);
         for (std::size_t i = 0; i < pv_len; ++i) {
             result.principal_variation.push_back(pv.moves[0][i]);
         }
 
-        // Short-circuit: a found mate at this depth cannot be
-        // beaten by deeper searching (faster mates would have
-        // been found at shallower depths already).
-        if (is_mate_score(score)) {
-            break;
-        }
+        if (is_mate_score(score)) break;
     }
 
-    // If nothing completed (e.g. a time budget of 0 ms), fall
-    // back to a playable move + static eval.
     if (result.completed_depth == 0) {
         result.best_move = *root_moves.begin();
         result.score = evaluate(board);

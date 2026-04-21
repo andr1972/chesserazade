@@ -4,6 +4,7 @@
 
 #include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
+#include <chesserazade/puzzle_solver.hpp>
 #include <chesserazade/san.hpp>
 #include <chesserazade/search.hpp>
 #include <chesserazade/transposition_table.hpp>
@@ -28,6 +29,7 @@ struct SolveOptions {
     int depth = -1;
     int time_ms = 0;
     std::uint64_t nodes = 0;
+    int mate_in = 0; // 0 = normal search; N>0 = puzzle solver
     bool show_help = false;
 };
 
@@ -53,7 +55,8 @@ ParseResult parse_solve_args(std::span<const std::string_view> args) {
             ++i;
             continue;
         }
-        if (a == "--depth" || a == "--time-ms" || a == "--nodes") {
+        if (a == "--depth" || a == "--time-ms" || a == "--nodes"
+            || a == "--mate-in") {
             if (i + 1 >= args.size()) {
                 r.error = std::string{a} + " requires a value";
                 return r;
@@ -66,9 +69,10 @@ ParseResult parse_solve_args(std::span<const std::string_view> args) {
                 r.error = std::string{a} + " must be a non-negative integer";
                 return r;
             }
-            if (a == "--depth")        r.options.depth   = static_cast<int>(n);
-            else if (a == "--time-ms") r.options.time_ms = static_cast<int>(n);
-            else                       r.options.nodes   =
+            if (a == "--depth")         r.options.depth   = static_cast<int>(n);
+            else if (a == "--time-ms")  r.options.time_ms = static_cast<int>(n);
+            else if (a == "--mate-in")  r.options.mate_in = static_cast<int>(n);
+            else                        r.options.nodes   =
                 static_cast<std::uint64_t>(n);
             ++i;
             continue;
@@ -76,27 +80,31 @@ ParseResult parse_solve_args(std::span<const std::string_view> args) {
         r.error = "unknown option '" + std::string{a} + "'";
         return r;
     }
-    // At least one limit must be set. Depth is the common case;
-    // time / nodes are for "search until a budget runs out".
+    // At least one limit must be set.
     if (r.options.depth < 0 && r.options.time_ms == 0
-        && r.options.nodes == 0) {
-        r.error = "--depth, --time-ms, or --nodes is required";
+        && r.options.nodes == 0 && r.options.mate_in == 0) {
+        r.error = "--depth, --time-ms, --nodes, or --mate-in is required";
     }
     return r;
 }
 
 void print_solve_help(std::ostream& out) {
-    out << "Usage: chesserazade solve (--depth N | --time-ms T | --nodes N)\n"
-        << "                         [--fen <fen>]\n"
+    out << "Usage: chesserazade solve (--depth N | --time-ms T | --nodes N\n"
+        << "                           | --mate-in N) [--fen <fen>]\n"
         << "\n"
         << "Search for the best move using alpha-beta negamax with\n"
-        << "iterative deepening. At least one budget must be set; if\n"
-        << "several are given, whichever fires first stops the search.\n"
+        << "iterative deepening, move ordering, TT, and quiescence.\n"
+        << "At least one budget must be set; whichever fires first\n"
+        << "stops the search.\n"
         << "\n"
         << "Options:\n"
         << "  --depth N     Cap on plies (iterative deepening runs 1..N).\n"
         << "  --time-ms T   Wall-clock budget in milliseconds.\n"
         << "  --nodes N     Visited-node budget.\n"
+        << "  --mate-in N   Puzzle mode: search to a depth that will see\n"
+        << "                a forced mate in N full chess moves. Prints\n"
+        << "                'mate in N' on success, 'no mate found' on\n"
+        << "                failure (within the search depth).\n"
         << "  --fen <fen>   Starting position (default: standard start).\n"
         << "  -h, --help    Show this message.\n";
 }
@@ -175,11 +183,23 @@ int cmd_solve(std::span<const std::string_view> args) {
     limits.time_budget = std::chrono::milliseconds{parsed.options.time_ms};
     limits.node_budget = parsed.options.nodes;
 
-    // Allocate a default 1M-entry TT (~16 MiB). 0.7 has no
-    // control knob for this — a future --hash flag will expose
-    // it when the engine benefits from larger tables.
+    // Allocate a default 1M-entry TT (~16 MiB). A future --hash
+    // flag will expose the size when that matters.
     TranspositionTable tt;
-    const SearchResult r = Search::find_best(*board, limits, &tt);
+
+    SearchResult r;
+    if (parsed.options.mate_in > 0) {
+        r = PuzzleSolver::solve_mate_in(*board, parsed.options.mate_in, &tt);
+    } else {
+        r = Search::find_best(*board, limits, &tt);
+    }
+
+    if (parsed.options.mate_in > 0 && !Search::is_mate_score(r.score)) {
+        std::cout << "no mate in " << parsed.options.mate_in
+                  << " found (best score " << format_score(r.score)
+                  << " at depth " << r.completed_depth << ")\n";
+        return 1;
+    }
 
     std::cout << "best:  "
               << to_san(*board, r.best_move) << "  ("
