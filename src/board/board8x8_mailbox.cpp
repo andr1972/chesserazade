@@ -1,5 +1,7 @@
 #include "board/board8x8_mailbox.hpp"
 
+#include <chesserazade/zobrist.hpp>
+
 #include <cassert>
 
 namespace chesserazade {
@@ -9,6 +11,23 @@ Piece Board8x8Mailbox::piece_at(Square s) const noexcept {
     return squares_[to_index(s)];
 }
 
+namespace {
+
+/// Place `p` on square `sq`, keeping the incremental Zobrist key
+/// in sync. Every piece write in `make_move` / `unmake_move` goes
+/// through this helper so the hash never drifts from the board
+/// state — we XOR out whatever was on the square and XOR in the
+/// new piece.
+inline void place(std::array<Piece, NUM_SQUARES>& squares,
+                  ZobristKey& zob, Square sq, Piece p) noexcept {
+    const std::size_t idx = to_index(sq);
+    zob ^= Zobrist::piece(squares[idx], sq);
+    zob ^= Zobrist::piece(p, sq);
+    squares[idx] = p;
+}
+
+} // namespace
+
 void Board8x8Mailbox::clear() noexcept {
     squares_.fill(Piece::none());
     side_to_move_ = Color::White;
@@ -17,6 +36,11 @@ void Board8x8Mailbox::clear() noexcept {
     halfmove_clock_ = 0;
     fullmove_number_ = 1;
     history_.clear();
+    zobrist_ = 0;
+}
+
+void Board8x8Mailbox::recompute_zobrist() noexcept {
+    zobrist_ = compute_zobrist_key(*this);
 }
 
 void Board8x8Mailbox::set_piece_at(Square s, Piece p) noexcept {
@@ -42,10 +66,16 @@ void Board8x8Mailbox::set_piece_at(Square s, Piece p) noexcept {
 void Board8x8Mailbox::make_move(const Move& m) noexcept {
     assert(is_valid(m.from) && is_valid(m.to));
 
-    // 1. Save irrecoverable state.
-    history_.push_back({ep_square_, castling_, halfmove_clock_});
+    // 1. Save irrecoverable state (incl. pre-move Zobrist key so
+    //    unmake_move can restore it without re-XORing).
+    history_.push_back({ep_square_, castling_, halfmove_clock_, zobrist_});
 
-    // 2. Reset EP target (overwritten below if DoublePush).
+    // 2. XOR out the pre-move non-piece hash contributions so we
+    //    can XOR the post-move values back in at the end.
+    zobrist_ ^= Zobrist::en_passant(ep_square_);
+    zobrist_ ^= Zobrist::castling(castling_);
+    zobrist_ ^= Zobrist::black_to_move(); // flipped at step 6
+
     ep_square_ = Square::None;
 
     // 3. Halfmove clock: reset on pawn move or capture.
@@ -59,20 +89,19 @@ void Board8x8Mailbox::make_move(const Move& m) noexcept {
         ++halfmove_clock_;
     }
 
-    // 4. Execute the move.
-    squares_[to_index(m.from)] = Piece::none();
+    // 4. Execute the move. Every piece write goes through `place`,
+    //    which XOR-updates zobrist_ as a side effect.
+    place(squares_, zobrist_, m.from, Piece::none());
 
     switch (m.kind) {
         case MoveKind::Quiet:
         case MoveKind::Capture:
-            squares_[to_index(m.to)] = m.moved_piece;
+            place(squares_, zobrist_, m.to, m.moved_piece);
             break;
 
         case MoveKind::DoublePush:
-            squares_[to_index(m.to)] = m.moved_piece;
-            // Set EP target to the square the pawn skipped over.
-            // White pawn moves from rank 2 to rank 4, target is rank 3.
-            // Black pawn moves from rank 7 to rank 5, target is rank 6.
+            place(squares_, zobrist_, m.to, m.moved_piece);
+            // EP target = the square the pawn skipped over.
             if (m.moved_piece.color == Color::White) {
                 ep_square_ = make_square(file_of(m.from), Rank::R3);
             } else {
@@ -81,53 +110,41 @@ void Board8x8Mailbox::make_move(const Move& m) noexcept {
             break;
 
         case MoveKind::KingsideCastle: {
-            squares_[to_index(m.to)] = m.moved_piece; // king to g1/g8
-            // Rook from h1/h8 to f1/f8.
+            place(squares_, zobrist_, m.to, m.moved_piece); // king to g1/g8
             const Rank r = rank_of(m.from);
-            const Square rook_from = make_square(File::H, r);
-            const Square rook_to = make_square(File::F, r);
-            squares_[to_index(rook_from)] = Piece::none();
-            squares_[to_index(rook_to)] = Piece{PieceType::Rook, m.moved_piece.color};
+            const Piece rook{PieceType::Rook, m.moved_piece.color};
+            place(squares_, zobrist_, make_square(File::H, r), Piece::none());
+            place(squares_, zobrist_, make_square(File::F, r), rook);
             break;
         }
 
         case MoveKind::QueensideCastle: {
-            squares_[to_index(m.to)] = m.moved_piece; // king to c1/c8
-            // Rook from a1/a8 to d1/d8.
+            place(squares_, zobrist_, m.to, m.moved_piece); // king to c1/c8
             const Rank r = rank_of(m.from);
-            const Square rook_from = make_square(File::A, r);
-            const Square rook_to = make_square(File::D, r);
-            squares_[to_index(rook_from)] = Piece::none();
-            squares_[to_index(rook_to)] = Piece{PieceType::Rook, m.moved_piece.color};
+            const Piece rook{PieceType::Rook, m.moved_piece.color};
+            place(squares_, zobrist_, make_square(File::A, r), Piece::none());
+            place(squares_, zobrist_, make_square(File::D, r), rook);
             break;
         }
 
         case MoveKind::EnPassant: {
-            squares_[to_index(m.to)] = m.moved_piece;
-            // Remove the captured pawn, which sits on the same rank as
-            // `from`, at the file of `to` (the EP target square is one
-            // rank ahead of the captured pawn).
-            const Square captured_sq = make_square(file_of(m.to), rank_of(m.from));
-            squares_[to_index(captured_sq)] = Piece::none();
+            place(squares_, zobrist_, m.to, m.moved_piece);
+            // The captured pawn sits on the rank of `from`, at
+            // the file of `to` (the EP target is one rank ahead).
+            const Square captured_sq =
+                make_square(file_of(m.to), rank_of(m.from));
+            place(squares_, zobrist_, captured_sq, Piece::none());
             break;
         }
 
         case MoveKind::Promotion:
-            squares_[to_index(m.to)] = Piece{m.promotion, m.moved_piece.color};
-            break;
-
         case MoveKind::PromotionCapture:
-            squares_[to_index(m.to)] = Piece{m.promotion, m.moved_piece.color};
+            place(squares_, zobrist_, m.to,
+                  Piece{m.promotion, m.moved_piece.color});
             break;
     }
 
     // 5. Update castling rights.
-    //
-    // Lose the right for a side when:
-    //   * That side's king moves (both rights for that color are gone).
-    //   * A rook moves away from its home corner.
-    //   * A rook on a corner square is captured (handled by checking `to`).
-    //
     if (m.moved_piece.type == PieceType::King) {
         if (m.moved_piece.color == Color::White) {
             castling_.white_king_side = false;
@@ -143,7 +160,7 @@ void Board8x8Mailbox::make_move(const Move& m) noexcept {
         if (m.from == Square::H8) castling_.black_king_side = false;
         if (m.from == Square::A8) castling_.black_queen_side = false;
     }
-    // If a rook is captured on its home square, revoke the right.
+    // Rook captured on its home square → revoke the right.
     if (m.to == Square::H1) castling_.white_king_side = false;
     if (m.to == Square::A1) castling_.white_queen_side = false;
     if (m.to == Square::H8) castling_.black_king_side = false;
@@ -154,6 +171,12 @@ void Board8x8Mailbox::make_move(const Move& m) noexcept {
         ++fullmove_number_;
     }
     side_to_move_ = opposite(side_to_move_);
+
+    // 7. XOR in the post-move non-piece hash contributions. The
+    //    black-to-move toggle was already XORed at step 2 — that
+    //    single XOR flips the side-to-move bit in one go.
+    zobrist_ ^= Zobrist::en_passant(ep_square_);
+    zobrist_ ^= Zobrist::castling(castling_);
 }
 
 // ---------------------------------------------------------------------------
@@ -173,12 +196,15 @@ void Board8x8Mailbox::unmake_move(const Move& m) noexcept {
         --fullmove_number_;
     }
 
-    // Pop irrecoverable state.
+    // Pop irrecoverable state. The saved Zobrist key is restored
+    // directly rather than re-derived via XORs — it is cheaper
+    // and impossible to get wrong.
     const StateSnapshot snap = history_.back();
     history_.pop_back();
     ep_square_ = snap.ep_square;
     castling_ = snap.castling;
     halfmove_clock_ = snap.halfmove_clock;
+    zobrist_ = snap.zobrist;
 
     // Restore pieces.
     switch (m.kind) {

@@ -21,7 +21,11 @@
 #include <chesserazade/move.hpp>
 #include <chesserazade/types.hpp>
 
+#include <cstdint>
+
 namespace chesserazade {
+
+using ZobristKey = std::uint64_t;
 
 /// Castling rights for both sides, both flanks. The FEN letters
 /// correspond to the fields: `K` = white king-side, `Q` = white
@@ -72,6 +76,13 @@ public:
     /// Full-move counter, starting at 1 and incremented after every
     /// black move (standard FEN convention).
     [[nodiscard]] virtual int fullmove_number() const noexcept = 0;
+
+    /// The Zobrist hash of the current position. Maintained
+    /// incrementally by `make_move` / `unmake_move`. Two boards
+    /// with the same piece placement, side to move, castling
+    /// rights, and en-passant file produce equal keys; see
+    /// `zobrist.hpp` for the precise hashing scheme.
+    [[nodiscard]] virtual ZobristKey zobrist_key() const noexcept = 0;
 
     // ------------------------------------------------------------------
     // Mutation

@@ -49,10 +49,16 @@ public:
     [[nodiscard]] Square en_passant_square() const noexcept override { return ep_square_; }
     [[nodiscard]] int halfmove_clock() const noexcept override { return halfmove_clock_; }
     [[nodiscard]] int fullmove_number() const noexcept override { return fullmove_number_; }
+    [[nodiscard]] ZobristKey zobrist_key() const noexcept override { return zobrist_; }
 
     // Board interface — mutation ---------------------------------------
     void make_move(const Move& m) noexcept override;
     void unmake_move(const Move& m) noexcept override;
+
+    /// Recompute the Zobrist key from scratch. Called by the FEN
+    /// parser after piece placement; also useful as a rarely-run
+    /// consistency check.
+    void recompute_zobrist() noexcept;
 
     // FEN-level setters (used by the FEN parser and unit tests) -------
     void clear() noexcept;
@@ -83,6 +89,7 @@ private:
         Square ep_square = Square::None;
         CastlingRights castling{};
         int halfmove_clock = 0;
+        ZobristKey zobrist = 0;
     };
 
     std::array<Piece, NUM_SQUARES> squares_{};
@@ -91,6 +98,7 @@ private:
     Square ep_square_ = Square::None;
     int halfmove_clock_ = 0;
     int fullmove_number_ = 1;
+    ZobristKey zobrist_ = 0;
 
     /// History stack for unmake_move. Each make_move pushes one entry;
     /// each unmake_move pops one. The depth is bounded by the search

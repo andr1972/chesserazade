@@ -310,6 +310,9 @@ std::expected<Board8x8Mailbox, FenError> Board8x8Mailbox::from_fen(std::string_v
         return std::unexpected(r.error());
     }
 
+    // All fields placed via setters; the incremental Zobrist key
+    // has not been tracked. Recompute once here.
+    board.recompute_zobrist();
     return board;
 }
 

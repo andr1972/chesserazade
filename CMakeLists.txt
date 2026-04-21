@@ -46,6 +46,7 @@ endif()
 # --------------------------------------------------------------------------
 add_library(chesserazade_core STATIC
     src/board/board8x8_mailbox.cpp
+    src/board/zobrist.cpp
     src/eval/evaluator.cpp
     src/game/game.cpp
     src/io/fen.cpp
