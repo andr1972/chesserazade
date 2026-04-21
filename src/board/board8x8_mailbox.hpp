@@ -14,9 +14,12 @@
 #pragma once
 
 #include <chesserazade/board.hpp>
+#include <chesserazade/fen.hpp>
 #include <chesserazade/types.hpp>
 
 #include <array>
+#include <expected>
+#include <string_view>
 
 namespace chesserazade {
 
@@ -26,6 +29,12 @@ public:
     /// castling rights, no en-passant target, clocks reset. FEN
     /// parsing overwrites every field.
     Board8x8Mailbox() = default;
+
+    /// Construct a mailbox board from a FEN string. Returns a
+    /// human-readable `FenError` if the input is malformed. ASCII
+    /// only — Unicode piece glyphs are rejected.
+    [[nodiscard]] static std::expected<Board8x8Mailbox, FenError>
+    from_fen(std::string_view fen);
 
     // Board interface -------------------------------------------------
     [[nodiscard]] Piece piece_at(Square s) const noexcept override;
