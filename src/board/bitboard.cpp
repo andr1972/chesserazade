@@ -99,4 +99,63 @@ Bitboard Attacks::pawn(Color c, Square sq) noexcept {
     return tables().pawn[static_cast<std::size_t>(c)][to_index(sq)];
 }
 
+// ---------------------------------------------------------------------------
+// Slider attacks — classical loop-based ray walk
+// ---------------------------------------------------------------------------
+//
+// Each call walks up to 7 squares per ray, stopping at the
+// first occupied square. The first blocker is included in the
+// returned attack set (a blocker that belongs to the enemy is
+// a legal capture target; a friendly blocker is filtered out
+// higher up by masking with `~our_occupancy`).
+//
+// This is O(distance-to-blocker), not O(1). Magic bitboards
+// would make it O(1) but add hundreds of lines of setup; the
+// educational value of the O(1) upgrade is marginal and we
+// treat it as a post-1.1 optimisation (1.1.5). The loop-based
+// version is already dramatically faster than the mailbox
+// square-by-square generator because it processes whole rays
+// at once and interacts with the rest of the generator through
+// bitwise-AND with our/their occupancy — one instruction each.
+
+namespace {
+
+/// Walk from `sq` in direction (dr, df), returning the bitboard
+/// of every square touched up to and including the first
+/// blocker, or to the board edge.
+[[nodiscard]] Bitboard ray(Square sq, int dr, int df,
+                           Bitboard occ) noexcept {
+    Bitboard result = 0;
+    int r = static_cast<int>(rank_of(sq)) + dr;
+    int f = static_cast<int>(file_of(sq)) + df;
+    while (r >= 0 && r < 8 && f >= 0 && f < 8) {
+        const Bitboard mask = Bitboard{1} << (r * 8 + f);
+        result |= mask;
+        if (occ & mask) break;
+        r += dr;
+        f += df;
+    }
+    return result;
+}
+
+} // namespace
+
+Bitboard Attacks::rook(Square sq, Bitboard occ) noexcept {
+    return ray(sq, +1,  0, occ)   // N
+         | ray(sq, -1,  0, occ)   // S
+         | ray(sq,  0, +1, occ)   // E
+         | ray(sq,  0, -1, occ);  // W
+}
+
+Bitboard Attacks::bishop(Square sq, Bitboard occ) noexcept {
+    return ray(sq, +1, +1, occ)   // NE
+         | ray(sq, +1, -1, occ)   // NW
+         | ray(sq, -1, +1, occ)   // SE
+         | ray(sq, -1, -1, occ);  // SW
+}
+
+Bitboard Attacks::queen(Square sq, Bitboard occ) noexcept {
+    return rook(sq, occ) | bishop(sq, occ);
+}
+
 } // namespace chesserazade

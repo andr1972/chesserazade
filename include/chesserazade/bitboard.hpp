@@ -154,6 +154,19 @@ public:
     /// clipped mask).
     [[nodiscard]] static Bitboard pawn(Color c, Square sq) noexcept;
 
+    /// Squares a rook on `sq` attacks given the occupancy
+    /// `occ`. The first blocker along each of the four
+    /// orthogonal rays is included in the result (so captures
+    /// are recognised); pieces behind the blocker are not.
+    /// Occupancy should include both colors' pieces.
+    [[nodiscard]] static Bitboard rook(Square sq, Bitboard occ) noexcept;
+
+    /// Bishop attacks — the diagonal counterpart of `rook`.
+    [[nodiscard]] static Bitboard bishop(Square sq, Bitboard occ) noexcept;
+
+    /// Queen attacks — `rook(sq, occ) | bishop(sq, occ)`.
+    [[nodiscard]] static Bitboard queen(Square sq, Bitboard occ) noexcept;
+
     Attacks() = delete;
 };
 

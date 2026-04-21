@@ -11,6 +11,8 @@
 
 #include <chesserazade/move_generator.hpp>
 
+#include "board/board_bitboard.hpp"
+
 #include <cassert>
 #include <cstdint>
 
@@ -301,6 +303,14 @@ void gen_castling(const Board& b, Square from, Piece king, MoveList& ml) noexcep
 // ---------------------------------------------------------------------------
 
 MoveList MoveGenerator::generate_pseudo_legal(const Board& b) {
+    // Fast path: a BoardBitboard has piece sets already laid
+    // out as bitboards. Using the bitboard-native generator
+    // avoids the O(64) square walk and the virtual piece_at
+    // call inside the loop.
+    if (auto* bb = dynamic_cast<const BoardBitboard*>(&b)) {
+        return BitboardMoveGenerator::generate_pseudo_legal(*bb);
+    }
+
     MoveList ml;
     const Color us = b.side_to_move();
 
@@ -339,6 +349,10 @@ MoveList MoveGenerator::generate_pseudo_legal(const Board& b) {
 }
 
 MoveList MoveGenerator::generate_legal(Board& b) {
+    if (auto* bb = dynamic_cast<BoardBitboard*>(&b)) {
+        return BitboardMoveGenerator::generate_legal(*bb);
+    }
+
     const MoveList pseudo = generate_pseudo_legal(b);
     // The side whose moves we are filtering — will flip after make_move.
     const Color mover = b.side_to_move();
@@ -357,6 +371,10 @@ MoveList MoveGenerator::generate_legal(Board& b) {
 }
 
 bool MoveGenerator::is_in_check(const Board& b, Color side) noexcept {
+    if (auto* bb = dynamic_cast<const BoardBitboard*>(&b)) {
+        return BitboardMoveGenerator::is_in_check(*bb, side);
+    }
+
     // Find the king's square by scanning the board. O(64) — acceptable.
     for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
         const Square sq = static_cast<Square>(i);
@@ -372,6 +390,10 @@ bool MoveGenerator::is_in_check(const Board& b, Color side) noexcept {
 
 bool MoveGenerator::is_square_attacked(const Board& b, Square sq,
                                        Color attacker) noexcept {
+    if (auto* bb = dynamic_cast<const BoardBitboard*>(&b)) {
+        return BitboardMoveGenerator::is_square_attacked(*bb, sq, attacker);
+    }
+
     const int r = sq_rank(sq);
     const int f = sq_file(sq);
 

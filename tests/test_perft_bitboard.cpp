@@ -1,18 +1,13 @@
 /// Perft correctness on the BoardBitboard implementation.
 ///
-/// The existing `MoveGenerator` uses the abstract `Board&`
-/// interface, so it also works on `BoardBitboard`. These tests
-/// verify that make_move / unmake_move on the bitboard
-/// implementation produce the same leaf counts as the mailbox
-/// on every standard perft position.
-///
-/// We cap the depth at 4 here — depth 5 through the abstract
-/// `piece_at` is slow on a bitboard board (virtual dispatch +
-/// linear piece-type walk), and a bitboard-native move
-/// generator that makes depth 5 fast lands in 1.1.4. Depth 4
-/// is enough for correctness: the node counts at depth 4 are
-/// distinct across positions and already in the hundreds of
-/// thousands, so any make/unmake bug would show up.
+/// `MoveGenerator::generate_legal(Board&)` dispatches to
+/// `BitboardMoveGenerator` whenever the board is a
+/// `BoardBitboard`, so these tests simultaneously exercise
+/// the bitboard make/unmake and the bitboard-native generator
+/// (slider attacks, pawn-set shifts, attack-table lookups).
+/// They MUST match the mailbox node counts position-by-position
+/// and depth-by-depth; any discrepancy is a bug in one of the
+/// three new subsystems.
 #include "board/board_bitboard.hpp"
 
 #include <chesserazade/move_generator.hpp>
@@ -52,6 +47,7 @@ TEST_CASE("perft bitboard: initial position", "[perft][bitboard]") {
     REQUIRE(perft(b, 2) == 400ULL);
     REQUIRE(perft(b, 3) == 8902ULL);
     REQUIRE(perft(b, 4) == 197281ULL);
+    REQUIRE(perft(b, 5) == 4865609ULL);
 }
 
 TEST_CASE("perft bitboard: Kiwipete", "[perft][bitboard]") {
@@ -61,6 +57,7 @@ TEST_CASE("perft bitboard: Kiwipete", "[perft][bitboard]") {
     REQUIRE(perft(b, 2) == 2039ULL);
     REQUIRE(perft(b, 3) == 97862ULL);
     REQUIRE(perft(b, 4) == 4085603ULL);
+    REQUIRE(perft(b, 5) == 193690690ULL);
 }
 
 TEST_CASE("perft bitboard: position 3", "[perft][bitboard]") {
@@ -69,6 +66,7 @@ TEST_CASE("perft bitboard: position 3", "[perft][bitboard]") {
     REQUIRE(perft(b, 2) == 191ULL);
     REQUIRE(perft(b, 3) == 2812ULL);
     REQUIRE(perft(b, 4) == 43238ULL);
+    REQUIRE(perft(b, 5) == 674624ULL);
 }
 
 TEST_CASE("perft bitboard: position 4", "[perft][bitboard]") {
@@ -78,6 +76,7 @@ TEST_CASE("perft bitboard: position 4", "[perft][bitboard]") {
     REQUIRE(perft(b, 2) == 264ULL);
     REQUIRE(perft(b, 3) == 9467ULL);
     REQUIRE(perft(b, 4) == 422333ULL);
+    REQUIRE(perft(b, 5) == 15833292ULL);
 }
 
 TEST_CASE("perft bitboard: position 5", "[perft][bitboard]") {
@@ -87,6 +86,7 @@ TEST_CASE("perft bitboard: position 5", "[perft][bitboard]") {
     REQUIRE(perft(b, 2) == 1486ULL);
     REQUIRE(perft(b, 3) == 62379ULL);
     REQUIRE(perft(b, 4) == 2103487ULL);
+    REQUIRE(perft(b, 5) == 89941194ULL);
 }
 
 TEST_CASE("perft bitboard: position 6", "[perft][bitboard]") {
@@ -96,4 +96,5 @@ TEST_CASE("perft bitboard: position 6", "[perft][bitboard]") {
     REQUIRE(perft(b, 2) == 2079ULL);
     REQUIRE(perft(b, 3) == 89890ULL);
     REQUIRE(perft(b, 4) == 3894594ULL);
+    REQUIRE(perft(b, 5) == 164075551ULL);
 }

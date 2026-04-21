@@ -49,8 +49,11 @@ struct MoveList {
     [[nodiscard]] bool empty() const noexcept { return count == 0; }
 };
 
-/// Stateless move generator. All methods are static; no instance state
-/// is kept between calls.
+/// Stateless move generator that works against the abstract
+/// `Board` interface. Behind the scenes, when the concrete type
+/// is a `BoardBitboard`, the entry points dispatch to the
+/// faster `BitboardMoveGenerator`; for `Board8x8Mailbox` they
+/// use the classical square-walking implementation.
 class MoveGenerator {
 public:
     MoveGenerator() = delete;
@@ -75,6 +78,26 @@ public:
     /// piece found along a ray (or at a knight/pawn offset) is the
     /// matching enemy piece type, `sq` is attacked.
     [[nodiscard]] static bool is_square_attacked(const Board& b, Square sq,
+                                                 Color attacker_color) noexcept;
+};
+
+class BoardBitboard;
+
+/// Bitboard-native move generator. Same interface shape as
+/// `MoveGenerator`, but takes `BoardBitboard` directly so it
+/// can read the piece bitboards, union them, mask with
+/// per-color occupancy, and serialize move sets via `pop_lsb` —
+/// all in constant time per piece rather than the O(64) walk
+/// the abstract-interface generator pays.
+class BitboardMoveGenerator {
+public:
+    BitboardMoveGenerator() = delete;
+
+    [[nodiscard]] static MoveList generate_pseudo_legal(const BoardBitboard& b);
+    [[nodiscard]] static MoveList generate_legal(BoardBitboard& b);
+    [[nodiscard]] static bool is_in_check(const BoardBitboard& b, Color side) noexcept;
+    [[nodiscard]] static bool is_square_attacked(const BoardBitboard& b,
+                                                 Square sq,
                                                  Color attacker_color) noexcept;
 };
 

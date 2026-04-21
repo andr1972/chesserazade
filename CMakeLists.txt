@@ -55,6 +55,7 @@ add_library(chesserazade_core STATIC
     src/io/move.cpp
     src/io/pgn.cpp
     src/io/san.cpp
+    src/move_generator/bitboard_move_generator.cpp
     src/move_generator/move_generator.cpp
     src/net/curl_fetcher.cpp
     src/search/game_analyzer.cpp
