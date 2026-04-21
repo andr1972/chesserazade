@@ -19,6 +19,7 @@ add_executable(chesserazade_tests
     test_game.cpp
     test_san.cpp
     test_pgn.cpp
+    test_evaluator.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE
