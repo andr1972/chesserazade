@@ -1,0 +1,2 @@
+# chesserazade
+educational chess program
