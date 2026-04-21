@@ -28,6 +28,7 @@ add_executable(chesserazade_tests
     test_fetch.cpp
     test_bitboard.cpp
     test_board_bitboard.cpp
+    test_perft_bitboard.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE

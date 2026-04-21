@@ -93,6 +93,19 @@ public:
     }
 
 private:
+    /// Clear `p` from `s` in every internal structure —
+    /// piece-type BB, color BB, total occupancy, and the
+    /// Zobrist contribution. Precondition: `p` is the piece
+    /// currently on `s`.
+    void remove_piece(Square s, Piece p) noexcept;
+
+    /// Add `p` to `s`. Precondition: `s` is empty.
+    void add_piece(Square s, Piece p) noexcept;
+
+    /// Move `p` from `from` to `to` without a capture —
+    /// `remove_piece` + `add_piece`.
+    void move_piece(Square from, Square to, Piece p) noexcept;
+
     /// `pieces_[color][piece_type]`. Slot 0 (`PieceType::None`)
     /// stays zero; it exists only to make indexing by the enum
     /// value direct.
