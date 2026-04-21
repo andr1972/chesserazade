@@ -25,6 +25,7 @@ add_executable(chesserazade_tests
     test_tt.cpp
     test_quiescence.cpp
     test_analyzer.cpp
+    test_fetch.cpp
 )
 target_link_libraries(chesserazade_tests
     PRIVATE

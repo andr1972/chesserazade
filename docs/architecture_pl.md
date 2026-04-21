@@ -1,6 +1,6 @@
 # Chesserazade — Architektura
 
-Szkic: 0.9 (odzwierciedla kod do tagu `v0.9.0`). Aktualizowane
+Szkic: 1.0 (odzwierciedla kod do tagu `v1.0.0`). Aktualizowane
 przy każdej wersji.
 
 Ten dokument jest dla czytelnika, który sklonował drzewo i chce
@@ -82,8 +82,12 @@ prawo zaglądać do `src/`, by testować jednostkowo konkretny
 
 Warstwy, których **jeszcze nie ma** (planowane wg HANDOFF §9):
 
-- **Net fetcher** (1.0).
 - **Bitboardowy Board** (1.1), **Qt6 GUI** (1.2).
+
+Interfejs `NetFetcher` z 1.0 (`include/chesserazade/net_fetcher.hpp`)
+siedzi z boku rdzenia — jest używany tylko przez podkomendę
+`fetch`, nigdy przez rdzeń silnika, więc nie pojawia się w
+diagramie warstw powyżej.
 
 Każda z nich wchodzi *pomiędzy* generator ruchów a CLI, bez
 potrzeby zmian poniżej.

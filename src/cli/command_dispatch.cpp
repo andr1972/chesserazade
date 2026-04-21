@@ -1,6 +1,7 @@
 #include "cli/command_dispatch.hpp"
 
 #include "cli/cmd_analyze.hpp"
+#include "cli/cmd_fetch.hpp"
 #include "cli/cmd_moves.hpp"
 #include "cli/cmd_perft.hpp"
 #include "cli/cmd_repl.hpp"
@@ -26,6 +27,7 @@ void print_top_level_help(std::ostream& out) {
         << "  play      Alias for `repl`.\n"
         << "  solve     Search for the best move in a position.\n"
         << "  analyze   Annotate a PGN's moves with engine verdicts.\n"
+        << "  fetch     Download a PGN / puzzle to the local cache.\n"
         << "  version   Print the program version.\n"
         << "\n"
         << "Run `chesserazade <subcommand> --help` for subcommand-specific options.\n";
@@ -58,6 +60,9 @@ int dispatch(std::span<const std::string_view> args) {
     }
     if (name == "analyze") {
         return cmd_analyze(rest);
+    }
+    if (name == "fetch") {
+        return cmd_fetch(rest);
     }
     if (name == "version") {
         return cmd_version(rest);

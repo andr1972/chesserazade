@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(chesserazade
-    VERSION 0.9.0
+    VERSION 1.0.0
     DESCRIPTION "Educational classical chess program"
     LANGUAGES CXX)
 
@@ -54,6 +54,7 @@ add_library(chesserazade_core STATIC
     src/io/pgn.cpp
     src/io/san.cpp
     src/move_generator/move_generator.cpp
+    src/net/curl_fetcher.cpp
     src/search/game_analyzer.cpp
     src/search/search.cpp
     src/search/puzzle_solver.cpp
@@ -76,6 +77,7 @@ add_executable(chesserazade
     src/main.cpp
     src/cli/command_dispatch.cpp
     src/cli/cmd_analyze.cpp
+    src/cli/cmd_fetch.cpp
     src/cli/cmd_moves.cpp
     src/cli/cmd_perft.cpp
     src/cli/cmd_repl.cpp

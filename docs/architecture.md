@@ -1,6 +1,6 @@
 # Chesserazade — Architecture
 
-Draft: 0.9 (reflects code through `v0.9.0`). Updated every version.
+Draft: 1.0 (reflects code through `v1.0.0`). Updated every version.
 
 This document is for the reader who has `git clone`d the tree and
 wants a map before diving into the source. It complements
@@ -81,8 +81,12 @@ the concrete `Board8x8Mailbox`, not just the abstract `Board`.
 
 Layers that **do not yet exist** (planned per HANDOFF §9):
 
-- **Net fetcher** (1.0).
 - **Bitboard Board** (1.1), **Qt6 GUI** (1.2).
+
+The 1.0 `NetFetcher` interface (`include/chesserazade/net_fetcher.hpp`)
+sits off to the side of the core — it is used only by the
+`fetch` subcommand, never by the engine core, so it does not
+appear in the layered diagram above.
 
 Each of these slots in *between* Move Generator and the CLI, without
 requiring changes below it.
