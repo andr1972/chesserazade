@@ -4,6 +4,7 @@
 #include "cli/cmd_perft.hpp"
 #include "cli/cmd_repl.hpp"
 #include "cli/cmd_show.hpp"
+#include "cli/cmd_solve.hpp"
 #include "cli/cmd_version.hpp"
 
 #include <iostream>
@@ -22,6 +23,7 @@ void print_top_level_help(std::ostream& out) {
         << "  perft     Count leaf nodes at a given depth from a position.\n"
         << "  repl      Interactive text session (play | PGN I/O).\n"
         << "  play      Alias for `repl`.\n"
+        << "  solve     Search for the best move in a position.\n"
         << "  version   Print the program version.\n"
         << "\n"
         << "Run `chesserazade <subcommand> --help` for subcommand-specific options.\n";
@@ -48,6 +50,9 @@ int dispatch(std::span<const std::string_view> args) {
     }
     if (name == "repl" || name == "play") {
         return cmd_repl(rest);
+    }
+    if (name == "solve") {
+        return cmd_solve(rest);
     }
     if (name == "version") {
         return cmd_version(rest);

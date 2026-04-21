@@ -75,6 +75,7 @@ add_executable(chesserazade
     src/cli/cmd_perft.cpp
     src/cli/cmd_repl.cpp
     src/cli/cmd_show.cpp
+    src/cli/cmd_solve.cpp
     src/cli/cmd_version.cpp
 )
 target_include_directories(chesserazade
