@@ -135,7 +135,8 @@ void print_help(std::ostream& out) {
 [[nodiscard]] std::optional<std::string> interactive_pick_url() {
     std::cout << "chesserazade fetch — interactive\n"
                  "  1) enter a URL directly\n"
-                 "  2) Lichess puzzle by ID\n"
+                 "  2) Lichess daily puzzle\n"
+                 "  3) Lichess puzzle by ID (5-char, e.g. PSjmf)\n"
                  "  q) cancel\n";
     std::cout << "choice> " << std::flush;
 
@@ -150,10 +151,21 @@ void print_help(std::ostream& out) {
         return url;
     }
     if (choice == "2") {
+        // The daily puzzle endpoint returns the same JSON shape as
+        // /api/puzzle/<id>; the server picks the id. Useful because
+        // individual-id endpoints 404 for IDs that don't exist
+        // (Lichess puzzle IDs are 5-char alphanumeric like "PSjmf",
+        // not short integers), and the Lichess UI at /training
+        // serves random puzzles via HTML, not an API.
+        return std::string{"https://lichess.org/api/puzzle/daily"};
+    }
+    if (choice == "3") {
         std::cout << "Lichess puzzle ID> " << std::flush;
         std::string id;
         if (!std::getline(std::cin, id) || id.empty()) return std::nullopt;
-        // Basic sanitation: allow only alphanumerics.
+        // Allow only alphanumerics. Real Lichess IDs are exactly
+        // 5 characters but we don't enforce the length — future
+        // schemes may differ and the server validates anyway.
         for (char c : id) {
             if (!std::isalnum(static_cast<unsigned char>(c))) {
                 std::cerr << "fetch: puzzle ID must be alphanumeric\n";
