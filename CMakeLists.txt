@@ -163,6 +163,10 @@ if(CHESSERAZADE_BUILD_ANALYZER)
             analyzer/game_view.hpp
             analyzer/pgnmentor_index.cpp
             analyzer/pgnmentor_index.hpp
+            analyzer/solve_panel.cpp
+            analyzer/solve_panel.hpp
+            analyzer/solve_worker.cpp
+            analyzer/solve_worker.hpp
             analyzer/unzip.cpp
             analyzer/unzip.hpp
         )

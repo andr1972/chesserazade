@@ -8,9 +8,11 @@
 #include <chesserazade/pgn.hpp>
 #include <chesserazade/san.hpp>
 
+#include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QListWidget>
+#include <QPushButton>
 #include <QSplitter>
 #include <QString>
 #include <QVBoxLayout>
@@ -43,6 +45,14 @@ GameView::GameView(QWidget* parent) : QWidget(parent) {
     splitter->setStretchFactor(1, 1);
     layout->addWidget(splitter, /*stretch=*/1);
 
+    auto* action_row = new QHBoxLayout;
+    auto* solve_btn = new QPushButton(tr("&Solve from here"), this);
+    connect(solve_btn, &QPushButton::clicked,
+            this, &GameView::solve_requested);
+    action_row->addWidget(solve_btn);
+    action_row->addStretch(1);
+    layout->addLayout(action_row);
+
     status_ = new QLabel(this);
     status_->setWordWrap(true);
     layout->addWidget(status_);
@@ -52,9 +62,18 @@ GameView::GameView(QWidget* parent) : QWidget(parent) {
         "Esc returns to the game list"));
 }
 
+Board8x8Mailbox GameView::current_board() const {
+    return display_board_;
+}
+
+QString GameView::header_label() const {
+    return header_label_;
+}
+
 bool GameView::load_pgn(const QString& pgn_text,
                         const QString& header_label) {
     header_->setText(header_label);
+    header_label_ = header_label;
     moves_->clear();
 
     const std::string src = pgn_text.toStdString();
@@ -134,6 +153,7 @@ void GameView::seek_to_ply(int ply) {
     for (int i = 0; i < ply; ++i) {
         b.make_move(mvs[static_cast<std::size_t>(i)]);
     }
+    display_board_ = b;
     board_->set_position(b);
 
     moves_->blockSignals(true);

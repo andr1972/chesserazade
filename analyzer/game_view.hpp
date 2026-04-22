@@ -42,10 +42,22 @@ public:
     bool load_pgn(const QString& pgn_text,
                   const QString& header_label);
 
+    /// Board as rendered for the current ply — consumed by
+    /// MainWindow when opening the solve panel so the engine
+    /// starts from exactly what the user is looking at.
+    [[nodiscard]] Board8x8Mailbox current_board() const;
+
+    /// "White — Black, Date" label describing the loaded game.
+    [[nodiscard]] QString header_label() const;
+
 signals:
     /// User pressed Escape or clicked "Back to game list" —
     /// MainWindow switches the central widget accordingly.
     void back_requested();
+
+    /// User clicked "Solve" — MainWindow opens the solve panel
+    /// against `current_board()`.
+    void solve_requested();
 
 protected:
     void keyPressEvent(QKeyEvent* e) override;
@@ -62,6 +74,9 @@ private:
 
     Game game_;        // parsed PGN
     int current_ply_ = 0;   // 0 = starting position; i = after game_.moves()[i-1]
+    QString header_label_;
+    Board8x8Mailbox display_board_ =
+        *Board8x8Mailbox::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 };
 
 } // namespace chesserazade::analyzer

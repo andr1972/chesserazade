@@ -70,6 +70,10 @@ bool GameListView::load(const QString& pgn_path) {
 
     model_->set_games(&games_);
     table_->resizeColumnsToContents();
+    // Default to oldest-first on Date. PGN Mentor dates are
+    // sometimes "YYYY.??.??" but the year still sorts correctly
+    // lexicographically so this gives useful ordering.
+    table_->sortByColumn(GameListModel::ColDate, Qt::AscendingOrder);
 
     status_->setText(tr(
         "%1 — %2 game(s) indexed. Double-click a row to open.")

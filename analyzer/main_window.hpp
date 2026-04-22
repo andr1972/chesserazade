@@ -15,6 +15,7 @@ namespace chesserazade::analyzer {
 
 class GameListView;
 class GameView;
+class SolvePanel;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -28,10 +29,13 @@ private:
     void on_game_chosen(const QString& pgn_text,
                         const QString& header_label);
     void on_back_to_list();
+    void on_solve_requested();
+    void on_back_to_game_view();
 
-    QStackedWidget* stack_   = nullptr;
-    GameListView* game_list_ = nullptr;
-    GameView*     game_view_ = nullptr;
+    QStackedWidget* stack_    = nullptr;
+    GameListView* game_list_  = nullptr;
+    GameView*     game_view_  = nullptr;
+    SolvePanel*   solve_panel_ = nullptr;
     QString loaded_pgn_path_;
 };
 
