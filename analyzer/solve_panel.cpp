@@ -383,20 +383,16 @@ void SolvePanel::on_expansion_requested(int node_idx) {
         for (const Move& m : chain) board.make_move(m);
     }
 
-    // Each click should always reveal at least `cap` more plies
-    // — "potem klik, czekamy i wypełniają się dalsze trzy".
-    // If the main pass happened to search deeper than that
-    // from this node (`remaining_depth > cap`), we use the
-    // original budget so the grafted subtree matches what the
-    // main search would have seen. Otherwise we intentionally
-    // go past main's budget so the click still yields a full
-    // cap's worth of new nesting.
-    const int cap = tree_cap_spin_->value();
+    // Respect the main search's overall max_ply: remaining_depth
+    // is exactly `max_ply - current_ply` and caps how far the
+    // sub-search may go from this node. Within that budget the
+    // recorder cap (user-chosen, default 3) limits how many
+    // plies of new nesting are recorded per click.
     SearchLimits lim;
-    lim.max_depth = std::max(node.remaining_depth, cap);
+    lim.max_depth = node.remaining_depth;
 
     SearchTree sub;
-    SearchTreeRecorder sub_rec(sub, cap);
+    SearchTreeRecorder sub_rec(sub, tree_cap_spin_->value());
 
     (void)Search::find_best(board, lim, /*tt=*/nullptr, &sub_rec,
                             node.alpha, node.beta);
@@ -420,6 +416,11 @@ void SolvePanel::on_expansion_requested(int node_idx) {
         const QModelIndex ix = tree_model_->index_for_node(*it);
         if (ix.isValid()) tree_view_->expand(ix);
     }
+
+    // Deeper nesting means more indent ahead of the SAN; let
+    // the Move column grow so the expand arrow stays visible
+    // at every level instead of getting clipped on the right.
+    tree_view_->resizeColumnToContents(SearchTreeModel::ColMove);
 }
 
 void SolvePanel::keyPressEvent(QKeyEvent* e) {
