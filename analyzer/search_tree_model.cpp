@@ -71,20 +71,21 @@ void SearchTreeModel::recompute_filter() {
     }
 
     // For each non-sentinel node collect the ancestor chain
-    // and test the filter.
-    std::vector<bool> match(static_cast<std::size_t>(n), false);
+    // and test the filter. std::vector<char> (not <bool>) to
+    // sidestep the bit-reference machinery that confuses GCC's
+    // -Wnull-dereference in release builds.
+    std::vector<char> match(static_cast<std::size_t>(n), 0);
     for (int i = 1; i < n; ++i) {
-        // Walk up to root gathering per-ply capture/check flags.
         const int d = depth[static_cast<std::size_t>(i)];
-        std::vector<bool> cap_at(static_cast<std::size_t>(d) + 1, false);
-        std::vector<bool> chk_at(static_cast<std::size_t>(d) + 1, false);
+        std::vector<char> cap_at(static_cast<std::size_t>(d) + 1, 0);
+        std::vector<char> chk_at(static_cast<std::size_t>(d) + 1, 0);
         for (int cur = i; cur > 0;
              cur = tree_->at(cur).parent) {
             const int dep = depth[static_cast<std::size_t>(cur)];
             cap_at[static_cast<std::size_t>(dep)] =
-                is_capture_move(tree_->at(cur).move);
+                is_capture_move(tree_->at(cur).move) ? 1 : 0;
             chk_at[static_cast<std::size_t>(dep)] =
-                tree_->at(cur).gives_check;
+                tree_->at(cur).gives_check ? 1 : 0;
         }
 
         bool any = false;
@@ -106,25 +107,24 @@ void SearchTreeModel::recompute_filter() {
                 }
             }
         }
-        match[static_cast<std::size_t>(i)] = any;
+        match[static_cast<std::size_t>(i)] = any ? 1 : 0;
     }
 
     // Propagate: a node is visible if it itself matches or
-    // any descendant does. Bottom-up pass (indices in
-    // insertion order guarantee parents precede their late
-    // descendants, but for safety we do two passes).
-    std::vector<bool> visible(static_cast<std::size_t>(n), false);
+    // any descendant does. Bottom-up pass.
+    std::vector<char> visible(static_cast<std::size_t>(n), 0);
     for (int i = n - 1; i >= 1; --i) {
         if (match[static_cast<std::size_t>(i)]) {
-            visible[static_cast<std::size_t>(i)] = true;
+            visible[static_cast<std::size_t>(i)] = 1;
         }
         if (visible[static_cast<std::size_t>(i)]) {
             const int p = tree_->at(i).parent;
-            if (p > 0) visible[static_cast<std::size_t>(p)] = true;
+            if (p > 0) visible[static_cast<std::size_t>(p)] = 1;
         }
     }
-    // Sentinel is always visible.
-    visible[0] = true;
+    // Sentinel is always visible. (Guard keeps the
+    // -Wnull-dereference path happy when n happens to be 0.)
+    if (!visible.empty()) visible[0] = 1;
 
     // Build visible_children_ in original order.
     for (int i = 0; i < n; ++i) {
