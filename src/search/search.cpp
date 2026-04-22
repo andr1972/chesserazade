@@ -371,6 +371,11 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         const int child_alpha = -beta;
         const int child_beta  = -alpha;
 
+        // Snapshot the global node counter so we can report the
+        // child subtree's visit count — counts alpha-beta-cut
+        // nodes and quiescence + sub-cap nodes too.
+        const std::uint64_t nodes_before = nodes;
+
         BranchStats child_stats;
         const int score =
             -negamax(board, depth - 1, child_ply, -beta, -alpha,
@@ -384,7 +389,8 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
             const bool caused_cutoff = (score >= beta);
             rec->leave(child_ply, score, caused_cutoff, combined,
                        /*remaining_depth=*/depth - 1,
-                       child_alpha, child_beta);
+                       child_alpha, child_beta,
+                       /*subtree_nodes=*/nodes - nodes_before);
         }
 
         if (stop.abort) return 0;

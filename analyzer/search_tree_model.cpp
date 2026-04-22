@@ -179,10 +179,20 @@ QVariant SearchTreeModel::data(const QModelIndex& idx, int role) const {
 
     // The sentinel row represents the starting position of the
     // solve — clicking it resets the board to the pre-solve
-    // snapshot. It has no move, no score, no stats.
+    // snapshot. It has no move, no score, no per-move stats,
+    // but we DO aggregate total engine work over all its
+    // children into the Nodes column so the user sees the
+    // whole search's effort at a glance on the "/" row.
     if (n == 0) {
         if (role != Qt::DisplayRole) return {};
         if (idx.column() == ColMove) return QStringLiteral("/");
+        if (idx.column() == ColNodes) {
+            std::uint64_t sum = 0;
+            for (int c : tree_->at(0).children) {
+                sum += tree_->at(c).subtree_nodes;
+            }
+            return QVariant::fromValue(sum);
+        }
         return {};
     }
 
@@ -216,6 +226,7 @@ QVariant SearchTreeModel::data(const QModelIndex& idx, int role) const {
         case ColCapB:  return node.stats.captures_black;
         case ColChkW:  return node.stats.checks_white;
         case ColChkB:  return node.stats.checks_black;
+        case ColNodes: return QVariant::fromValue(node.subtree_nodes);
         default:       return {};
     }
 }
@@ -233,6 +244,7 @@ QVariant SearchTreeModel::headerData(int section,
         case ColCapB:  return tr("Capt B");
         case ColChkW:  return tr("Chk W");
         case ColChkB:  return tr("Chk B");
+        case ColNodes: return tr("Nodes");
         default:       return {};
     }
 }

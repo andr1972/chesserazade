@@ -127,11 +127,15 @@ public:
     /// `alpha` / `beta` are the α-β window the main search was
     /// running with at this node; a lazy sub-search that wants
     /// to reproduce the same tree shape seeds its root with
-    /// exactly these bounds.
+    /// exactly these bounds. `subtree_nodes` is the number of
+    /// negamax + quiescence nodes actually visited inside this
+    /// subtree, including alpha-beta cuts and nodes below the
+    /// recorder cap — the total "work" the engine did here.
     virtual void leave(int ply, int score, bool was_cutoff,
                        const BranchStats& stats,
                        int remaining_depth,
-                       int alpha, int beta) = 0;
+                       int alpha, int beta,
+                       std::uint64_t subtree_nodes) = 0;
 };
 
 struct SearchResult {

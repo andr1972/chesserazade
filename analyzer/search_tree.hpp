@@ -62,6 +62,13 @@ struct TreeNode {
     int alpha = 0;
     int beta  = 0;
 
+    /// Total engine work inside this subtree — every negamax
+    /// and quiescence visit, including α-β-cut branches and
+    /// plies below the recorder cap. At the root this equals
+    /// SearchResult::nodes; deeper down it highlights where
+    /// the search burned effort vs where α-β did its job.
+    std::uint64_t subtree_nodes = 0;
+
     int parent = -1;                 // -1 only for the sentinel root.
     std::vector<int> children;       // indices into `SearchTree::nodes`.
 };
@@ -122,7 +129,8 @@ public:
     void leave(int ply, int score, bool was_cutoff,
                const BranchStats& stats,
                int remaining_depth,
-               int alpha, int beta) override;
+               int alpha, int beta,
+               std::uint64_t subtree_nodes) override;
 
     /// Re-anchor to a fresh tree state (clears the node stack
     /// back to the sentinel root). Normally invoked from

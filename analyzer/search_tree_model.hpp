@@ -31,6 +31,7 @@ public:
         ColCapB,
         ColChkW,
         ColChkB,
+        ColNodes,   // total engine visits in this subtree.
         ColumnCount,
     };
 

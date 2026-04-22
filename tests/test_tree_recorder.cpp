@@ -41,7 +41,8 @@ public:
     void leave(int ply, int score, bool was_cutoff,
                const BranchStats& s,
                int /*remaining_depth*/,
-               int /*alpha*/, int /*beta*/) override {
+               int /*alpha*/, int /*beta*/,
+               std::uint64_t /*subtree_nodes*/) override {
         events.push_back({Event::Kind::Leave, ply, Move{}, score,
                           was_cutoff, s});
     }
