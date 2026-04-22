@@ -151,9 +151,18 @@ if(CHESSERAZADE_BUILD_ANALYZER)
             analyzer/main.cpp
             analyzer/main_window.cpp
             analyzer/main_window.hpp
+            analyzer/fetch_dialog.cpp
+            analyzer/fetch_dialog.hpp
+            analyzer/pgnmentor_index.cpp
+            analyzer/pgnmentor_index.hpp
+            analyzer/unzip.cpp
+            analyzer/unzip.hpp
         )
         target_include_directories(chesserazade-analyzer
             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+        )
+        target_compile_definitions(chesserazade-analyzer PRIVATE
+            CHESSERAZADE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         )
         target_link_libraries(chesserazade-analyzer
             PRIVATE

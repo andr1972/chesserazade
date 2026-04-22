@@ -19,6 +19,9 @@ public:
 private:
     void build_menus();
     void show_about();
+    void open_fetch_dialog();
+
+    QString loaded_pgn_path_;
 };
 
 } // namespace chesserazade::analyzer
