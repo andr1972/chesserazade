@@ -13,6 +13,7 @@
 #pragma once
 
 #include "board/board8x8_mailbox.hpp"
+#include "search_tree.hpp"
 #include "solve_worker.hpp"
 
 #include <QWidget>
@@ -20,15 +21,18 @@
 class QButtonGroup;
 class QComboBox;
 class QLabel;
+class QModelIndex;
 class QPlainTextEdit;
 class QPushButton;
 class QRadioButton;
 class QSpinBox;
 class QThread;
+class QTreeView;
 
 namespace chesserazade::analyzer {
 
 class BoardWidget;
+class SearchTreeModel;
 
 class SolvePanel final : public QWidget {
     Q_OBJECT
@@ -57,6 +61,7 @@ private:
     void on_finished(const QString& best_uci, int final_score,
                      int depth_reached, quint64 nodes,
                      qint64 elapsed_ms);
+    void on_tree_row_clicked(const QModelIndex& idx);
 
     [[nodiscard]] SolveBudget current_budget() const;
     void set_running(bool running);
@@ -75,10 +80,14 @@ private:
     QSpinBox*     time_spin_  = nullptr;
     QSpinBox*     nodes_spin_ = nullptr;
     QComboBox*    nodes_mult_ = nullptr;
+    QSpinBox*     tree_cap_spin_ = nullptr;
 
     QPushButton*  run_btn_  = nullptr;
     QPushButton*  back_btn_ = nullptr;
     QPlainTextEdit* log_    = nullptr;
+    QTreeView*    tree_view_ = nullptr;
+    SearchTreeModel* tree_model_ = nullptr;
+    SearchTree    tree_;
 
     Board8x8Mailbox position_;
     QThread*      thread_ = nullptr;

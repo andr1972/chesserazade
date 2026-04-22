@@ -9,7 +9,12 @@ Reference: https://wbec-ridderkerk.nl/html/UCIProtocol.html
 
 ---
 
-## 1.3 — Qt6 graphical analyzer
+## ~~1.3 — Qt6 graphical analyzer~~ (shipped, tag v1.3.0)
+
+See `docs/version_notes/1.3.md`. Original plan kept below for
+reference.
+
+
 
 Separate CMake target in the same repo (`chesserazade-analyzer`),
 linking `chesserazade_core` directly as a library. **Not** a

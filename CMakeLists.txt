@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(chesserazade
-    VERSION 1.2.0
+    VERSION 1.3.0
     DESCRIPTION "Educational classical chess program"
     LANGUAGES CXX)
 
@@ -163,6 +163,10 @@ if(CHESSERAZADE_BUILD_ANALYZER)
             analyzer/game_view.hpp
             analyzer/pgnmentor_index.cpp
             analyzer/pgnmentor_index.hpp
+            analyzer/search_tree.cpp
+            analyzer/search_tree.hpp
+            analyzer/search_tree_model.cpp
+            analyzer/search_tree_model.hpp
             analyzer/solve_panel.cpp
             analyzer/solve_panel.hpp
             analyzer/solve_worker.cpp

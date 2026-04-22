@@ -7,7 +7,7 @@ namespace chesserazade::cli {
 namespace {
 
 constexpr std::string_view PROJECT_NAME = "chesserazade";
-constexpr std::string_view PROJECT_VERSION = "1.2.0";
+constexpr std::string_view PROJECT_VERSION = "1.3.0";
 
 } // namespace
 

@@ -52,6 +52,12 @@ void SolveWorker::start() {
     SearchResult last;
     bool have_result = false;
 
+    // Recorder is reset before every iteration so the final
+    // tree in `tree_` reflects the deepest iteration that ran
+    // to completion. We discard mid-iteration partial trees:
+    // without a completed score they would lie about cutoffs.
+    SearchTreeRecorder recorder(tree_, budget_.tree_cap);
+
     for (int d = 1; d <= max_depth; ++d) {
         SearchLimits lim;
         lim.max_depth = d;
@@ -67,12 +73,16 @@ void SolveWorker::start() {
             lim.node_budget = static_cast<std::uint64_t>(budget_nodes);
         }
 
+        recorder.reset();
         Board8x8Mailbox work = start_;
-        const SearchResult r = Search::find_best(work, lim, &tt);
+        const SearchResult r = Search::find_best(work, lim, &tt, &recorder);
 
         if (r.completed_depth < d) {
-            // Budget exhausted mid-iteration; keep the previous
-            // completed result as the final one.
+            // Budget exhausted mid-iteration; the tree in
+            // `tree_` has dangling open nodes (enters without
+            // matching leaves). Reset to the sentinel and rely
+            // on info lines for the previously completed depth.
+            tree_.reset();
             if (!have_result) last = r;
             break;
         }
@@ -88,6 +98,10 @@ void SolveWorker::start() {
 
         if (Search::is_mate_score(r.score)) break;
     }
+
+    // Turn move structs into SAN strings for the tree view;
+    // cheap compared to the search itself.
+    tree_.finalize_san(start_);
 
     const QString best_uci = (last.best_move.from == Square::None)
         ? QStringLiteral("0000")

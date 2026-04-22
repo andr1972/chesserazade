@@ -15,6 +15,7 @@
 #pragma once
 
 #include "board/board8x8_mailbox.hpp"
+#include "search_tree.hpp"
 
 #include <chesserazade/search.hpp>
 
@@ -29,6 +30,7 @@ struct SolveBudget {
     int  depth = 6;
     int  time_ms = 5000;
     long long nodes = 1'000'000;
+    int tree_cap = 3;  ///< Ply cap for the TreeRecorder tree.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called
@@ -40,6 +42,13 @@ class SolveWorker final : public QObject {
 public:
     SolveWorker(Board8x8Mailbox start_position, SolveBudget budget,
                 QObject* parent = nullptr);
+
+    /// Tree of the last completed iteration. Only valid after
+    /// `finished` has fired. Non-owning view into the worker's
+    /// buffer — copy what you need before the worker is
+    /// destroyed.
+    [[nodiscard]] const SearchTree& search_tree() const noexcept
+        { return tree_; }
 
 public slots:
     void start();
@@ -62,6 +71,7 @@ signals:
 private:
     Board8x8Mailbox start_;
     SolveBudget     budget_;
+    SearchTree      tree_;
 };
 
 } // namespace chesserazade::analyzer

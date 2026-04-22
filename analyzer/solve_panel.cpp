@@ -1,6 +1,7 @@
 #include "solve_panel.hpp"
 
 #include "board_widget.hpp"
+#include "search_tree_model.hpp"
 
 #include <chesserazade/fen.hpp>
 
@@ -8,6 +9,7 @@
 #include <QComboBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -16,6 +18,7 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QThread>
+#include <QTreeView>
 #include <QVBoxLayout>
 
 namespace chesserazade::analyzer {
@@ -82,6 +85,19 @@ SolvePanel::SolvePanel(QWidget* parent)
     rb_time_->setChecked(true);
     rlay->addWidget(budget_box);
 
+    auto* cap_row = new QHBoxLayout;
+    cap_row->addWidget(new QLabel(tr("Tree ply cap:"), right));
+    tree_cap_spin_ = new QSpinBox(right);
+    tree_cap_spin_->setRange(1, 6);
+    tree_cap_spin_->setValue(3);
+    tree_cap_spin_->setToolTip(tr(
+        "Only moves at this depth or shallower are recorded "
+        "into the tree view. Deeper search still runs; its "
+        "effects bubble up as capture / check totals."));
+    cap_row->addWidget(tree_cap_spin_);
+    cap_row->addStretch(1);
+    rlay->addLayout(cap_row);
+
     // -- Run / Back -------------------------------------------------
     auto* btn_row = new QHBoxLayout;
     run_btn_ = new QPushButton(tr("&Run"), right);
@@ -95,11 +111,29 @@ SolvePanel::SolvePanel(QWidget* parent)
     btn_row->addStretch(1);
     rlay->addLayout(btn_row);
 
-    // -- Info log ---------------------------------------------------
-    log_ = new QPlainTextEdit(right);
+    // -- Info log + tree (vertical split) ---------------------------
+    auto* log_tree = new QSplitter(Qt::Vertical, right);
+
+    log_ = new QPlainTextEdit(log_tree);
     log_->setReadOnly(true);
     log_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    rlay->addWidget(log_, /*stretch=*/1);
+    log_tree->addWidget(log_);
+
+    tree_model_ = new SearchTreeModel(this);
+    tree_view_ = new QTreeView(log_tree);
+    tree_view_->setModel(tree_model_);
+    tree_view_->setUniformRowHeights(true);
+    tree_view_->setAllColumnsShowFocus(true);
+    tree_view_->setAlternatingRowColors(true);
+    tree_view_->header()->setSectionResizeMode(QHeaderView::Interactive);
+    tree_view_->header()->setDefaultSectionSize(80);
+    connect(tree_view_, &QTreeView::clicked,
+            this, &SolvePanel::on_tree_row_clicked);
+    log_tree->addWidget(tree_view_);
+    log_tree->setStretchFactor(0, 1);
+    log_tree->setStretchFactor(1, 3);
+
+    rlay->addWidget(log_tree, /*stretch=*/1);
 
     split->addWidget(right);
     split->setStretchFactor(0, 2);
@@ -120,11 +154,14 @@ void SolvePanel::set_position(const Board8x8Mailbox& board,
     board_->set_position(board);
     header_->setText(tr("Solve from: %1").arg(header_label));
     clear_log();
+    tree_.reset();
+    tree_model_->set_tree(nullptr);
     setFocus();
 }
 
 SolveBudget SolvePanel::current_budget() const {
     SolveBudget b;
+    b.tree_cap = tree_cap_spin_->value();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();
@@ -224,6 +261,27 @@ void SolvePanel::on_finished(const QString& best_uci, int final_score,
         "— done: bestmove %1  score %2  depth %3  nodes %4  time %5 ms")
         .arg(best_uci).arg(score).arg(depth_reached)
         .arg(nodes).arg(elapsed_ms));
+
+    // Copy the worker's tree into our own buffer before the
+    // worker is destroyed by deleteLater, then point the model
+    // at it. The position_ board is unchanged so clicking a
+    // tree row can seek relative to it.
+    if (worker_ != nullptr) {
+        tree_ = worker_->search_tree();
+    }
+    tree_model_->set_tree(&tree_);
+    tree_view_->expandToDepth(1);
+    tree_view_->resizeColumnToContents(SearchTreeModel::ColMove);
+}
+
+void SolvePanel::on_tree_row_clicked(const QModelIndex& idx) {
+    if (!idx.isValid()) return;
+    const auto moves = tree_model_->moves_to(idx);
+    Board8x8Mailbox b = position_;
+    for (const Move& m : moves) {
+        b.make_move(m);
+    }
+    board_->set_position(b);
 }
 
 void SolvePanel::keyPressEvent(QKeyEvent* e) {

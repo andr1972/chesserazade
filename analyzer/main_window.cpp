@@ -111,7 +111,7 @@ void MainWindow::show_about() {
         tr("<h3>chesserazade analyzer</h3>"
            "<p>Graphical PGN browser and search analyzer,"
            " part of the chesserazade project.</p>"
-           "<p>Version 1.3.0-dev (1.3.7 — solve panel)</p>"
+           "<p>Version 1.3.0</p>"
            "<p>Author: Andrzej Borucki</p>"));
 }
 
