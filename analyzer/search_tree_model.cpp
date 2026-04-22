@@ -87,6 +87,7 @@ QVariant SearchTreeModel::data(const QModelIndex& idx, int role) const {
     if (role != Qt::DisplayRole && role != Qt::ToolTipRole) return {};
 
     switch (idx.column()) {
+        case ColId:   return idx.row() + 1;
         case ColMove: {
             const QString base = node.san.empty()
                 ? QString::fromStdString(to_uci(node.move))
@@ -113,6 +114,7 @@ QVariant SearchTreeModel::headerData(int section,
     if (role != Qt::DisplayRole) return {};
     if (orientation == Qt::Vertical) return section + 1;
     switch (section) {
+        case ColId:    return tr("#");
         case ColMove:  return tr("Move");
         case ColScore: return tr("Score");
         case ColCapW:  return tr("Capt W");

@@ -139,6 +139,9 @@ SolvePanel::SolvePanel(QWidget* parent)
     tree_view_->setItemsExpandable(true);
     tree_view_->header()->setSectionResizeMode(QHeaderView::Interactive);
     tree_view_->header()->setDefaultSectionSize(80);
+    // The sibling-index column is only a small integer — keep
+    // it narrow so the Move / Score columns get the space.
+    tree_view_->setColumnWidth(SearchTreeModel::ColId, 40);
     connect(tree_view_, &QTreeView::clicked,
             this, &SolvePanel::on_tree_row_clicked);
     tree_lay->addWidget(tree_view_, /*stretch=*/1);

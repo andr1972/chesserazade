@@ -494,6 +494,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         PvTable pv;
         const std::uint64_t nodes_before = result.nodes;
         BranchStats pv_stats;
+        if (recorder != nullptr) recorder->begin_iteration(d);
         const int score =
             iteration(board, d, result.nodes, pv, killers, stop, tt,
                       recorder, pv_stats);

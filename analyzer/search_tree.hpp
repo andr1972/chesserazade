@@ -14,8 +14,6 @@
 #include <chesserazade/move.hpp>
 #include <chesserazade/search.hpp>
 
-#include <QMetaType>
-
 #include <string>
 #include <vector>
 
@@ -83,13 +81,14 @@ public:
     SearchTreeRecorder(SearchTree& tree, int cap);
 
     [[nodiscard]] int ply_cap() const noexcept override { return cap_; }
+    void begin_iteration(int depth) override;
     void enter(int ply, const Move& move) override;
     void leave(int ply, int score, bool was_cutoff,
                const BranchStats& stats) override;
 
     /// Re-anchor to a fresh tree state (clears the node stack
-    /// back to the sentinel root). Call once per ID iteration
-    /// so the final tree reflects the deepest completed pass.
+    /// back to the sentinel root). Normally invoked from
+    /// `begin_iteration`; tests may call it directly.
     void reset();
 
 private:
@@ -99,7 +98,3 @@ private:
 };
 
 } // namespace chesserazade::analyzer
-
-// Declared out of namespace so Qt's meta-object system can
-// carry `SearchTree` across queued connections by value.
-Q_DECLARE_METATYPE(chesserazade::analyzer::SearchTree)

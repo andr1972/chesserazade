@@ -19,8 +19,11 @@
 
 #include <chesserazade/search.hpp>
 
+#include <QMetaType>
 #include <QObject>
 #include <QString>
+
+Q_DECLARE_METATYPE(chesserazade::analyzer::SearchTree)
 
 namespace chesserazade::analyzer {
 

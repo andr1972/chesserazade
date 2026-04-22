@@ -67,6 +67,15 @@ void SearchTreeRecorder::reset() {
     stack_.push_back(0); // sentinel root is always open.
 }
 
+void SearchTreeRecorder::begin_iteration(int /*depth*/) {
+    // Each iteration of iterative deepening re-searches the
+    // whole tree from the root. Without resetting here, the
+    // root would accumulate N × top-level-moves entries after
+    // `find_best(max_depth=N)` — 40 siblings at depth 2, 60 at
+    // depth 3, and so on.
+    reset();
+}
+
 void SearchTreeRecorder::enter(int /*ply*/, const Move& move) {
     const int parent = stack_.back();
     const int idx = tree_.push_child(parent, move, /*ply=*/0);

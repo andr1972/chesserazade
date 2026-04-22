@@ -104,6 +104,15 @@ public:
     /// than this are searched but not reported.
     [[nodiscard]] virtual int ply_cap() const noexcept = 0;
 
+    /// Called once at the start of each iterative-deepening
+    /// iteration inside `find_best`, with the 1-based depth
+    /// of that iteration. Recorders that build a tree should
+    /// reset their state here — otherwise successive
+    /// iterations accumulate duplicate root nodes (each ID
+    /// iteration re-searches the whole tree from scratch).
+    /// Default: no-op.
+    virtual void begin_iteration(int depth) { (void)depth; }
+
     /// About to recurse into `move` at depth `ply`. `ply` is
     /// 1-based — root children are at ply 1.
     virtual void enter(int ply, const Move& move) = 0;

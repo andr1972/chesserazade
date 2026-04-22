@@ -33,6 +33,8 @@ add_executable(chesserazade_tests
     test_uci.cpp
     test_pgn_index.cpp
     test_tree_recorder.cpp
+    ${CMAKE_SOURCE_DIR}/analyzer/search_tree.cpp
+    test_search_tree.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/cmd_uci.cpp
 )
 target_link_libraries(chesserazade_tests

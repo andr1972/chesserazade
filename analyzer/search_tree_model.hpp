@@ -24,7 +24,8 @@ class SearchTreeModel final : public QAbstractItemModel {
     Q_OBJECT
 public:
     enum Column : int {
-        ColMove = 0,
+        ColId = 0,  // 1-based sibling index under the parent.
+        ColMove,
         ColScore,
         ColCapW,
         ColCapB,
