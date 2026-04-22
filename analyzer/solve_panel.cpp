@@ -125,6 +125,12 @@ SolvePanel::SolvePanel(QWidget* parent)
     tree_view_->setUniformRowHeights(true);
     tree_view_->setAllColumnsShowFocus(true);
     tree_view_->setAlternatingRowColors(true);
+    // Keep rows in model-insertion order. That is the search
+    // order produced by the move-ordering heuristic (TT move
+    // first, MVV-LVA captures, killers, …), so the top-level
+    // rows reorder between ID iterations when the best move
+    // changes — which is exactly what the user wants to see.
+    tree_view_->setSortingEnabled(false);
     tree_view_->header()->setSectionResizeMode(QHeaderView::Interactive);
     tree_view_->header()->setDefaultSectionSize(80);
     connect(tree_view_, &QTreeView::clicked,
@@ -272,7 +278,11 @@ void SolvePanel::on_finished(const QString& best_uci, int final_score,
 void SolvePanel::on_iteration_tree_ready(const SearchTree& incoming) {
     tree_ = incoming;
     tree_model_->set_tree(&tree_);
-    tree_view_->expandToDepth(1);
+    // Leave every top-level row collapsed. With ~30–40 legal
+    // root moves and ~30 children each, an auto-expanded tree
+    // drowns the structural view in a sea of siblings — the
+    // user opens the interesting branches themselves.
+    tree_view_->collapseAll();
     tree_view_->resizeColumnToContents(SearchTreeModel::ColMove);
 }
 
