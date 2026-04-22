@@ -111,16 +111,20 @@ SolvePanel::SolvePanel(QWidget* parent)
     btn_row->addStretch(1);
     rlay->addLayout(btn_row);
 
-    // -- Info log + tree (vertical split) ---------------------------
-    auto* log_tree = new QSplitter(Qt::Vertical, right);
+    // -- Tree + info log (vertical split; tree on top) --------------
+    auto* tree_log = new QSplitter(Qt::Vertical, right);
 
-    log_ = new QPlainTextEdit(log_tree);
-    log_->setReadOnly(true);
-    log_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    log_tree->addWidget(log_);
+    auto* tree_group = new QWidget(tree_log);
+    auto* tree_lay = new QVBoxLayout(tree_group);
+    tree_lay->setContentsMargins(0, 0, 0, 0);
+    auto* tree_label = new QLabel(tr("Search tree"), tree_group);
+    QFont tl_font = tree_label->font();
+    tl_font.setBold(true);
+    tree_label->setFont(tl_font);
+    tree_lay->addWidget(tree_label);
 
     tree_model_ = new SearchTreeModel(this);
-    tree_view_ = new QTreeView(log_tree);
+    tree_view_ = new QTreeView(tree_group);
     tree_view_->setModel(tree_model_);
     tree_view_->setUniformRowHeights(true);
     tree_view_->setAllColumnsShowFocus(true);
@@ -131,15 +135,32 @@ SolvePanel::SolvePanel(QWidget* parent)
     // rows reorder between ID iterations when the best move
     // changes — which is exactly what the user wants to see.
     tree_view_->setSortingEnabled(false);
+    tree_view_->setRootIsDecorated(true);
+    tree_view_->setItemsExpandable(true);
     tree_view_->header()->setSectionResizeMode(QHeaderView::Interactive);
     tree_view_->header()->setDefaultSectionSize(80);
     connect(tree_view_, &QTreeView::clicked,
             this, &SolvePanel::on_tree_row_clicked);
-    log_tree->addWidget(tree_view_);
-    log_tree->setStretchFactor(0, 1);
-    log_tree->setStretchFactor(1, 3);
+    tree_lay->addWidget(tree_view_, /*stretch=*/1);
+    tree_log->addWidget(tree_group);
 
-    rlay->addWidget(log_tree, /*stretch=*/1);
+    auto* log_group = new QWidget(tree_log);
+    auto* log_lay = new QVBoxLayout(log_group);
+    log_lay->setContentsMargins(0, 0, 0, 0);
+    auto* log_label = new QLabel(tr("Progress log"), log_group);
+    log_label->setFont(tl_font);
+    log_lay->addWidget(log_label);
+
+    log_ = new QPlainTextEdit(log_group);
+    log_->setReadOnly(true);
+    log_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    log_lay->addWidget(log_, /*stretch=*/1);
+    tree_log->addWidget(log_group);
+
+    tree_log->setStretchFactor(0, 3);  // tree bigger
+    tree_log->setStretchFactor(1, 1);
+
+    rlay->addWidget(tree_log, /*stretch=*/1);
 
     split->addWidget(right);
     split->setStretchFactor(0, 2);
@@ -277,8 +298,12 @@ void SolvePanel::on_finished(const QString& best_uci, int final_score,
 
 void SolvePanel::on_iteration_tree_ready(const SearchTree& incoming) {
     tree_ = incoming;
+    // Detach first so the view drops any cached expand state
+    // keyed on indices from the previous iteration, then
+    // re-point.
+    tree_model_->set_tree(nullptr);
     tree_model_->set_tree(&tree_);
-    // Leave every top-level row collapsed. With ~30–40 legal
+    // Keep every top-level row collapsed. With ~30–40 legal
     // root moves and ~30 children each, an auto-expanded tree
     // drowns the structural view in a sea of siblings — the
     // user opens the interesting branches themselves.
