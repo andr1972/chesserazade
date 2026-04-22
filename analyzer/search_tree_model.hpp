@@ -32,7 +32,27 @@ public:
         ColChkW,
         ColChkB,
         ColNodes,   // total engine visits in this subtree.
+        ColInTree,  // count of (filtered) descendants kept in-tree.
         ColumnCount,
+    };
+
+    /// Simple per-ply filter over the currently-visible tree.
+    /// `captures_on_ply[i]` (0-based, so index 0 = ply 1)
+    /// keeps a branch if its move at ply i+1 is a capture;
+    /// `checks_on_ply[i]` does the same for checks. Multiple
+    /// plies combine with OR — matching any selected ply is
+    /// enough. Captures and checks themselves also combine
+    /// with OR (a branch passes if it has either a matching
+    /// capture or a matching check).
+    struct FilterState {
+        std::vector<bool> captures_on_ply;
+        std::vector<bool> checks_on_ply;
+
+        [[nodiscard]] bool active() const noexcept {
+            for (bool b : captures_on_ply) if (b) return true;
+            for (bool b : checks_on_ply)   if (b) return true;
+            return false;
+        }
     };
 
     explicit SearchTreeModel(QObject* parent = nullptr);
@@ -57,6 +77,13 @@ public:
     /// `parent_node` and notify the view. Used by the panel
     /// after a successful on-demand sub-search.
     void insert_subtree(int parent_node, const SearchTree& sub);
+
+    /// Install a filter. An inactive filter (nothing ticked)
+    /// shows every node; otherwise only branches whose path
+    /// from the sentinel matches the filter survive. Either
+    /// way triggers a model reset.
+    void set_filter(const FilterState& f);
+    [[nodiscard]] const FilterState& filter() const noexcept { return filter_; }
 
     /// Map an underlying tree-node index back to a column-0
     /// QModelIndex. Useful to scroll to / re-expand a node
@@ -92,6 +119,18 @@ signals:
 private:
     [[nodiscard]] int node_of(const QModelIndex& idx) const noexcept;
 
+    /// Rebuild `visible_children_` and `in_tree_count_` from
+    /// scratch against `tree_` and `filter_`. Called after
+    /// any structural change (set_tree, insert_subtree,
+    /// set_filter).
+    void recompute_filter();
+
+    /// Children of `n` that survive the filter, in original
+    /// search order. When the filter is inactive this just
+    /// mirrors `tree_->at(n).children` so the view behaves
+    /// exactly as before.
+    [[nodiscard]] const std::vector<int>& visible_kids(int n) const;
+
     SearchTree* tree_ = nullptr;
     /// Nodes whose expansion signal is queued but not yet
     /// handled. Suppresses duplicate requests when the view
@@ -99,6 +138,14 @@ private:
     mutable std::vector<int> pending_expansions_;
 
     bool lazy_enabled_ = true;
+
+    FilterState filter_;
+    /// Parallel to `tree_->nodes()`; `visible_children_[i]` is
+    /// the filtered children list of tree node `i`.
+    std::vector<std::vector<int>> visible_children_;
+    /// In-tree descendant count per node after filtering.
+    /// Includes the node itself (so a kept leaf counts as 1).
+    std::vector<int> in_tree_count_;
 };
 
 } // namespace chesserazade::analyzer

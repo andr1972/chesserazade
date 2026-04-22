@@ -69,6 +69,12 @@ struct TreeNode {
     /// the search burned effort vs where α-β did its job.
     std::uint64_t subtree_nodes = 0;
 
+    /// This single move put the opposing king in check. Set
+    /// by Search via TreeRecorder::leave; used by the filter
+    /// dialog to keep only branches with checks at specific
+    /// plies.
+    bool gives_check = false;
+
     int parent = -1;                 // -1 only for the sentinel root.
     std::vector<int> children;       // indices into `SearchTree::nodes`.
 };
@@ -130,7 +136,8 @@ public:
                const BranchStats& stats,
                int remaining_depth,
                int alpha, int beta,
-               std::uint64_t subtree_nodes) override;
+               std::uint64_t subtree_nodes,
+               bool gives_check) override;
 
     /// Re-anchor to a fresh tree state (clears the node stack
     /// back to the sentinel root). Normally invoked from

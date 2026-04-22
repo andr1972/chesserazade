@@ -352,12 +352,14 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         board.make_move(m);
 
+        bool gives_check = false;
         if (rec != nullptr) {
             // Did this move give check? Probe the post-move
             // board: the side *to* move is now the opponent;
             // we ask whether they are in check.
             const Color them = board.side_to_move();
             if (MoveGenerator::is_in_check(board, them)) {
+                gives_check = true;
                 if (mover == Color::White) delta.checks_white = 1;
                 else                       delta.checks_black = 1;
             }
@@ -390,7 +392,8 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
             rec->leave(child_ply, score, caused_cutoff, combined,
                        /*remaining_depth=*/depth - 1,
                        child_alpha, child_beta,
-                       /*subtree_nodes=*/nodes - nodes_before);
+                       /*subtree_nodes=*/nodes - nodes_before,
+                       gives_check);
         }
 
         if (stop.abort) return 0;

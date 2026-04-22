@@ -155,6 +155,8 @@ if(CHESSERAZADE_BUILD_ANALYZER)
             analyzer/board_widget.hpp
             analyzer/fetch_dialog.cpp
             analyzer/fetch_dialog.hpp
+            analyzer/filter_dialog.cpp
+            analyzer/filter_dialog.hpp
             analyzer/game_list_model.cpp
             analyzer/game_list_model.hpp
             analyzer/game_list_view.cpp

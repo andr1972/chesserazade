@@ -65,6 +65,7 @@ private:
     void on_iteration_tree_ready(const SearchTree& tree);
     void on_tree_row_clicked(const QModelIndex& idx);
     void on_expansion_requested(int node_idx);
+    void on_filter_clicked();
 
     [[nodiscard]] SolveBudget current_budget() const;
     void set_running(bool running);

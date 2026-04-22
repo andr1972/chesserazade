@@ -1,6 +1,7 @@
 #include "solve_panel.hpp"
 
 #include "board_widget.hpp"
+#include "filter_dialog.hpp"
 #include "search_tree_model.hpp"
 
 #include <chesserazade/fen.hpp>
@@ -118,15 +119,19 @@ SolvePanel::SolvePanel(QWidget* parent)
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
-    // -- Run / Back -------------------------------------------------
+    // -- Run / Filter / Back ----------------------------------------
     auto* btn_row = new QHBoxLayout;
     run_btn_ = new QPushButton(tr("&Run"), right);
+    auto* filter_btn = new QPushButton(tr("&Filter…"), right);
     back_btn_ = new QPushButton(tr("&Back"), right);
     connect(run_btn_,  &QPushButton::clicked,
             this, &SolvePanel::on_run_clicked);
+    connect(filter_btn, &QPushButton::clicked,
+            this, &SolvePanel::on_filter_clicked);
     connect(back_btn_, &QPushButton::clicked,
             this, &SolvePanel::back_requested);
     btn_row->addWidget(run_btn_);
+    btn_row->addWidget(filter_btn);
     btn_row->addWidget(back_btn_);
     btn_row->addStretch(1);
     rlay->addLayout(btn_row);
@@ -362,6 +367,18 @@ void SolvePanel::on_tree_row_clicked(const QModelIndex& idx) {
         b.make_move(m);
     }
     board_->set_position(b);
+}
+
+void SolvePanel::on_filter_clicked() {
+    const int cap = tree_cap_spin_->value();
+    FilterDialog dlg(cap, tree_model_->filter(), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    tree_model_->set_filter(dlg.state());
+    // The model reset collapses the view; re-open the sentinel
+    // so the filtered top-level is visible immediately.
+    tree_view_->collapseAll();
+    tree_view_->expandToDepth(0);
+    tree_view_->resizeColumnToContents(SearchTreeModel::ColMove);
 }
 
 void SolvePanel::on_expansion_requested(int node_idx) {

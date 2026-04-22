@@ -131,11 +131,18 @@ public:
     /// negamax + quiescence nodes actually visited inside this
     /// subtree, including alpha-beta cuts and nodes below the
     /// recorder cap — the total "work" the engine did here.
+    /// `gives_check` is true iff this move put the opposing
+    /// king in check. Captures are derivable from the move
+    /// itself, but "does this single move give check" requires
+    /// a post-move board probe; we do it in the search once
+    /// and pass the result through for the analyzer's filter
+    /// dialog.
     virtual void leave(int ply, int score, bool was_cutoff,
                        const BranchStats& stats,
                        int remaining_depth,
                        int alpha, int beta,
-                       std::uint64_t subtree_nodes) = 0;
+                       std::uint64_t subtree_nodes,
+                       bool gives_check) = 0;
 };
 
 struct SearchResult {
