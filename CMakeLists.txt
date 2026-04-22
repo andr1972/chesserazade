@@ -134,6 +134,42 @@ if(CHESSERAZADE_BUILD_TOOLS)
 endif()
 
 # --------------------------------------------------------------------------
+# Qt6 graphical analyzer — optional, off by default. Builds when Qt6 is
+# installed and CHESSERAZADE_BUILD_ANALYZER=ON (auto-detected: on if Qt6
+# is available). The analyzer links chesserazade_core directly; it is
+# deliberately NOT a UCI client — the search tree it displays needs
+# observer hooks UCI does not expose.
+# --------------------------------------------------------------------------
+option(CHESSERAZADE_BUILD_ANALYZER
+    "Build the Qt6 graphical analyzer (chesserazade-analyzer)"
+    ON)
+if(CHESSERAZADE_BUILD_ANALYZER)
+    find_package(Qt6 COMPONENTS Widgets Concurrent QUIET)
+    if(Qt6_FOUND)
+        qt_standard_project_setup()
+        qt_add_executable(chesserazade-analyzer
+            analyzer/main.cpp
+            analyzer/main_window.cpp
+            analyzer/main_window.hpp
+        )
+        target_include_directories(chesserazade-analyzer
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+        )
+        target_link_libraries(chesserazade-analyzer
+            PRIVATE
+                chesserazade_core
+                chesserazade_warnings
+                Qt6::Widgets
+                Qt6::Concurrent
+        )
+    else()
+        message(STATUS
+            "Qt6 not found — skipping chesserazade-analyzer. "
+            "Install qt6-base-dev (or equivalent) to enable it.")
+    endif()
+endif()
+
+# --------------------------------------------------------------------------
 # Tests — pulled via FetchContent so the dev only needs a network once.
 # --------------------------------------------------------------------------
 option(CHESSERAZADE_BUILD_TESTS "Build the test suite" ON)
