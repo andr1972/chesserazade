@@ -7,6 +7,133 @@ reference.
 
 Reference: https://wbec-ridderkerk.nl/html/UCIProtocol.html
 
+---
+
+## 1.3 — Qt6 graphical analyzer
+
+Separate CMake target in the same repo (`chesserazade-analyzer`),
+linking `chesserazade_core` directly as a library. **Not** a
+play client — UCI is for that. This is for browsing games,
+stepping through positions, and driving `Search` with a live
+tree view.
+
+Dependency: `find_package(Qt6 REQUIRED COMPONENTS Widgets
+Concurrent)`. System-installed Qt6.
+
+### Feature set
+
+1. **Fetch dialog.**
+   - Static player list from PGN Mentor shipped as
+     `data/pgnmentor_index.json` (snapshot, refreshed manually).
+     ~2000 entries.
+     Tournaments + openings indices can follow the same pattern.
+   - Cached items (file exists in `~/.cache/chesserazade/`)
+     render with a distinct icon.
+   - Pick player → download `<Name>.zip` → unzip → cache.
+
+2. **Game list view.**
+   - Lightweight PGN indexer (new `pgn_index.hpp` function): on
+     a multi-game PGN, return `[{Event, White, Black, Date,
+     Result, file_offset}]` without parsing moves. A 900-game
+     PGN indexes in tens of ms.
+   - Click a game → open the analyzer view.
+
+3. **Analyzer view — board + move list + search tree.**
+   - Board view (2D, from Qt widgets; drawing pieces via SVG or
+     Unicode). Click a move in the list → position updates;
+     back/forward buttons step through.
+   - Move list widget synced with the board.
+   - **Solve panel** — drives `Search::find_best` on the
+     currently-visible position with user-picked budget:
+     - max ply, or
+     - time (sec), or
+     - nodes (×1000 / ×1,000,000 multiplier).
+     Search runs on a `QtConcurrent` worker; ID completed
+     depths stream in as `info`-style lines (1, 2, 3, …) so the
+     user sees the PV getting longer.
+
+4. **Live search tree (the centerpiece).**
+   - Custom `QAbstractItemModel` backed by a `TreeRecorder` fed
+     by `Search`.
+   - Only nodes at ply ≤ `lazy_ply_cap` (default 3–4) are
+     materialised; deeper search runs recursively as normal
+     and returns aggregated data per edge (score, capture
+     sums, check counts on the best path).
+   - Branches ordered by search order (reflects move
+     ordering). Fail-high / cutoff node displayed with a
+     distinct icon — "tu nastąpiło cięcie alfa-beta".
+     Never-searched siblings simply don't appear (the branch
+     is visibly narrower at a cut point).
+   - Per-node fields (~17 B, ~25 B with container overhead):
+     ```
+     Move     from+to+promo+kind   ~3 B (packed)
+     score    int32                4 B
+     flags    bound | cutoff bit   1 B
+     captures_white / black        2 × 4 B
+     checks_white   / black        2 × 1 B
+     ```
+   - **Option A (initial):** record full tree to `lazy_ply_cap`
+     in one pass during the search; GUI reads from memory on
+     expand.
+   - **Option B (polish):** when user expands beyond
+     `lazy_ply_cap`, trigger a new sub-search from that
+     position (TT shared). Keeps memory bounded at any search
+     depth.
+
+### Required additions to `chesserazade_core`
+
+- **PGN**: new `pgn_index.hpp` / `pgn_index.cpp`:
+  `[[nodiscard]] std::vector<PgnGameHeader> index_games(std::string_view pgn)`.
+- **Search**: optional `TreeRecorder*` parameter on
+  `Search::find_best`. When non-null, records nodes up to a
+  `recorder->ply_cap()` and aggregates below. Recorder API:
+  ```
+  void enter_node(Move, int ply);
+  void record_score(int score, TtBound bound);
+  void record_capture(Color captor, int cp);
+  void record_check(Color giver);
+  void exit_node(bool was_cutoff);
+  ```
+- **Search**: capture-sum + check-counter tracking per branch
+  (ProbeStats-style struct passed through recursion). Small
+  overhead even when recorder is null — a couple of `if`
+  checks per node. Acceptable.
+
+### Deferred from 1.3
+
+- **Threading + `stop` of an in-progress search** — user can
+  wait or kill the GUI process in 1.3.0. Proper cancellation
+  lands later (see §"Search polish / threading").
+- **Editing positions by dragging pieces.** The analyzer reads
+  positions from PGN; arbitrary FEN entry can be via a
+  menu-level "paste FEN" in a later iteration.
+- **Engine-vs-engine analysis comparison.**
+
+### Sub-etap breakdown (proposed)
+
+1. **1.3.1 — PGN indexer** (`pgn_index.{hpp,cpp}` + tests).
+   Cheap indexing of multi-game PGN without parsing moves.
+2. **1.3.2 — Search: TreeRecorder hook + capture/check counts**.
+   Optional parameter on `Search::find_best`; tests verify
+   recorded tree shape matches known small positions.
+3. **1.3.3 — Qt6 skeleton**: CMake target, main window,
+   About/Quit. Nothing functional; proves the build + link.
+4. **1.3.4 — Fetch dialog**: static `data/pgnmentor_index.json`,
+   player picker, download via existing `CurlFetcher`, cache
+   indicator icons, unzip.
+5. **1.3.5 — Game list view**: QTableView over the PGN indexer
+   output, double-click opens analyzer view.
+6. **1.3.6 — Board view + move list**: SVG/Unicode piece
+   rendering, ←/→ nav, position-by-ply.
+7. **1.3.7 — Solve panel (flat)**: budget picker, run on
+   `QtConcurrent` worker, ID depth streams into a log view.
+   No tree yet — smoke-level integration.
+8. **1.3.8 — Live search tree**: QAbstractItemModel +
+   QTreeView + TreeRecorder wiring, cutoff icon, lazy render
+   at `lazy_ply_cap`. Tag v1.3.0.
+9. **Post-1.3 (separate TODO):** lazy sub-search mode (Option
+   B), true cancellation, position editing.
+
 ### What to implement
 
 `chesserazade uci` — subcommand entering UCI mode. Line-based
