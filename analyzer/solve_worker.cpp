@@ -106,7 +106,7 @@ void SolveWorker::start() {
         // disturbing this snapshot.
         SearchTree snapshot = tree_;
         snapshot.finalize_san(start_);
-        snapshot.mark_pv(r.principal_variation);
+        snapshot.mark_best_subtrees();
         emit iteration_tree_ready(snapshot);
 
         if (Search::is_mate_score(r.score)) break;

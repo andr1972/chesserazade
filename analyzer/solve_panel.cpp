@@ -10,6 +10,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -142,6 +143,14 @@ SolvePanel::SolvePanel(QWidget* parent)
     // The sibling-index column is only a small integer — keep
     // it narrow so the Move / Score columns get the space.
     tree_view_->setColumnWidth(SearchTreeModel::ColId, 40);
+    // Keyboard nav (arrow keys) changes the current selection;
+    // we want the board to follow that, not only mouse clicks.
+    // Qt happily drops the signal's trailing `previous` arg when
+    // the slot has fewer parameters, so we can wire
+    // currentChanged straight into on_tree_row_clicked.
+    connect(tree_view_->selectionModel(),
+            &QItemSelectionModel::currentChanged,
+            this, &SolvePanel::on_tree_row_clicked);
     connect(tree_view_, &QTreeView::clicked,
             this, &SolvePanel::on_tree_row_clicked);
     tree_lay->addWidget(tree_view_, /*stretch=*/1);
@@ -306,11 +315,11 @@ void SolvePanel::on_iteration_tree_ready(const SearchTree& incoming) {
     // re-point.
     tree_model_->set_tree(nullptr);
     tree_model_->set_tree(&tree_);
-    // Keep every top-level row collapsed. With ~30–40 legal
-    // root moves and ~30 children each, an auto-expanded tree
-    // drowns the structural view in a sea of siblings — the
-    // user opens the interesting branches themselves.
+    // Expand only the "/" sentinel so its ~40 children become
+    // visible immediately; deeper subtrees stay collapsed so
+    // the view does not drown in siblings.
     tree_view_->collapseAll();
+    tree_view_->expandToDepth(0);
     tree_view_->resizeColumnToContents(SearchTreeModel::ColMove);
 }
 

@@ -17,19 +17,29 @@ void SearchTreeModel::set_tree(const SearchTree* tree) {
 }
 
 int SearchTreeModel::node_of(const QModelIndex& idx) const noexcept {
-    // Invisible Qt root → sentinel tree root (index 0).
-    if (!idx.isValid()) return 0;
+    // Invalid Qt index → Qt's hidden root. Its single child is
+    // the tree sentinel (tree node 0). A valid Qt index stores
+    // the tree node directly in `internalId`.
+    if (!idx.isValid()) return -1;
     return static_cast<int>(idx.internalId());
 }
 
 QModelIndex SearchTreeModel::index(int row, int column,
                                    const QModelIndex& parent) const {
     if (tree_ == nullptr) return {};
+    if (column < 0 || column >= ColumnCount) return {};
+
+    // The Qt-invisible root has exactly one child: the tree's
+    // sentinel (node 0), shown as the "/" row.
+    if (!parent.isValid()) {
+        if (row != 0) return {};
+        return createIndex(row, column, static_cast<quintptr>(0));
+    }
+
     const int pn = node_of(parent);
     if (pn < 0 || pn >= tree_->size()) return {};
     const auto& kids = tree_->at(pn).children;
     if (row < 0 || row >= static_cast<int>(kids.size())) return {};
-    if (column < 0 || column >= ColumnCount) return {};
     const int child = kids[static_cast<std::size_t>(row)];
     return createIndex(row, column, static_cast<quintptr>(child));
 }
@@ -37,9 +47,13 @@ QModelIndex SearchTreeModel::index(int row, int column,
 QModelIndex SearchTreeModel::parent(const QModelIndex& child) const {
     if (tree_ == nullptr || !child.isValid()) return {};
     const int n = node_of(child);
-    if (n <= 0) return {};
+    if (n <= 0) return {};                     // sentinel or invalid → Qt root
     const int p = tree_->at(n).parent;
-    if (p <= 0) return {};                      // parent is sentinel → invisible root
+    if (p < 0) return {};
+    if (p == 0) {
+        // Parent is the sentinel — the single top-level row.
+        return createIndex(0, 0, static_cast<quintptr>(0));
+    }
     const int gp = tree_->at(p).parent;
     if (gp < 0) return {};
     const auto& sibs = tree_->at(gp).children;
@@ -54,6 +68,7 @@ QModelIndex SearchTreeModel::parent(const QModelIndex& child) const {
 
 int SearchTreeModel::rowCount(const QModelIndex& parent) const {
     if (tree_ == nullptr) return 0;
+    if (!parent.isValid()) return 1;           // just the sentinel row
     const int n = node_of(parent);
     if (n < 0 || n >= tree_->size()) return 0;
     return static_cast<int>(tree_->at(n).children.size());
@@ -77,18 +92,23 @@ namespace {
 QVariant SearchTreeModel::data(const QModelIndex& idx, int role) const {
     if (tree_ == nullptr || !idx.isValid()) return {};
     const int n = node_of(idx);
-    if (n <= 0 || n >= tree_->size()) return {};
+    if (n < 0 || n >= tree_->size()) return {};
+
+    // The sentinel row represents the starting position of the
+    // solve — clicking it resets the board to the pre-solve
+    // snapshot. It has no move, no score, no stats.
+    if (n == 0) {
+        if (role != Qt::DisplayRole) return {};
+        if (idx.column() == ColMove) return QStringLiteral("/");
+        return {};
+    }
+
     const TreeNode& node = tree_->at(n);
 
     if (role == Qt::ForegroundRole && node.was_cutoff) {
-        // Classical "cut" mark — distinct enough to spot at a
-        // glance without being noisy.
         return QBrush(QColor(0xb0, 0x28, 0x28));
     }
     if (role == Qt::FontRole && node.on_pv) {
-        // Bold the branch chosen as the principal variation
-        // at each level — makes the "best so far" move easy
-        // to spot even in a ~50-sibling fringe.
         QFont f;
         f.setBold(true);
         return f;

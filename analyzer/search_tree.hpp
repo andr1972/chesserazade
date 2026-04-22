@@ -75,13 +75,13 @@ public:
     /// the tree with a working board starting at `start`.
     void finalize_san(const chesserazade::Board8x8Mailbox& start);
 
-    /// Mark every node along the principal variation so the
-    /// view can render the "chosen at this level" branch
-    /// prominently. `pv` is the PV from `SearchResult`; if a
-    /// move is missing from the tree (because an intermediate
-    /// node was TT-cut before its subtree was recorded) the
-    /// walk stops at that point.
-    void mark_pv(const std::vector<chesserazade::Move>& pv);
+    /// Mark the highest-scoring child under every internal
+    /// node (including the sentinel). That recovers the PV
+    /// from the root and — just as importantly — the locally
+    /// best reply at every subtree, so when the user expands
+    /// a non-PV node the best continuation in that line is
+    /// still bolded.
+    void mark_best_subtrees();
 
 private:
     std::vector<TreeNode> nodes_;
