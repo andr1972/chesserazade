@@ -1,6 +1,7 @@
 #include "main_window.hpp"
 
 #include "fetch_dialog.hpp"
+#include "game_list_view.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -17,14 +18,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(tr("chesserazade analyzer"));
     resize(1024, 720);
 
-    auto* placeholder = new QLabel(
-        tr("chesserazade analyzer\n\n"
-           "1.3.3 skeleton — File → Fetch and Help → About are the\n"
-           "only live menu items yet. Game list, board view, and\n"
-           "the search tree arrive in the following sub-etaps."),
-        this);
-    placeholder->setAlignment(Qt::AlignCenter);
-    setCentralWidget(placeholder);
+    game_list_ = new GameListView(this);
+    connect(game_list_, &GameListView::game_chosen,
+            this, &MainWindow::on_game_chosen);
+    setCentralWidget(game_list_);
 
     build_menus();
 }
@@ -56,13 +53,22 @@ void MainWindow::open_fetch_dialog() {
     const QString pgn = dlg.selected_pgn_path();
     if (pgn.isEmpty()) return;
     loaded_pgn_path_ = pgn;
-    statusBar()->showMessage(
-        tr("Loaded: %1  (%2 bytes)")
-            .arg(pgn)
-            .arg(QFileInfo(pgn).size()));
-    // 1.3.5 will open the game-list view here; for 1.3.4 we
-    // just record the path and report it in the status bar so
-    // the fetch flow is end-to-end testable.
+    if (game_list_ != nullptr && game_list_->load(pgn)) {
+        statusBar()->showMessage(
+            tr("Loaded %1").arg(QFileInfo(pgn).fileName()));
+    } else {
+        statusBar()->showMessage(
+            tr("Failed to index %1").arg(pgn));
+    }
+}
+
+void MainWindow::on_game_chosen(const QString& /*pgn_text*/,
+                                const QString& header_label) {
+    // 1.3.6 will push the game's move list + starting position
+    // into a board view; for 1.3.5 we acknowledge the selection
+    // via the status bar so the indexing + selection pipeline is
+    // end-to-end testable.
+    statusBar()->showMessage(tr("Selected: %1").arg(header_label));
 }
 
 void MainWindow::show_about() {
@@ -72,7 +78,7 @@ void MainWindow::show_about() {
         tr("<h3>chesserazade analyzer</h3>"
            "<p>Graphical PGN browser and search analyzer,"
            " part of the chesserazade project.</p>"
-           "<p>Version 1.3.0-dev (1.3.4 — fetch dialog wired)</p>"
+           "<p>Version 1.3.0-dev (1.3.5 — fetch + game list)</p>"
            "<p>Author: Andrzej Borucki</p>"));
 }
 

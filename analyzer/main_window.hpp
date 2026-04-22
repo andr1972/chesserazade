@@ -11,6 +11,8 @@
 
 namespace chesserazade::analyzer {
 
+class GameListView;
+
 class MainWindow final : public QMainWindow {
     Q_OBJECT
 public:
@@ -20,7 +22,10 @@ private:
     void build_menus();
     void show_about();
     void open_fetch_dialog();
+    void on_game_chosen(const QString& pgn_text,
+                        const QString& header_label);
 
+    GameListView* game_list_ = nullptr;
     QString loaded_pgn_path_;
 };
 

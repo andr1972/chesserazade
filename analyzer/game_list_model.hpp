@@ -1,0 +1,50 @@
+/// Table model over the output of `chesserazade::index_games`.
+///
+/// Five columns — Date / White / Black / Result / Event — map
+/// directly onto `PgnGameHeader` fields. The model does not
+/// own the underlying `std::vector<PgnGameHeader>`: the owner
+/// (the enclosing view) loads the PGN once, indexes it once,
+/// and hands the model a pointer that outlives it.
+#pragma once
+
+#include <chesserazade/pgn_index.hpp>
+
+#include <QAbstractTableModel>
+
+#include <vector>
+
+namespace chesserazade::analyzer {
+
+class GameListModel final : public QAbstractTableModel {
+    Q_OBJECT
+public:
+    enum Column : int {
+        ColDate = 0,
+        ColWhite,
+        ColBlack,
+        ColResult,
+        ColEvent,
+        ColumnCount,
+    };
+
+    explicit GameListModel(QObject* parent = nullptr);
+
+    /// Point the model at a new index. The vector must outlive
+    /// the model; pass `nullptr` to clear.
+    void set_games(const std::vector<PgnGameHeader>* games);
+
+    [[nodiscard]] int rowCount(const QModelIndex& parent
+                               = QModelIndex{}) const override;
+    [[nodiscard]] int columnCount(const QModelIndex& parent
+                                  = QModelIndex{}) const override;
+    [[nodiscard]] QVariant data(const QModelIndex& idx,
+                                int role) const override;
+    [[nodiscard]] QVariant headerData(int section,
+                                      Qt::Orientation orientation,
+                                      int role) const override;
+
+private:
+    const std::vector<PgnGameHeader>* games_ = nullptr;
+};
+
+} // namespace chesserazade::analyzer
