@@ -31,6 +31,7 @@ add_executable(chesserazade_tests
     test_perft_bitboard.cpp
     test_magic.cpp
     test_uci.cpp
+    test_pgn_index.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/cmd_uci.cpp
 )
 target_link_libraries(chesserazade_tests
