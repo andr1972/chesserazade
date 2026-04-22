@@ -9,9 +9,12 @@
 
 #include <QMainWindow>
 
+class QStackedWidget;
+
 namespace chesserazade::analyzer {
 
 class GameListView;
+class GameView;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -24,8 +27,11 @@ private:
     void open_fetch_dialog();
     void on_game_chosen(const QString& pgn_text,
                         const QString& header_label);
+    void on_back_to_list();
 
+    QStackedWidget* stack_   = nullptr;
     GameListView* game_list_ = nullptr;
+    GameView*     game_view_ = nullptr;
     QString loaded_pgn_path_;
 };
 

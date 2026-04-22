@@ -2,6 +2,7 @@
 
 #include "fetch_dialog.hpp"
 #include "game_list_view.hpp"
+#include "game_view.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -10,6 +11,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QStackedWidget>
 #include <QStatusBar>
 
 namespace chesserazade::analyzer {
@@ -18,10 +20,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(tr("chesserazade analyzer"));
     resize(1024, 720);
 
-    game_list_ = new GameListView(this);
+    stack_ = new QStackedWidget(this);
+    game_list_ = new GameListView(stack_);
+    game_view_ = new GameView(stack_);
     connect(game_list_, &GameListView::game_chosen,
             this, &MainWindow::on_game_chosen);
-    setCentralWidget(game_list_);
+    connect(game_view_, &GameView::back_requested,
+            this, &MainWindow::on_back_to_list);
+    stack_->addWidget(game_list_);
+    stack_->addWidget(game_view_);
+    stack_->setCurrentWidget(game_list_);
+    setCentralWidget(stack_);
 
     build_menus();
 }
@@ -62,13 +71,19 @@ void MainWindow::open_fetch_dialog() {
     }
 }
 
-void MainWindow::on_game_chosen(const QString& /*pgn_text*/,
+void MainWindow::on_game_chosen(const QString& pgn_text,
                                 const QString& header_label) {
-    // 1.3.6 will push the game's move list + starting position
-    // into a board view; for 1.3.5 we acknowledge the selection
-    // via the status bar so the indexing + selection pipeline is
-    // end-to-end testable.
-    statusBar()->showMessage(tr("Selected: %1").arg(header_label));
+    if (game_view_->load_pgn(pgn_text, header_label)) {
+        stack_->setCurrentWidget(game_view_);
+        statusBar()->showMessage(tr("Viewing: %1").arg(header_label));
+    } else {
+        statusBar()->showMessage(tr("Failed to parse selected game"));
+    }
+}
+
+void MainWindow::on_back_to_list() {
+    stack_->setCurrentWidget(game_list_);
+    statusBar()->clearMessage();
 }
 
 void MainWindow::show_about() {
@@ -78,7 +93,7 @@ void MainWindow::show_about() {
         tr("<h3>chesserazade analyzer</h3>"
            "<p>Graphical PGN browser and search analyzer,"
            " part of the chesserazade project.</p>"
-           "<p>Version 1.3.0-dev (1.3.5 — fetch + game list)</p>"
+           "<p>Version 1.3.0-dev (1.3.6 — board + move list)</p>"
            "<p>Author: Andrzej Borucki</p>"));
 }
 

@@ -151,12 +151,16 @@ if(CHESSERAZADE_BUILD_ANALYZER)
             analyzer/main.cpp
             analyzer/main_window.cpp
             analyzer/main_window.hpp
+            analyzer/board_widget.cpp
+            analyzer/board_widget.hpp
             analyzer/fetch_dialog.cpp
             analyzer/fetch_dialog.hpp
             analyzer/game_list_model.cpp
             analyzer/game_list_model.hpp
             analyzer/game_list_view.cpp
             analyzer/game_list_view.hpp
+            analyzer/game_view.cpp
+            analyzer/game_view.hpp
             analyzer/pgnmentor_index.cpp
             analyzer/pgnmentor_index.hpp
             analyzer/unzip.cpp
