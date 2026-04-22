@@ -1,11 +1,9 @@
 # TODO
 
-## 1.2 — UCI (Universal Chess Interface)
+## ~~1.2 — UCI~~ (shipped, tag v1.2.0)
 
-Replaces the original 1.2 plan (Qt6 GUI). The Qt GUI is deferred
-indefinitely; instead we make `chesserazade` pluggable into
-existing GUIs (Arena, CuteChess, SCID) via the standard UCI
-protocol.
+See `docs/version_notes/1.2.md`. Original plan kept below for
+reference.
 
 Reference: https://wbec-ridderkerk.nl/html/UCIProtocol.html
 

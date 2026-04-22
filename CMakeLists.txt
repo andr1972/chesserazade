@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(chesserazade
-    VERSION 1.1.0
+    VERSION 1.2.0
     DESCRIPTION "Educational classical chess program"
     LANGUAGES CXX)
 
@@ -108,6 +108,7 @@ add_executable(chesserazade
     src/cli/cmd_repl.cpp
     src/cli/cmd_show.cpp
     src/cli/cmd_solve.cpp
+    src/cli/cmd_uci.cpp
     src/cli/cmd_version.cpp
 )
 target_include_directories(chesserazade

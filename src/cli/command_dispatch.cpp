@@ -8,6 +8,7 @@
 #include "cli/cmd_repl.hpp"
 #include "cli/cmd_show.hpp"
 #include "cli/cmd_solve.hpp"
+#include "cli/cmd_uci.hpp"
 #include "cli/cmd_version.hpp"
 
 #include <iostream>
@@ -29,7 +30,7 @@ void print_top_level_help(std::ostream& out) {
         << "  solve     Search for the best move in a position.\n"
         << "  analyze   Annotate a PGN's moves with engine verdicts.\n"
         << "  fetch     Download a PGN / puzzle to the local cache.\n"
-        << "  magics-gen  Regenerate the magic-bitboards constants file.\n"
+        << "  magics-gen  Regenerate the magic-bitboards constants file.\n"<< "  uci       Enter UCI protocol mode (plug into Arena / CuteChess / SCID).\n"
         << "  version   Print the program version.\n"
         << "\n"
         << "Run `chesserazade <subcommand> --help` for subcommand-specific options.\n";
@@ -68,6 +69,9 @@ int dispatch(std::span<const std::string_view> args) {
     }
     if (name == "magics-gen") {
         return cmd_magics_gen(rest);
+    }
+    if (name == "uci") {
+        return cmd_uci(rest);
     }
     if (name == "version") {
         return cmd_version(rest);
