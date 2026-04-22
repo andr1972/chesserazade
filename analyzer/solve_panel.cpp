@@ -212,6 +212,8 @@ void SolvePanel::on_run_clicked() {
             worker_, &SolveWorker::start);
     connect(worker_, &SolveWorker::progress,
             this, &SolvePanel::on_progress);
+    connect(worker_, &SolveWorker::iteration_tree_ready,
+            this, &SolvePanel::on_iteration_tree_ready);
     connect(worker_, &SolveWorker::finished,
             this, &SolvePanel::on_finished);
     connect(worker_, &SolveWorker::finished,
@@ -262,13 +264,13 @@ void SolvePanel::on_finished(const QString& best_uci, int final_score,
         .arg(best_uci).arg(score).arg(depth_reached)
         .arg(nodes).arg(elapsed_ms));
 
-    // Copy the worker's tree into our own buffer before the
-    // worker is destroyed by deleteLater, then point the model
-    // at it. The position_ board is unchanged so clicking a
-    // tree row can seek relative to it.
-    if (worker_ != nullptr) {
-        tree_ = worker_->search_tree();
-    }
+    // Tree was already installed by the last
+    // `iteration_tree_ready` signal from the deepest completed
+    // iteration — nothing further to do here.
+}
+
+void SolvePanel::on_iteration_tree_ready(const SearchTree& incoming) {
+    tree_ = incoming;
     tree_model_->set_tree(&tree_);
     tree_view_->expandToDepth(1);
     tree_view_->resizeColumnToContents(SearchTreeModel::ColMove);

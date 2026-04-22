@@ -61,6 +61,7 @@ private:
     void on_finished(const QString& best_uci, int final_score,
                      int depth_reached, quint64 nodes,
                      qint64 elapsed_ms);
+    void on_iteration_tree_ready(const SearchTree& tree);
     void on_tree_row_clicked(const QModelIndex& idx);
 
     [[nodiscard]] SolveBudget current_budget() const;

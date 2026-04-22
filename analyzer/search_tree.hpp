@@ -14,6 +14,8 @@
 #include <chesserazade/move.hpp>
 #include <chesserazade/search.hpp>
 
+#include <QMetaType>
+
 #include <string>
 #include <vector>
 
@@ -97,3 +99,7 @@ private:
 };
 
 } // namespace chesserazade::analyzer
+
+// Declared out of namespace so Qt's meta-object system can
+// carry `SearchTree` across queued connections by value.
+Q_DECLARE_METATYPE(chesserazade::analyzer::SearchTree)

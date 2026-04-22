@@ -11,7 +11,11 @@ namespace chesserazade::analyzer {
 
 SolveWorker::SolveWorker(Board8x8Mailbox start, SolveBudget budget,
                          QObject* parent)
-    : QObject(parent), start_(std::move(start)), budget_(budget) {}
+    : QObject(parent), start_(std::move(start)), budget_(budget) {
+    // Queued connections serialise `SearchTree` through Qt's
+    // metatype system; register once on first use.
+    qRegisterMetaType<SearchTree>("chesserazade::analyzer::SearchTree");
+}
 
 namespace {
 
@@ -78,11 +82,11 @@ void SolveWorker::start() {
         const SearchResult r = Search::find_best(work, lim, &tt, &recorder);
 
         if (r.completed_depth < d) {
-            // Budget exhausted mid-iteration; the tree in
-            // `tree_` has dangling open nodes (enters without
-            // matching leaves). Reset to the sentinel and rely
-            // on info lines for the previously completed depth.
-            tree_.reset();
+            // Budget exhausted mid-iteration — the tree in
+            // `tree_` has dangling `enter`s without matching
+            // `leave`s. Don't emit it; the panel is still
+            // holding the snapshot from the previous
+            // completed iteration.
             if (!have_result) last = r;
             break;
         }
@@ -96,12 +100,15 @@ void SolveWorker::start() {
                       r.pv_stats.checks_white,
                       r.pv_stats.checks_black);
 
+        // Copy on the worker thread, finalise SAN, hand off.
+        // `recorder.reset()` on the next iteration will then
+        // clear `tree_` without disturbing this snapshot.
+        SearchTree snapshot = tree_;
+        snapshot.finalize_san(start_);
+        emit iteration_tree_ready(snapshot);
+
         if (Search::is_mate_score(r.score)) break;
     }
-
-    // Turn move structs into SAN strings for the tree view;
-    // cheap compared to the search itself.
-    tree_.finalize_san(start_);
 
     const QString best_uci = (last.best_move.from == Square::None)
         ? QStringLiteral("0000")

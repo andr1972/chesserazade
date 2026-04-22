@@ -61,6 +61,15 @@ signals:
                   int captures_white, int captures_black,
                   int checks_white,   int checks_black);
 
+    /// Fires right after `progress` for the same iteration.
+    /// Carries a snapshot of the tree that iteration built —
+    /// the panel swaps it in so the view updates after every
+    /// completed depth. An iteration that aborts mid-search
+    /// emits neither `progress` nor this signal, so the last
+    /// snapshot visible to the user is always the one from the
+    /// deepest *completed* iteration.
+    void iteration_tree_ready(const chesserazade::analyzer::SearchTree& tree);
+
     /// Last signal of the flow. `best_uci` is the root move or
     /// "0000" on a terminal root. Score follows the same
     /// conventions as `SearchResult::score`.
