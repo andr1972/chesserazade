@@ -153,8 +153,12 @@ SolvePanel::SolvePanel(QWidget* parent)
             this, &SolvePanel::on_tree_row_clicked);
     connect(tree_view_, &QTreeView::clicked,
             this, &SolvePanel::on_tree_row_clicked);
+    // Queued so the model mutation happens *after* fetchMore
+    // returns — Qt is unhappy when rows are inserted while
+    // the view is still inside its own fetchMore call.
     connect(tree_model_, &SearchTreeModel::expansion_requested,
-            this, &SolvePanel::on_expansion_requested);
+            this, &SolvePanel::on_expansion_requested,
+            Qt::QueuedConnection);
     tree_lay->addWidget(tree_view_, /*stretch=*/1);
     tree_log->addWidget(tree_group);
 

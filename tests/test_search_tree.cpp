@@ -119,6 +119,84 @@ TEST_CASE("SearchTreeRecorder: reset clears to a bare sentinel",
     REQUIRE(tree.at(0).children.empty());
 }
 
+TEST_CASE("SearchTree::graft_under splices a sub-tree correctly",
+          "[search_tree]") {
+    // Synthesise a main tree with one parent node that still
+    // has a search depth budget but no children recorded.
+    SearchTree main;
+    const int top = main.push_child(0, Move{}, 1);
+    main.at(top).remaining_depth = 3;
+
+    // Synthesise a sub tree with two plies of nesting.
+    SearchTree sub;
+    const int s_a = sub.push_child(0, Move{}, 1);
+    const int s_b = sub.push_child(0, Move{}, 1);
+    const int s_a1 = sub.push_child(s_a, Move{}, 2);
+    const int s_a2 = sub.push_child(s_a, Move{}, 2);
+    (void)s_b; (void)s_a1; (void)s_a2;
+
+    const int main_size_before = main.size();
+    main.graft_under(top, sub);
+
+    // Two top-level children appended under `top` with
+    // remapped indices.
+    REQUIRE(main.at(top).children.size() == 2);
+    const int grafted_a = main.at(top).children[0];
+    const int grafted_b = main.at(top).children[1];
+    REQUIRE(grafted_a >= main_size_before);
+    REQUIRE(grafted_b >= main_size_before);
+
+    // The grafted `a` should itself have two grafted children
+    // — the nesting survived.
+    REQUIRE(main.at(grafted_a).children.size() == 2);
+    // Parent pointers are remapped.
+    REQUIRE(main.at(grafted_a).parent == top);
+    const int grafted_a1 = main.at(grafted_a).children[0];
+    REQUIRE(main.at(grafted_a1).parent == grafted_a);
+}
+
+TEST_CASE("SearchTreeRecorder: lazy sub-search reproduces nesting",
+          "[search_tree]") {
+    // Main pass: cap=1 so only ply-1 moves are recorded.
+    auto start = *Board8x8Mailbox::from_fen(STARTING_POSITION_FEN);
+    SearchTree main;
+    SearchTreeRecorder main_rec(main, /*cap=*/1);
+    (void)Search::find_best(start, depth(4), nullptr, &main_rec);
+
+    REQUIRE(main.at(0).children.size() == 20);
+    // Each top-level move is a flat leaf in the main tree but
+    // carries a positive remaining_depth (the main search went
+    // 3 more plies below it).
+    const int first = main.at(0).children.front();
+    REQUIRE(main.at(first).children.empty());
+    REQUIRE(main.at(first).remaining_depth > 0);
+
+    // Rebuild the position at that node and run a sub-search
+    // with the stored α-β window and remaining depth.
+    Board8x8Mailbox b = start;
+    b.make_move(main.at(first).move);
+
+    SearchTree sub;
+    SearchTreeRecorder sub_rec(sub, /*cap=*/2);
+    SearchLimits lim;
+    lim.max_depth = main.at(first).remaining_depth;
+    (void)Search::find_best(b, lim, /*tt=*/nullptr, &sub_rec,
+                            main.at(first).alpha,
+                            main.at(first).beta);
+
+    // The sub-tree itself must have nesting — that's the
+    // "arrows after expansion" the UI depends on.
+    REQUIRE_FALSE(sub.at(0).children.empty());
+    REQUIRE(max_depth_of(sub) >= 2);
+
+    // Graft + re-check: the previously-flat main leaf now has
+    // a subtree under it.
+    main.graft_under(first, sub);
+    REQUIRE_FALSE(main.at(first).children.empty());
+    REQUIRE(max_depth_of(main, first) >= 2);
+    REQUIRE(parent_links_consistent(main));
+}
+
 TEST_CASE("SearchTreeRecorder: consecutive iterations isolate cleanly",
           "[search_tree]") {
     auto b = *Board8x8Mailbox::from_fen(STARTING_POSITION_FEN);

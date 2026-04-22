@@ -52,19 +52,39 @@ bool SearchTreeModel::canFetchMore(const QModelIndex& parent) const {
     const int n = node_of(parent);
     if (n <= 0 || n >= tree_->size()) return false;
     const TreeNode& node = tree_->at(n);
-    return node.children.empty() && node.remaining_depth > 0;
+    if (!node.children.empty()) return false;
+    if (node.remaining_depth <= 0) return false;
+    // A queued expansion is already in flight; don't ask the
+    // view to keep firing fetchMore while we wait for it.
+    for (int p : pending_expansions_) {
+        if (p == n) return false;
+    }
+    return true;
 }
 
 void SearchTreeModel::fetchMore(const QModelIndex& parent) {
     if (tree_ == nullptr || !parent.isValid()) return;
     const int n = node_of(parent);
     if (n <= 0 || n >= tree_->size()) return;
+    for (int p : pending_expansions_) {
+        if (p == n) return;
+    }
+    pending_expansions_.push_back(n);
     emit expansion_requested(n);
 }
 
 void SearchTreeModel::insert_subtree(int parent_node, const SearchTree& sub) {
     if (tree_ == nullptr || parent_node < 0
         || parent_node >= tree_->size()) return;
+    // Drop this node from the pending-set whatever the
+    // outcome — the caller has handled the request.
+    for (std::size_t i = 0; i < pending_expansions_.size(); ++i) {
+        if (pending_expansions_[i] == parent_node) {
+            pending_expansions_.erase(pending_expansions_.begin()
+                                      + static_cast<std::ptrdiff_t>(i));
+            break;
+        }
+    }
     const int add = static_cast<int>(sub.at(0).children.size());
     if (add == 0) return;
     const QModelIndex pidx = index_for_node(parent_node);

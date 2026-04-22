@@ -82,6 +82,10 @@ private:
     [[nodiscard]] int node_of(const QModelIndex& idx) const noexcept;
 
     SearchTree* tree_ = nullptr;
+    /// Nodes whose expansion signal is queued but not yet
+    /// handled. Suppresses duplicate requests when the view
+    /// re-asks canFetchMore between emit and graft.
+    mutable std::vector<int> pending_expansions_;
 };
 
 } // namespace chesserazade::analyzer
