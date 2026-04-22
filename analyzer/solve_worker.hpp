@@ -34,6 +34,7 @@ struct SolveBudget {
     int  time_ms = 5000;
     long long nodes = 1'000'000;
     int tree_cap = 3;  ///< Ply cap for the TreeRecorder tree.
+    bool disable_alpha_beta = false;  ///< Run plain minimax.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called

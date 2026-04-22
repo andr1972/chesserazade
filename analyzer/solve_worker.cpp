@@ -65,6 +65,7 @@ void SolveWorker::start() {
     for (int d = 1; d <= max_depth; ++d) {
         SearchLimits lim;
         lim.max_depth = d;
+        lim.disable_alpha_beta = budget_.disable_alpha_beta;
         if (budget_ms > 0) {
             const auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(

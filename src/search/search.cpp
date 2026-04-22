@@ -75,6 +75,7 @@ struct Stop {
     clk::time_point start;
     std::chrono::milliseconds time_budget;
     std::uint64_t node_budget;
+    bool disable_alpha_beta = false;
     bool abort = false;
 
     bool should_stop(std::uint64_t nodes_so_far) noexcept {
@@ -230,7 +231,7 @@ int quiesce(Board& board, int alpha, int beta,
     }
 
     const int stand_pat = evaluate(board);
-    if (stand_pat >= beta) return beta;
+    if (!stop.disable_alpha_beta && stand_pat >= beta) return beta;
     if (stand_pat > alpha) alpha = stand_pat;
 
     const MoveList legal = MoveGenerator::generate_legal(board);
@@ -251,7 +252,7 @@ int quiesce(Board& board, int alpha, int beta,
         const int score = -quiesce(board, -beta, -alpha, nodes, stop);
         board.unmake_move(m);
         if (stop.abort) return 0;
-        if (score >= beta) return beta;
+        if (!stop.disable_alpha_beta && score >= beta) return beta;
         if (score > alpha) alpha = score;
     }
     return alpha;
@@ -299,8 +300,14 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
                 const int s = from_tt_score(probe.entry.score, ply);
                 switch (probe.entry.bound()) {
                     case TtBound::Exact: return s;
-                    case TtBound::Lower: if (s >= beta)  return s; break;
-                    case TtBound::Upper: if (s <= alpha) return s; break;
+                    case TtBound::Lower:
+                        if (!stop.disable_alpha_beta && s >= beta)
+                            return s;
+                        break;
+                    case TtBound::Upper:
+                        if (!stop.disable_alpha_beta && s <= alpha)
+                            return s;
+                        break;
                     case TtBound::None:  break;
                 }
             }
@@ -398,7 +405,7 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         if (stop.abort) return 0;
 
-        if (score >= beta) {
+        if (!stop.disable_alpha_beta && score >= beta) {
             remember_killer(killers, p, m);
             if (tt != nullptr) {
                 tt->store(key, depth, to_tt_score(beta, ply),
@@ -483,6 +490,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         clk::now(),
         limits.time_budget,
         limits.node_budget,
+        limits.disable_alpha_beta,
         false,
     };
 

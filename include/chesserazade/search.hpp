@@ -60,6 +60,15 @@ struct SearchLimits {
     /// Soft cap on visited nodes. Zero means "no node limit".
     /// Checked on the same cadence as `time_budget`.
     std::uint64_t node_budget = 0;
+
+    /// Turn the α-β pruning off and run plain minimax. At
+    /// small depths this is the natural way to inspect the
+    /// full game tree without cutoffs hiding branches; at
+    /// realistic depths the tree explodes. TT bound returns
+    /// (Lower / Upper) are bypassed in this mode because
+    /// they would carry over α-β assumptions; Exact entries
+    /// remain valid.
+    bool disable_alpha_beta = false;
 };
 
 /// Cumulative capture-value and check-giving counts along a

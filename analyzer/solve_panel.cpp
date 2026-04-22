@@ -116,6 +116,16 @@ SolvePanel::SolvePanel(QWidget* parent)
             tree_model_, &SearchTreeModel::set_lazy_enabled);
     cap_row->addWidget(lazy_check_);
 
+    ab_check_ = new QCheckBox(tr("α-β"), right);
+    ab_check_->setChecked(true);
+    ab_check_->setToolTip(tr(
+        "Alpha-beta pruning. Normally on — the engine skips "
+        "branches it can prove are worse than an already-found "
+        "line. Turn off to see what the raw minimax tree looks "
+        "like; use tiny max-ply only (no cutoffs means the tree "
+        "explodes fast)."));
+    cap_row->addWidget(ab_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -237,6 +247,7 @@ void SolvePanel::set_position(const Board8x8Mailbox& board,
 SolveBudget SolvePanel::current_budget() const {
     SolveBudget b;
     b.tree_cap = tree_cap_spin_->value();
+    b.disable_alpha_beta = !ab_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();
@@ -407,6 +418,7 @@ void SolvePanel::on_expansion_requested(int node_idx) {
     // plies of new nesting are recorded per click.
     SearchLimits lim;
     lim.max_depth = node.remaining_depth;
+    lim.disable_alpha_beta = !ab_check_->isChecked();
 
     SearchTree sub;
     SearchTreeRecorder sub_rec(sub, tree_cap_spin_->value());
