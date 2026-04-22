@@ -161,6 +161,13 @@ SolvePanel::SolvePanel(QWidget* parent)
     // The sibling-index column is only a small integer — keep
     // it narrow so the Move / Score columns get the space.
     tree_view_->setColumnWidth(SearchTreeModel::ColId, 40);
+    // Draw the expand/collapse arrow and the indent guide in
+    // the Move column rather than the default column 0 (#).
+    // With a 40-px # column the tree indicator was physically
+    // there but visually swallowed by a two-digit row number;
+    // anchoring to Move puts the hierarchy exactly where the
+    // reader expects it, next to each move's SAN.
+    tree_view_->setTreePosition(SearchTreeModel::ColMove);
     // Keyboard nav (arrow keys) changes the current selection;
     // we want the board to follow that, not only mouse clicks.
     // Qt happily drops the signal's trailing `previous` arg when
