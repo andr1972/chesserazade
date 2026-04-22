@@ -48,6 +48,7 @@ bool SearchTreeModel::hasChildren(const QModelIndex& parent) const {
 }
 
 bool SearchTreeModel::canFetchMore(const QModelIndex& parent) const {
+    if (!lazy_enabled_) return false;
     if (tree_ == nullptr || !parent.isValid()) return false;
     const int n = node_of(parent);
     if (n <= 0 || n >= tree_->size()) return false;

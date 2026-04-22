@@ -19,6 +19,7 @@
 #include <QWidget>
 
 class QButtonGroup;
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QModelIndex;
@@ -83,6 +84,7 @@ private:
     QSpinBox*     nodes_spin_ = nullptr;
     QComboBox*    nodes_mult_ = nullptr;
     QSpinBox*     tree_cap_spin_ = nullptr;
+    QCheckBox*    lazy_check_    = nullptr;
 
     QPushButton*  run_btn_  = nullptr;
     QPushButton*  back_btn_ = nullptr;

@@ -6,6 +6,7 @@
 #include <chesserazade/fen.hpp>
 
 #include <QButtonGroup>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -96,6 +97,19 @@ SolvePanel::SolvePanel(QWidget* parent)
         "into the tree view. Deeper search still runs; its "
         "effects bubble up as capture / check totals."));
     cap_row->addWidget(tree_cap_spin_);
+
+    lazy_check_ = new QCheckBox(tr("Lazy"), right);
+    lazy_check_->setChecked(true);
+    lazy_check_->setToolTip(tr(
+        "When enabled, arrows on cap-bounded leaves trigger a "
+        "sub-search and graft the resulting subtree in place. "
+        "When disabled, the arrows still render (so you can "
+        "inspect which nodes are expandable) but clicking them "
+        "does nothing — useful as a debug view."));
+    connect(lazy_check_, &QCheckBox::toggled,
+            tree_model_, &SearchTreeModel::set_lazy_enabled);
+    cap_row->addWidget(lazy_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 

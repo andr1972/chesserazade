@@ -42,6 +42,16 @@ public:
     /// searches into the tree in-place on lazy expansion.
     void set_tree(SearchTree* tree);
 
+    /// Toggle the lazy-expansion machinery. When off,
+    /// `canFetchMore` stays false for every node, so Qt never
+    /// asks to fetch children and clicking an arrow becomes a
+    /// no-op; `hasChildren` still reports true for cap-leaves
+    /// with a positive `remaining_depth` so the arrows remain
+    /// visible for inspection. On by default.
+    void set_lazy_enabled(bool enabled) { lazy_enabled_ = enabled; }
+    [[nodiscard]] bool lazy_enabled() const noexcept
+        { return lazy_enabled_; }
+
     /// Graft `sub`'s children under the tree node at index
     /// `parent_node` and notify the view. Used by the panel
     /// after a successful on-demand sub-search.
@@ -86,6 +96,8 @@ private:
     /// handled. Suppresses duplicate requests when the view
     /// re-asks canFetchMore between emit and graft.
     mutable std::vector<int> pending_expansions_;
+
+    bool lazy_enabled_ = true;
 };
 
 } // namespace chesserazade::analyzer
