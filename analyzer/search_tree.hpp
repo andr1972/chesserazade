@@ -38,6 +38,12 @@ struct TreeNode {
     /// — the "tu nastąpiło cięcie" marker for the tree view.
     bool was_cutoff = false;
 
+    /// True when this node sits on the principal variation of
+    /// the final completed iteration. Populated after the
+    /// search by `SearchTree::mark_pv`; renders bold in the
+    /// tree view.
+    bool on_pv = false;
+
     /// Captures and checks summed along the principal
     /// variation in this subtree (this move inclusive).
     BranchStats stats{};
@@ -68,6 +74,14 @@ public:
     /// Compute SAN strings on every non-root node by walking
     /// the tree with a working board starting at `start`.
     void finalize_san(const chesserazade::Board8x8Mailbox& start);
+
+    /// Mark every node along the principal variation so the
+    /// view can render the "chosen at this level" branch
+    /// prominently. `pv` is the PV from `SearchResult`; if a
+    /// move is missing from the tree (because an intermediate
+    /// node was TT-cut before its subtree was recorded) the
+    /// walk stops at that point.
+    void mark_pv(const std::vector<chesserazade::Move>& pv);
 
 private:
     std::vector<TreeNode> nodes_;

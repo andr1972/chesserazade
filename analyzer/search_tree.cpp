@@ -52,6 +52,19 @@ void SearchTree::finalize_san(const Board8x8Mailbox& start) {
     san_dfs(*this, 0, work);
 }
 
+void SearchTree::mark_pv(const std::vector<Move>& pv) {
+    int current = 0;  // sentinel
+    for (const Move& m : pv) {
+        int next = -1;
+        for (int c : at(current).children) {
+            if (at(c).move == m) { next = c; break; }
+        }
+        if (next < 0) return;  // PV left the recorded tree
+        at(next).on_pv = true;
+        current = next;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SearchTreeRecorder
 // ---------------------------------------------------------------------------

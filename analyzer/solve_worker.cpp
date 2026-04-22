@@ -100,11 +100,13 @@ void SolveWorker::start() {
                       r.pv_stats.checks_white,
                       r.pv_stats.checks_black);
 
-        // Copy on the worker thread, finalise SAN, hand off.
-        // `recorder.reset()` on the next iteration will then
-        // clear `tree_` without disturbing this snapshot.
+        // Copy on the worker thread, finalise SAN, mark the
+        // PV so the view can bold it, then hand off. The next
+        // iteration's recorder.reset() clears `tree_` without
+        // disturbing this snapshot.
         SearchTree snapshot = tree_;
         snapshot.finalize_san(start_);
+        snapshot.mark_pv(r.principal_variation);
         emit iteration_tree_ready(snapshot);
 
         if (Search::is_mate_score(r.score)) break;

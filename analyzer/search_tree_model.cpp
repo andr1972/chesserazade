@@ -2,6 +2,7 @@
 
 #include <QBrush>
 #include <QColor>
+#include <QFont>
 #include <QString>
 
 namespace chesserazade::analyzer {
@@ -83,6 +84,14 @@ QVariant SearchTreeModel::data(const QModelIndex& idx, int role) const {
         // Classical "cut" mark — distinct enough to spot at a
         // glance without being noisy.
         return QBrush(QColor(0xb0, 0x28, 0x28));
+    }
+    if (role == Qt::FontRole && node.on_pv) {
+        // Bold the branch chosen as the principal variation
+        // at each level — makes the "best so far" move easy
+        // to spot even in a ~50-sibling fringe.
+        QFont f;
+        f.setBold(true);
+        return f;
     }
     if (role != Qt::DisplayRole && role != Qt::ToolTipRole) return {};
 
