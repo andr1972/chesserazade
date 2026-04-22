@@ -153,6 +153,8 @@ SolvePanel::SolvePanel(QWidget* parent)
             this, &SolvePanel::on_tree_row_clicked);
     connect(tree_view_, &QTreeView::clicked,
             this, &SolvePanel::on_tree_row_clicked);
+    connect(tree_model_, &SearchTreeModel::expansion_requested,
+            this, &SolvePanel::on_expansion_requested);
     tree_lay->addWidget(tree_view_, /*stretch=*/1);
     tree_log->addWidget(tree_group);
 
@@ -331,6 +333,46 @@ void SolvePanel::on_tree_row_clicked(const QModelIndex& idx) {
         b.make_move(m);
     }
     board_->set_position(b);
+}
+
+void SolvePanel::on_expansion_requested(int node_idx) {
+    if (node_idx <= 0 || node_idx >= tree_.size()) return;
+    const TreeNode& node = tree_.at(node_idx);
+    if (!node.children.empty() || node.remaining_depth <= 0) return;
+
+    // Reconstruct the board at this node by replaying the
+    // ancestor chain onto the solve's base position.
+    Board8x8Mailbox board = position_;
+    {
+        std::vector<Move> chain;
+        int cur = node_idx;
+        while (cur > 0) {
+            chain.push_back(tree_.at(cur).move);
+            cur = tree_.at(cur).parent;
+        }
+        std::reverse(chain.begin(), chain.end());
+        for (const Move& m : chain) board.make_move(m);
+    }
+
+    // Run a bounded sub-search with the original α-β window so
+    // the grafted subtree matches what the main pass would
+    // have produced beyond the recorder cap. Recorder cap for
+    // the sub-tree reuses the user's panel-level spinner.
+    SearchLimits lim;
+    lim.max_depth = node.remaining_depth;
+
+    SearchTree sub;
+    SearchTreeRecorder sub_rec(sub, tree_cap_spin_->value());
+
+    (void)Search::find_best(board, lim, /*tt=*/nullptr, &sub_rec,
+                            node.alpha, node.beta);
+    sub.finalize_san(board);
+    sub.mark_best_subtrees();
+
+    // Splice the new subtree in-place under `node_idx`; the
+    // model notifies the view which draws the new rows.
+    tree_model_->insert_subtree(node_idx, sub);
+    tree_view_->expand(tree_model_->index_for_node(node_idx));
 }
 
 void SolvePanel::keyPressEvent(QKeyEvent* e) {

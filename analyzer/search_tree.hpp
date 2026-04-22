@@ -48,6 +48,20 @@ struct TreeNode {
     /// variation in this subtree (this move inclusive).
     BranchStats stats{};
 
+    /// Remaining search depth when this node was explored in
+    /// the main pass. A cap-bounded leaf with
+    /// `remaining_depth > 0` can be expanded lazily: a
+    /// sub-search from the node's position at this depth
+    /// reproduces what the main search did past the cap.
+    int remaining_depth = 0;
+
+    /// α-β window the main search ran this node with. Reused
+    /// verbatim by a lazy sub-search so the grafted subtree
+    /// matches the shape the original search would have
+    /// produced if the recorder had been deeper.
+    int alpha = 0;
+    int beta  = 0;
+
     int parent = -1;                 // -1 only for the sentinel root.
     std::vector<int> children;       // indices into `SearchTree::nodes`.
 };
@@ -83,6 +97,14 @@ public:
     /// still bolded.
     void mark_best_subtrees();
 
+    /// Paste `sub`'s non-sentinel nodes into this tree as a
+    /// new subtree under `parent_idx`. Indices inside `sub`
+    /// are shifted so they remain valid after grafting; `sub`
+    /// is unchanged. Used by the analyzer's lazy expansion —
+    /// a fresh mini-search produces a `SearchTree` that the
+    /// model then grafts into the display tree in-place.
+    void graft_under(int parent_idx, const SearchTree& sub);
+
 private:
     std::vector<TreeNode> nodes_;
 };
@@ -98,7 +120,9 @@ public:
     void begin_iteration(int depth) override;
     void enter(int ply, const Move& move) override;
     void leave(int ply, int score, bool was_cutoff,
-               const BranchStats& stats) override;
+               const BranchStats& stats,
+               int remaining_depth,
+               int alpha, int beta) override;
 
     /// Re-anchor to a fresh tree state (clears the node stack
     /// back to the sentinel root). Normally invoked from

@@ -52,6 +52,29 @@ void SearchTree::finalize_san(const Board8x8Mailbox& start) {
     san_dfs(*this, 0, work);
 }
 
+void SearchTree::graft_under(int parent_idx, const SearchTree& sub) {
+    // `sub`'s node 0 is its sentinel; its direct children
+    // become the new children of `parent_idx` in this tree.
+    // All other `sub` nodes append to our `nodes_` with
+    // indices shifted by `(offset = our_size - 1)` so sub's
+    // node i > 0 lands at our `offset + i`. Parent pointers
+    // are remapped the same way; sub's node-0-parent points
+    // at parent_idx.
+    const int offset = static_cast<int>(nodes_.size()) - 1;
+
+    for (int sc : sub.at(0).children) {
+        nodes_[static_cast<std::size_t>(parent_idx)].children
+            .push_back(offset + sc);
+    }
+
+    for (int i = 1; i < sub.size(); ++i) {
+        TreeNode n = sub.at(i);
+        n.parent = (n.parent == 0) ? parent_idx : offset + n.parent;
+        for (int& c : n.children) c = offset + c;
+        nodes_.push_back(std::move(n));
+    }
+}
+
 void SearchTree::mark_best_subtrees() {
     for (int i = 0; i < size(); ++i) {
         const auto& kids = at(i).children;
@@ -99,13 +122,18 @@ void SearchTreeRecorder::enter(int /*ply*/, const Move& move) {
 }
 
 void SearchTreeRecorder::leave(int /*ply*/, int score, bool was_cutoff,
-                               const BranchStats& stats) {
+                               const BranchStats& stats,
+                               int remaining_depth,
+                               int alpha, int beta) {
     const int idx = stack_.back();
     stack_.pop_back();
     TreeNode& n = tree_.at(idx);
     n.score = score;
     n.was_cutoff = was_cutoff;
     n.stats = stats;
+    n.remaining_depth = remaining_depth;
+    n.alpha = alpha;
+    n.beta  = beta;
 }
 
 } // namespace chesserazade::analyzer

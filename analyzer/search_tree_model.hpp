@@ -37,8 +37,24 @@ public:
     explicit SearchTreeModel(QObject* parent = nullptr);
 
     /// Re-anchor to a new tree (non-owning — the tree must
-    /// outlive the model). Pass `nullptr` to clear.
-    void set_tree(const SearchTree* tree);
+    /// outlive the model). Pass `nullptr` to clear. The
+    /// pointer is non-const so the model can graft sub-
+    /// searches into the tree in-place on lazy expansion.
+    void set_tree(SearchTree* tree);
+
+    /// Graft `sub`'s children under the tree node at index
+    /// `parent_node` and notify the view. Used by the panel
+    /// after a successful on-demand sub-search.
+    void insert_subtree(int parent_node, const SearchTree& sub);
+
+    /// Map an underlying tree-node index back to a column-0
+    /// QModelIndex. Useful to scroll to / re-expand a node
+    /// after the tree has been grafted.
+    [[nodiscard]] QModelIndex index_for_node(int node_idx) const;
+
+    [[nodiscard]] bool hasChildren(const QModelIndex& parent) const override;
+    [[nodiscard]] bool canFetchMore(const QModelIndex& parent) const override;
+    void fetchMore(const QModelIndex& parent) override;
 
     [[nodiscard]] QModelIndex index(int row, int column,
                                     const QModelIndex& parent) const override;
@@ -56,10 +72,16 @@ public:
     [[nodiscard]] std::vector<Move>
     moves_to(const QModelIndex& idx) const;
 
+signals:
+    /// A cap-bounded node was expanded by the user and has no
+    /// children yet. The panel runs a sub-search from that
+    /// node's position and calls `insert_subtree`.
+    void expansion_requested(int node_idx);
+
 private:
     [[nodiscard]] int node_of(const QModelIndex& idx) const noexcept;
 
-    const SearchTree* tree_ = nullptr;
+    SearchTree* tree_ = nullptr;
 };
 
 } // namespace chesserazade::analyzer

@@ -121,8 +121,17 @@ public:
     /// `enter`. `stats` aggregates captures / checks along the
     /// subtree's principal variation (this move down to its
     /// best-line leaf), including this move's own contribution.
+    /// `remaining_depth` is the search-ply budget this node's
+    /// own negamax ran with — useful for lazy re-search of a
+    /// cap-bounded subtree (expanding "+more" in the UI).
+    /// `alpha` / `beta` are the α-β window the main search was
+    /// running with at this node; a lazy sub-search that wants
+    /// to reproduce the same tree shape seeds its root with
+    /// exactly these bounds.
     virtual void leave(int ply, int score, bool was_cutoff,
-                       const BranchStats& stats) = 0;
+                       const BranchStats& stats,
+                       int remaining_depth,
+                       int alpha, int beta) = 0;
 };
 
 struct SearchResult {
@@ -213,6 +222,18 @@ public:
                                                 const SearchLimits& limits,
                                                 TranspositionTable* tt,
                                                 TreeRecorder* recorder);
+
+    /// Same as the four-argument overload but starts the root
+    /// α-β window at `alpha` / `beta` instead of the usual
+    /// ±INF. The analyzer's lazy subtree expansion uses this
+    /// to reproduce exactly the search conditions the main
+    /// pass ran with at a cap-bounded leaf, so the grafted
+    /// subtree matches in shape.
+    [[nodiscard]] static SearchResult find_best(Board& board,
+                                                const SearchLimits& limits,
+                                                TranspositionTable* tt,
+                                                TreeRecorder* recorder,
+                                                int alpha, int beta);
 
     /// True if `score` encodes a forced mate (won or lost).
     [[nodiscard]] static constexpr bool is_mate_score(int score) noexcept {

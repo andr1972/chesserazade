@@ -363,6 +363,14 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
             }
         }
 
+        // Snapshot the α the child will actually see. `alpha`
+        // may have improved earlier in this loop; that current
+        // value is what drives the recursive call's window, and
+        // it is what the child observed at its root. Persisting
+        // it lets a lazy sub-search seed the identical window.
+        const int child_alpha = -beta;
+        const int child_beta  = -alpha;
+
         BranchStats child_stats;
         const int score =
             -negamax(board, depth - 1, child_ply, -beta, -alpha,
@@ -374,7 +382,9 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         if (report_children) {
             const bool caused_cutoff = (score >= beta);
-            rec->leave(child_ply, score, caused_cutoff, combined);
+            rec->leave(child_ply, score, caused_cutoff, combined,
+                       /*remaining_depth=*/depth - 1,
+                       child_alpha, child_beta);
         }
 
         if (stop.abort) return 0;
@@ -415,9 +425,10 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 int iteration(Board& board, int depth, std::uint64_t& nodes,
               PvTable& pv, KillerTable& killers,
               Stop& stop, TranspositionTable* tt,
-              TreeRecorder* rec, BranchStats& out_stats) {
+              TreeRecorder* rec, BranchStats& out_stats,
+              int alpha, int beta) {
     return negamax(board, depth, /*ply=*/0,
-                   -Search::INF_SCORE, Search::INF_SCORE,
+                   alpha, beta,
                    nodes, pv, killers, stop, tt,
                    rec, out_stats);
 }
@@ -427,21 +438,32 @@ int iteration(Board& board, int depth, std::uint64_t& nodes,
 SearchResult Search::find_best(Board& board, int depth) {
     SearchLimits l;
     l.max_depth = depth;
-    return find_best(board, l, nullptr, nullptr);
+    return find_best(board, l, nullptr, nullptr,
+                     -INF_SCORE, INF_SCORE);
 }
 
 SearchResult Search::find_best(Board& board, const SearchLimits& limits) {
-    return find_best(board, limits, nullptr, nullptr);
+    return find_best(board, limits, nullptr, nullptr,
+                     -INF_SCORE, INF_SCORE);
 }
 
 SearchResult Search::find_best(Board& board, const SearchLimits& limits,
                                TranspositionTable* tt) {
-    return find_best(board, limits, tt, nullptr);
+    return find_best(board, limits, tt, nullptr,
+                     -INF_SCORE, INF_SCORE);
 }
 
 SearchResult Search::find_best(Board& board, const SearchLimits& limits,
                                TranspositionTable* tt,
                                TreeRecorder* recorder) {
+    return find_best(board, limits, tt, recorder,
+                     -INF_SCORE, INF_SCORE);
+}
+
+SearchResult Search::find_best(Board& board, const SearchLimits& limits,
+                               TranspositionTable* tt,
+                               TreeRecorder* recorder,
+                               int alpha, int beta) {
     SearchResult result;
 
     int max_depth = limits.max_depth;
@@ -497,7 +519,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         if (recorder != nullptr) recorder->begin_iteration(d);
         const int score =
             iteration(board, d, result.nodes, pv, killers, stop, tt,
-                      recorder, pv_stats);
+                      recorder, pv_stats, alpha, beta);
 
         if (stop.abort) {
             result.nodes = nodes_before;

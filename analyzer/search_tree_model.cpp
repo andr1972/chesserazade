@@ -10,10 +10,69 @@ namespace chesserazade::analyzer {
 SearchTreeModel::SearchTreeModel(QObject* parent)
     : QAbstractItemModel(parent) {}
 
-void SearchTreeModel::set_tree(const SearchTree* tree) {
+void SearchTreeModel::set_tree(SearchTree* tree) {
     beginResetModel();
     tree_ = tree;
     endResetModel();
+}
+
+QModelIndex SearchTreeModel::index_for_node(int node_idx) const {
+    if (tree_ == nullptr) return {};
+    if (node_idx == 0) return createIndex(0, 0, static_cast<quintptr>(0));
+    if (node_idx < 0 || node_idx >= tree_->size()) return {};
+    const int p = tree_->at(node_idx).parent;
+    if (p < 0) return {};
+    const auto& sibs = tree_->at(p).children;
+    for (std::size_t i = 0; i < sibs.size(); ++i) {
+        if (sibs[i] == node_idx) {
+            return createIndex(static_cast<int>(i), 0,
+                               static_cast<quintptr>(node_idx));
+        }
+    }
+    return {};
+}
+
+bool SearchTreeModel::hasChildren(const QModelIndex& parent) const {
+    if (tree_ == nullptr) return false;
+    if (!parent.isValid()) return true;     // invisible root → sentinel
+    const int n = node_of(parent);
+    if (n < 0 || n >= tree_->size()) return false;
+    const TreeNode& node = tree_->at(n);
+    if (!node.children.empty()) return true;
+    // Sentinel always shows children; cap-bounded leaves get
+    // an arrow if the main search could have gone deeper —
+    // the user expands, the panel runs a mini-search, the
+    // children appear.
+    if (n == 0) return true;
+    return node.remaining_depth > 0;
+}
+
+bool SearchTreeModel::canFetchMore(const QModelIndex& parent) const {
+    if (tree_ == nullptr || !parent.isValid()) return false;
+    const int n = node_of(parent);
+    if (n <= 0 || n >= tree_->size()) return false;
+    const TreeNode& node = tree_->at(n);
+    return node.children.empty() && node.remaining_depth > 0;
+}
+
+void SearchTreeModel::fetchMore(const QModelIndex& parent) {
+    if (tree_ == nullptr || !parent.isValid()) return;
+    const int n = node_of(parent);
+    if (n <= 0 || n >= tree_->size()) return;
+    emit expansion_requested(n);
+}
+
+void SearchTreeModel::insert_subtree(int parent_node, const SearchTree& sub) {
+    if (tree_ == nullptr || parent_node < 0
+        || parent_node >= tree_->size()) return;
+    const int add = static_cast<int>(sub.at(0).children.size());
+    if (add == 0) return;
+    const QModelIndex pidx = index_for_node(parent_node);
+    const int existing = static_cast<int>(
+        tree_->at(parent_node).children.size());
+    beginInsertRows(pidx, existing, existing + add - 1);
+    tree_->graft_under(parent_node, sub);
+    endInsertRows();
 }
 
 int SearchTreeModel::node_of(const QModelIndex& idx) const noexcept {
