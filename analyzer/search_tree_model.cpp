@@ -70,42 +70,28 @@ void SearchTreeModel::recompute_filter() {
             depth[static_cast<std::size_t>(tree_->at(i).parent)] + 1;
     }
 
-    // For each non-sentinel node collect the ancestor chain
-    // and test the filter. std::vector<char> (not <bool>) to
-    // sidestep the bit-reference machinery that confuses GCC's
-    // -Wnull-dereference in release builds.
+    // A node matches iff IT is at a selected ply AND itself
+    // exhibits the event. That is: a ply-2 match means "this
+    // move is a ply-2 capture", not "this move's ply-2
+    // ancestor was a capture". Earlier code checked the whole
+    // ancestor chain, which made every descendant of a
+    // capturing ply-2 move inherit its match and brought in
+    // every deeper sibling too.
     std::vector<char> match(static_cast<std::size_t>(n), 0);
     for (int i = 1; i < n; ++i) {
-        const int d = depth[static_cast<std::size_t>(i)];
-        std::vector<char> cap_at(static_cast<std::size_t>(d) + 1, 0);
-        std::vector<char> chk_at(static_cast<std::size_t>(d) + 1, 0);
-        for (int cur = i; cur > 0;
-             cur = tree_->at(cur).parent) {
-            const int dep = depth[static_cast<std::size_t>(cur)];
-            cap_at[static_cast<std::size_t>(dep)] =
-                is_capture_move(tree_->at(cur).move) ? 1 : 0;
-            chk_at[static_cast<std::size_t>(dep)] =
-                tree_->at(cur).gives_check ? 1 : 0;
-        }
-
+        const int my_ply = depth[static_cast<std::size_t>(i)];
+        const std::size_t idx = static_cast<std::size_t>(my_ply - 1);
         bool any = false;
-        for (std::size_t p = 0;
-             p < filter_.captures_on_ply.size()
-             && p + 1 < cap_at.size();
-             ++p) {
-            if (filter_.captures_on_ply[p] && cap_at[p + 1]) {
-                any = true; break;
-            }
+        if (idx < filter_.captures_on_ply.size()
+            && filter_.captures_on_ply[idx]
+            && is_capture_move(tree_->at(i).move)) {
+            any = true;
         }
-        if (!any) {
-            for (std::size_t p = 0;
-                 p < filter_.checks_on_ply.size()
-                 && p + 1 < chk_at.size();
-                 ++p) {
-                if (filter_.checks_on_ply[p] && chk_at[p + 1]) {
-                    any = true; break;
-                }
-            }
+        if (!any
+            && idx < filter_.checks_on_ply.size()
+            && filter_.checks_on_ply[idx]
+            && tree_->at(i).gives_check) {
+            any = true;
         }
         match[static_cast<std::size_t>(i)] = any ? 1 : 0;
     }
