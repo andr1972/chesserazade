@@ -62,6 +62,60 @@ struct SearchLimits {
     std::uint64_t node_budget = 0;
 };
 
+/// Cumulative capture-value and check-giving counts along a
+/// principal-variation branch. Captures are expressed in
+/// centipawn units (pawn = 100, knight = 320, …; see
+/// `piece_value` in `evaluator.hpp`); a count of 1 in
+/// `checks_white` means the white side gave check once on
+/// this branch.
+///
+/// Capture totals are maintained unconditionally — they come
+/// straight from `Move::captured_piece` at zero cost. Check
+/// counts require an after-move attack scan, so they are only
+/// populated when a `TreeRecorder` is attached to the search.
+struct BranchStats {
+    int captures_white = 0;
+    int captures_black = 0;
+    int checks_white   = 0;
+    int checks_black   = 0;
+};
+
+/// Observer invoked by `Search::find_best` at every node up to
+/// `ply_cap()`. Exists to feed a tree-view in a GUI (the 1.3
+/// Qt analyzer) without storing the full search tree —
+/// `Search` still explores nodes beyond the cap, but it does
+/// not call back into the recorder for them.
+///
+/// Event order per node: `enter(ply, move)` before the
+/// recursive descent, `leave(ply, score, was_cutoff, stats)`
+/// after. Root moves enter at `ply = 1`. Calls pair up: every
+/// `enter` is matched by exactly one `leave`.
+///
+/// `was_cutoff` is `true` when this move's score caused its
+/// parent to break out of the move loop (fail-high >= beta).
+/// Moves that never ran because a sibling cut first are not
+/// visible at all — by design, per 1.3.0 §"alpha-beta
+/// cutoffs".
+class TreeRecorder {
+public:
+    virtual ~TreeRecorder() = default;
+
+    /// Maximum ply the recorder wants to see. Nodes deeper
+    /// than this are searched but not reported.
+    [[nodiscard]] virtual int ply_cap() const noexcept = 0;
+
+    /// About to recurse into `move` at depth `ply`. `ply` is
+    /// 1-based — root children are at ply 1.
+    virtual void enter(int ply, const Move& move) = 0;
+
+    /// Finished searching the subtree under the matching
+    /// `enter`. `stats` aggregates captures / checks along the
+    /// subtree's principal variation (this move down to its
+    /// best-line leaf), including this move's own contribution.
+    virtual void leave(int ply, int score, bool was_cutoff,
+                       const BranchStats& stats) = 0;
+};
+
 struct SearchResult {
     /// Best move at the root. Default-constructed if the position
     /// has no legal moves (mate or stalemate at the root itself).
@@ -95,6 +149,12 @@ struct SearchResult {
     /// TT is supplied to `find_best`, these remain zero.
     std::uint64_t tt_probes = 0;
     std::uint64_t tt_hits   = 0;
+
+    /// Captures and checks along the principal variation from
+    /// the root through to the leaf. Capture values are always
+    /// populated; `checks_white` / `checks_black` remain zero
+    /// unless a `TreeRecorder` was attached to the search.
+    BranchStats pv_stats;
 };
 
 class Search {
@@ -133,6 +193,17 @@ public:
     [[nodiscard]] static SearchResult find_best(Board& board,
                                                 const SearchLimits& limits,
                                                 TranspositionTable* tt);
+
+    /// Find the best move with an attached `TreeRecorder`. The
+    /// recorder is called at every node up to its `ply_cap()`.
+    /// When `recorder != nullptr`, per-node check detection is
+    /// enabled and `SearchResult::pv_stats.checks_*` are
+    /// populated. Pass `nullptr` for behaviour identical to
+    /// the three-argument overload.
+    [[nodiscard]] static SearchResult find_best(Board& board,
+                                                const SearchLimits& limits,
+                                                TranspositionTable* tt,
+                                                TreeRecorder* recorder);
 
     /// True if `score` encodes a forced mate (won or lost).
     [[nodiscard]] static constexpr bool is_mate_score(int score) noexcept {

@@ -120,6 +120,20 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
         || m.kind == MoveKind::PromotionCapture;
 }
 
+/// Centipawn value of the piece removed by `m`, or 0 for non-
+/// captures. En-passant captures always take a pawn.
+[[nodiscard]] int capture_value(const Move& m) noexcept {
+    switch (m.kind) {
+        case MoveKind::Capture:
+        case MoveKind::PromotionCapture:
+            return piece_value(m.captured_piece.type);
+        case MoveKind::EnPassant:
+            return piece_value(PieceType::Pawn);
+        default:
+            return 0;
+    }
+}
+
 /// MVV-LVA score: 10 * value(victim) - value(attacker). Rewards
 /// trading our cheap piece for their expensive one. En-passant
 /// captures always take a pawn so we plug in PAWN explicitly.
@@ -247,10 +261,24 @@ int quiesce(Board& board, int alpha, int beta,
 // Main negamax
 // ---------------------------------------------------------------------------
 
+/// Add two `BranchStats` field-wise. Small enough that the
+/// compiler inlines the four adds.
+[[nodiscard]] BranchStats combine(const BranchStats& a,
+                                  const BranchStats& b) noexcept {
+    return {
+        a.captures_white + b.captures_white,
+        a.captures_black + b.captures_black,
+        a.checks_white   + b.checks_white,
+        a.checks_black   + b.checks_black,
+    };
+}
+
 int negamax(Board& board, int depth, int ply, int alpha, int beta,
             std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
-            Stop& stop, TranspositionTable* tt) {
+            Stop& stop, TranspositionTable* tt,
+            TreeRecorder* rec, BranchStats& out_stats) {
     ++nodes;
+    out_stats = {};
 
     const std::size_t p = static_cast<std::size_t>(ply);
     pv.length[p] = 0;
@@ -300,14 +328,54 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 
     const int original_alpha = alpha;
     Move best_move{};
+    BranchStats best_stats;
+
+    const int child_ply = ply + 1;
+    const bool report_children =
+        (rec != nullptr) && child_ply <= rec->ply_cap();
 
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = buf[i].move;
+        const Color mover = board.side_to_move();
+
+        // Per-move stat delta. Capture value is free from the
+        // move itself; check detection needs an after-move probe
+        // and is only paid when a recorder is attached.
+        BranchStats delta;
+        const int cap_val = capture_value(m);
+        if (cap_val > 0) {
+            if (mover == Color::White) delta.captures_white = cap_val;
+            else                       delta.captures_black = cap_val;
+        }
+
+        if (report_children) rec->enter(child_ply, m);
+
         board.make_move(m);
+
+        if (rec != nullptr) {
+            // Did this move give check? Probe the post-move
+            // board: the side *to* move is now the opponent;
+            // we ask whether they are in check.
+            const Color them = board.side_to_move();
+            if (MoveGenerator::is_in_check(board, them)) {
+                if (mover == Color::White) delta.checks_white = 1;
+                else                       delta.checks_black = 1;
+            }
+        }
+
+        BranchStats child_stats;
         const int score =
-            -negamax(board, depth - 1, ply + 1, -beta, -alpha,
-                     nodes, pv, killers, stop, tt);
+            -negamax(board, depth - 1, child_ply, -beta, -alpha,
+                     nodes, pv, killers, stop, tt,
+                     rec, child_stats);
         board.unmake_move(m);
+
+        const BranchStats combined = combine(delta, child_stats);
+
+        if (report_children) {
+            const bool caused_cutoff = (score >= beta);
+            rec->leave(child_ply, score, caused_cutoff, combined);
+        }
 
         if (stop.abort) return 0;
 
@@ -317,11 +385,13 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
                 tt->store(key, depth, to_tt_score(beta, ply),
                           TtBound::Lower, m);
             }
+            out_stats = combined;
             return beta;
         }
         if (score > alpha) {
             alpha = score;
             best_move = m;
+            best_stats = combined;
             pv.moves[p][0] = m;
             const std::size_t child_len = pv.length[p + 1];
             for (std::size_t j = 0; j < child_len; ++j) {
@@ -338,15 +408,18 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         tt->store(key, depth, to_tt_score(alpha, ply), bound, best_move);
     }
 
+    out_stats = best_stats;
     return alpha;
 }
 
 int iteration(Board& board, int depth, std::uint64_t& nodes,
               PvTable& pv, KillerTable& killers,
-              Stop& stop, TranspositionTable* tt) {
+              Stop& stop, TranspositionTable* tt,
+              TreeRecorder* rec, BranchStats& out_stats) {
     return negamax(board, depth, /*ply=*/0,
                    -Search::INF_SCORE, Search::INF_SCORE,
-                   nodes, pv, killers, stop, tt);
+                   nodes, pv, killers, stop, tt,
+                   rec, out_stats);
 }
 
 } // namespace
@@ -354,15 +427,21 @@ int iteration(Board& board, int depth, std::uint64_t& nodes,
 SearchResult Search::find_best(Board& board, int depth) {
     SearchLimits l;
     l.max_depth = depth;
-    return find_best(board, l, nullptr);
+    return find_best(board, l, nullptr, nullptr);
 }
 
 SearchResult Search::find_best(Board& board, const SearchLimits& limits) {
-    return find_best(board, limits, nullptr);
+    return find_best(board, limits, nullptr, nullptr);
 }
 
 SearchResult Search::find_best(Board& board, const SearchLimits& limits,
                                TranspositionTable* tt) {
+    return find_best(board, limits, tt, nullptr);
+}
+
+SearchResult Search::find_best(Board& board, const SearchLimits& limits,
+                               TranspositionTable* tt,
+                               TreeRecorder* recorder) {
     SearchResult result;
 
     int max_depth = limits.max_depth;
@@ -414,8 +493,10 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
     for (int d = 1; d <= max_depth; ++d) {
         PvTable pv;
         const std::uint64_t nodes_before = result.nodes;
+        BranchStats pv_stats;
         const int score =
-            iteration(board, d, result.nodes, pv, killers, stop, tt);
+            iteration(board, d, result.nodes, pv, killers, stop, tt,
+                      recorder, pv_stats);
 
         if (stop.abort) {
             result.nodes = nodes_before;
@@ -424,6 +505,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
 
         result.score = score;
         result.completed_depth = d;
+        result.pv_stats = pv_stats;
         const std::size_t pv_len = pv.length[0];
         result.best_move =
             pv_len > 0 ? pv.moves[0][0] : *root_moves.begin();
