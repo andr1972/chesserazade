@@ -30,6 +30,11 @@ SolvePanel::SolvePanel(QWidget* parent)
       position_(*Board8x8Mailbox::from_fen(STARTING_POSITION_FEN)) {
     setFocusPolicy(Qt::StrongFocus);
 
+    // Create the tree model up-front so later widget wiring
+    // (the Lazy checkbox, the tree view itself) can connect
+    // into it without hitting a nullptr receiver.
+    tree_model_ = new SearchTreeModel(this);
+
     auto* outer = new QVBoxLayout(this);
 
     header_ = new QLabel(this);
@@ -138,7 +143,6 @@ SolvePanel::SolvePanel(QWidget* parent)
     tree_label->setFont(tl_font);
     tree_lay->addWidget(tree_label);
 
-    tree_model_ = new SearchTreeModel(this);
     tree_view_ = new QTreeView(tree_group);
     tree_view_->setModel(tree_model_);
     tree_view_->setUniformRowHeights(true);
