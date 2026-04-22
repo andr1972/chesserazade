@@ -383,15 +383,20 @@ void SolvePanel::on_expansion_requested(int node_idx) {
         for (const Move& m : chain) board.make_move(m);
     }
 
-    // Run a bounded sub-search with the original α-β window so
-    // the grafted subtree matches what the main pass would
-    // have produced beyond the recorder cap. Recorder cap for
-    // the sub-tree reuses the user's panel-level spinner.
+    // Each click should always reveal at least `cap` more plies
+    // — "potem klik, czekamy i wypełniają się dalsze trzy".
+    // If the main pass happened to search deeper than that
+    // from this node (`remaining_depth > cap`), we use the
+    // original budget so the grafted subtree matches what the
+    // main search would have seen. Otherwise we intentionally
+    // go past main's budget so the click still yields a full
+    // cap's worth of new nesting.
+    const int cap = tree_cap_spin_->value();
     SearchLimits lim;
-    lim.max_depth = node.remaining_depth;
+    lim.max_depth = std::max(node.remaining_depth, cap);
 
     SearchTree sub;
-    SearchTreeRecorder sub_rec(sub, tree_cap_spin_->value());
+    SearchTreeRecorder sub_rec(sub, cap);
 
     (void)Search::find_best(board, lim, /*tt=*/nullptr, &sub_rec,
                             node.alpha, node.beta);
