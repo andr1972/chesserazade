@@ -87,12 +87,15 @@ void SearchTreeModel::insert_subtree(int parent_node, const SearchTree& sub) {
     }
     const int add = static_cast<int>(sub.at(0).children.size());
     if (add == 0) return;
-    const QModelIndex pidx = index_for_node(parent_node);
-    const int existing = static_cast<int>(
-        tree_->at(parent_node).children.size());
-    beginInsertRows(pidx, existing, existing + add - 1);
+    // Brute-force a full model reset. beginInsertRows under a
+    // not-yet-expanded parent turned out to leave Qt with a
+    // stale row-count cache — new rows rendered at the wrong
+    // nesting depth (as siblings of the parent rather than
+    // its children). Grafting inside a reset is heavier but
+    // makes the view re-query every index from scratch.
+    beginResetModel();
     tree_->graft_under(parent_node, sub);
-    endInsertRows();
+    endResetModel();
 }
 
 int SearchTreeModel::node_of(const QModelIndex& idx) const noexcept {

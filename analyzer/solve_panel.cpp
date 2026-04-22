@@ -376,7 +376,20 @@ void SolvePanel::on_expansion_requested(int node_idx) {
     // Splice the new subtree in-place under `node_idx`; the
     // model notifies the view which draws the new rows.
     tree_model_->insert_subtree(node_idx, sub);
-    tree_view_->expand(tree_model_->index_for_node(node_idx));
+
+    // insert_subtree currently does a full beginResetModel,
+    // so every expanded row got collapsed. Walk back up to
+    // the sentinel and re-expand each ancestor so the grafted
+    // subtree is visible without a second click.
+    std::vector<int> ancestors;
+    for (int cur = node_idx; cur >= 0;
+         cur = (cur == 0 ? -1 : tree_.at(cur).parent)) {
+        ancestors.push_back(cur);
+    }
+    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
+        const QModelIndex ix = tree_model_->index_for_node(*it);
+        if (ix.isValid()) tree_view_->expand(ix);
+    }
 }
 
 void SolvePanel::keyPressEvent(QKeyEvent* e) {
