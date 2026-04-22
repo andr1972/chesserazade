@@ -70,6 +70,12 @@ void MainWindow::open_fetch_dialog() {
     if (pgn.isEmpty()) return;
     loaded_pgn_path_ = pgn;
     if (game_list_ != nullptr && game_list_->load(pgn)) {
+        // Whatever page the user was on (game view, solve
+        // panel), a fresh fetch should surface the newly-
+        // indexed list so they can pick a game. Otherwise they
+        // get stuck on the previously-open board with no
+        // obvious way back to the list.
+        stack_->setCurrentWidget(game_list_);
         statusBar()->showMessage(
             tr("Loaded %1").arg(QFileInfo(pgn).fileName()));
     } else {
