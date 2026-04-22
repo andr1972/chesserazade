@@ -17,10 +17,14 @@ namespace {
 /// black pieces U+265A..U+265F.
 [[nodiscard]] QString glyph_for(const Piece& p) {
     if (p.type == PieceType::None) return {};
+    // PieceType enum is ordered Pawn=1, Knight=2, Bishop=3,
+    // Rook=4, Queen=5, King=6 — NOT the Unicode code-point
+    // order (♔=King first). Arrays here follow the enum so
+    // `WHITE[PieceType - 1]` lines up correctly.
     static constexpr char32_t WHITE[] =
-        {U'♔', U'♕', U'♖', U'♗', U'♘', U'♙'};
+        {U'♙', U'♘', U'♗', U'♖', U'♕', U'♔'};
     static constexpr char32_t BLACK[] =
-        {U'♚', U'♛', U'♜', U'♝', U'♞', U'♟'};
+        {U'♟', U'♞', U'♝', U'♜', U'♛', U'♚'};
     const std::size_t idx =
         static_cast<std::size_t>(p.type) - 1;  // skip PieceType::None
     if (idx >= 6) return {};
