@@ -126,6 +126,16 @@ SolvePanel::SolvePanel(QWidget* parent)
         "explodes fast)."));
     cap_row->addWidget(ab_check_);
 
+    qs_check_ = new QCheckBox(tr("quiesce"), right);
+    qs_check_->setChecked(true);
+    qs_check_->setToolTip(tr(
+        "Quiescence search — at the horizon keep following "
+        "captures until the position is quiet, then evaluate. "
+        "Turn off to see the raw static eval at the horizon "
+        "(horizon effect visible: mid-trade positions score "
+        "as if the trade never happened)."));
+    cap_row->addWidget(qs_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -248,6 +258,7 @@ SolveBudget SolvePanel::current_budget() const {
     SolveBudget b;
     b.tree_cap = tree_cap_spin_->value();
     b.disable_alpha_beta = !ab_check_->isChecked();
+    b.disable_quiescence = !qs_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();
@@ -419,6 +430,7 @@ void SolvePanel::on_expansion_requested(int node_idx) {
     SearchLimits lim;
     lim.max_depth = node.remaining_depth;
     lim.disable_alpha_beta = !ab_check_->isChecked();
+    lim.disable_quiescence = !qs_check_->isChecked();
 
     SearchTree sub;
     SearchTreeRecorder sub_rec(sub, tree_cap_spin_->value());

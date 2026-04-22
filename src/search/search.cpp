@@ -76,6 +76,7 @@ struct Stop {
     std::chrono::milliseconds time_budget;
     std::uint64_t node_budget;
     bool disable_alpha_beta = false;
+    bool disable_quiescence = false;
     bool abort = false;
 
     bool should_stop(std::uint64_t nodes_so_far) noexcept {
@@ -316,6 +317,11 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 
     // --- Horizon: quiesce ---------------------------------------------
     if (depth == 0) {
+        if (stop.disable_quiescence) {
+            // Raw static eval — horizon effect visible. User
+            // opt-in to see what "pure depth-N minimax" gives.
+            return evaluate(board);
+        }
         return quiesce(board, alpha, beta, nodes, stop);
     }
 
@@ -491,6 +497,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.time_budget,
         limits.node_budget,
         limits.disable_alpha_beta,
+        limits.disable_quiescence,
         false,
     };
 

@@ -66,6 +66,7 @@ void SolveWorker::start() {
         SearchLimits lim;
         lim.max_depth = d;
         lim.disable_alpha_beta = budget_.disable_alpha_beta;
+        lim.disable_quiescence = budget_.disable_quiescence;
         if (budget_ms > 0) {
             const auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(

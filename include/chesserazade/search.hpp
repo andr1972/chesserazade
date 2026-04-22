@@ -69,6 +69,13 @@ struct SearchLimits {
     /// they would carry over α-β assumptions; Exact entries
     /// remain valid.
     bool disable_alpha_beta = false;
+
+    /// Skip quiescence search at the horizon and return the
+    /// static evaluator directly. Lets a caller see what the
+    /// raw depth-N score looks like without the capture-chain
+    /// follow-through that normally papers over the horizon
+    /// effect.
+    bool disable_quiescence = false;
 };
 
 /// Cumulative capture-value and check-giving counts along a
