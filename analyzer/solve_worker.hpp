@@ -42,6 +42,7 @@ struct SolveBudget {
     bool root_full_window   = false;  ///< Exact root-move scores.
     bool use_tt             = true;   ///< Consult the TT.
     bool use_incremental_eval = false; ///< O(1) cached eval.
+    bool use_bitboard       = false;  ///< Search on BoardBitboard.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called

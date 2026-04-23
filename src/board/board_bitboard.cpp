@@ -21,15 +21,25 @@ void BoardBitboard::clear() noexcept {
     halfmove_ = 0;
     fullmove_ = 1;
     zobrist_ = 0;
+    eval_score_ = 0;
     history_.clear();
 }
 
 int BoardBitboard::evaluate_incremental() const noexcept {
-    return evaluate(*this);
+    return (side_ == Color::White) ? eval_score_ : -eval_score_;
 }
 
 void BoardBitboard::recompute_zobrist() noexcept {
     zobrist_ = compute_zobrist_key(*this);
+}
+
+void BoardBitboard::recompute_eval() noexcept {
+    int s = 0;
+    for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
+        const Square sq = static_cast<Square>(i);
+        s += piece_contribution(piece_at(sq), sq);
+    }
+    eval_score_ = s;
 }
 
 void BoardBitboard::set_piece_at(Square s, Piece p) noexcept {
@@ -91,6 +101,7 @@ void BoardBitboard::remove_piece(Square s, Piece p) noexcept {
     color_[c]    &= ~mask;
     occ_         &= ~mask;
     zobrist_     ^= Zobrist::piece(p, s);
+    eval_score_  -= piece_contribution(p, s);
 }
 
 void BoardBitboard::add_piece(Square s, Piece p) noexcept {
@@ -101,6 +112,7 @@ void BoardBitboard::add_piece(Square s, Piece p) noexcept {
     color_[c]    |= mask;
     occ_         |= mask;
     zobrist_     ^= Zobrist::piece(p, s);
+    eval_score_  += piece_contribution(p, s);
 }
 
 void BoardBitboard::move_piece(Square from, Square to, Piece p) noexcept {
@@ -344,6 +356,7 @@ BoardBitboard::from_fen(std::string_view fen) {
     b.set_halfmove_clock(fields->halfmove);
     b.set_fullmove_number(fields->fullmove);
     b.recompute_zobrist();
+    b.recompute_eval();
     return b;
 }
 

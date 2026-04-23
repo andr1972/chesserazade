@@ -1,11 +1,16 @@
 #include "solve_worker.hpp"
 
+#include "board/board_bitboard.hpp"
+
+#include <chesserazade/board.hpp>
+#include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
 #include <chesserazade/transposition_table.hpp>
 
 #include <QDateTime>
 
 #include <chrono>
+#include <memory>
 
 namespace chesserazade::analyzer {
 
@@ -87,10 +92,26 @@ void SolveWorker::start() {
         }
 
         recorder.reset();
-        Board8x8Mailbox work = start_;
+        // Search works against `Board&`, so we instantiate the
+        // concrete type the user picked and pass the reference
+        // in. Bitboard path copies the starting position's FEN
+        // so make/unmake in search doesn't mutate the mailbox
+        // snapshot the analyzer's UI holds.
+        std::unique_ptr<Board> work;
+        if (budget_.use_bitboard) {
+            const std::string fen = serialize_fen(start_);
+            auto bb = BoardBitboard::from_fen(fen);
+            if (bb) {
+                work = std::make_unique<BoardBitboard>(std::move(*bb));
+            }
+        }
+        if (work == nullptr) {
+            work = std::make_unique<Board8x8Mailbox>(start_);
+        }
+
         TranspositionTable* tt_arg = budget_.use_tt ? &tt : nullptr;
         const SearchResult r =
-            Search::find_best(work, lim, tt_arg, &recorder);
+            Search::find_best(*work, lim, tt_arg, &recorder);
 
         if (r.completed_depth < d) {
             // Budget exhausted mid-iteration — the tree in

@@ -172,6 +172,17 @@ SolvePanel::SolvePanel(QWidget* parent)
         "toggle to measure the saving."));
     cap_row->addWidget(incr_eval_check_);
 
+    bitboard_check_ = new QCheckBox(tr("bitboard"), right);
+    bitboard_check_->setChecked(false);
+    bitboard_check_->setToolTip(tr(
+        "Run the search on BoardBitboard (magic / PEXT slider "
+        "attacks, popcount-based move generation) instead of "
+        "the default mailbox. Move generation is 3–5× faster "
+        "in perft terms; in search the total speedup is "
+        "typically 2× because eval, TT and ordering share the "
+        "cost."));
+    cap_row->addWidget(bitboard_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -322,6 +333,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.root_full_window   =  rfw_check_->isChecked();
     b.use_tt             =  tt_check_->isChecked();
     b.use_incremental_eval = incr_eval_check_->isChecked();
+    b.use_bitboard         = bitboard_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();

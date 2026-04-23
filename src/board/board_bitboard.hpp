@@ -49,9 +49,11 @@ public:
     [[nodiscard]] int fullmove_number() const noexcept override { return fullmove_; }
     [[nodiscard]] ZobristKey zobrist_key() const noexcept override { return zobrist_; }
 
-    /// Fallback: bitboard does not maintain an incremental
-    /// eval cache, so return the full-scan result. Mailbox
-    /// overrides this with an O(1) cached lookup.
+    /// O(1) evaluator: returns the incrementally-maintained
+    /// material + PST score (set by `add_piece` /
+    /// `remove_piece` on every mutation), adjusted for the
+    /// side to move. Kept in parity with the full scan of
+    /// `evaluate(board)` by construction.
     [[nodiscard]] int evaluate_incremental() const noexcept override;
 
     // Board interface — mutation (stubbed in 1.1.2; real in 1.1.3) ----
@@ -59,6 +61,11 @@ public:
     void unmake_move(const Move& m) noexcept override;
 
     void recompute_zobrist() noexcept;
+    /// Re-derive `eval_score_` by summing every square's
+    /// contribution from scratch. Call after any code path
+    /// that populated the board via `set_piece_at` (which
+    /// bypasses the `add_piece` / `remove_piece` hooks).
+    void recompute_eval() noexcept;
 
     // FEN-level setters ----------------------------------------------
     void clear() noexcept;
@@ -129,6 +136,10 @@ private:
     int halfmove_ = 0;
     int fullmove_ = 1;
     ZobristKey zobrist_ = 0;
+
+    /// Material + PST running sum from White's perspective,
+    /// maintained by `add_piece` / `remove_piece`.
+    int eval_score_ = 0;
 
     // History stack for unmake_move, populated in 1.1.3.
     struct StateSnapshot {
