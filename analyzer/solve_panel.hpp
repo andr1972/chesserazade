@@ -99,6 +99,7 @@ private:
     QCheckBox*    ab_check_      = nullptr;
     QCheckBox*    qs_check_      = nullptr;
     QCheckBox*    rfw_check_     = nullptr;
+    QCheckBox*    tt_check_      = nullptr;
 
     QPushButton*  run_btn_  = nullptr;
     QPushButton*  back_btn_ = nullptr;

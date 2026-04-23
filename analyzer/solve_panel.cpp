@@ -152,6 +152,17 @@ SolvePanel::SolvePanel(QWidget* parent)
         "the root — useful for analysis, off for speed."));
     cap_row->addWidget(rfw_check_);
 
+    tt_check_ = new QCheckBox(tr("TT"), right);
+    tt_check_->setChecked(true);
+    tt_check_->setToolTip(tr(
+        "Transposition table — caches per-position scores "
+        "keyed by Zobrist hash. Speeds up every search above "
+        "depth 2: transpositions skipped directly, and the "
+        "previous iteration's best move becomes the TT move "
+        "that tightens α-β cutoffs. Turn off to see the cost "
+        "of pure search without caching."));
+    cap_row->addWidget(tt_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -300,6 +311,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.disable_alpha_beta = !ab_check_->isChecked();
     b.disable_quiescence = !qs_check_->isChecked();
     b.root_full_window   =  rfw_check_->isChecked();
+    b.use_tt             =  tt_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();

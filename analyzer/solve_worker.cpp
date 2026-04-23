@@ -87,7 +87,9 @@ void SolveWorker::start() {
 
         recorder.reset();
         Board8x8Mailbox work = start_;
-        const SearchResult r = Search::find_best(work, lim, &tt, &recorder);
+        TranspositionTable* tt_arg = budget_.use_tt ? &tt : nullptr;
+        const SearchResult r =
+            Search::find_best(work, lim, tt_arg, &recorder);
 
         if (r.completed_depth < d) {
             // Budget exhausted mid-iteration — the tree in

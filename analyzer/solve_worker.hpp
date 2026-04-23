@@ -40,6 +40,7 @@ struct SolveBudget {
     bool disable_alpha_beta = false;  ///< Run plain minimax.
     bool disable_quiescence = false;  ///< Skip capture follow-through.
     bool root_full_window   = false;  ///< Exact root-move scores.
+    bool use_tt             = true;   ///< Consult the TT.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called
