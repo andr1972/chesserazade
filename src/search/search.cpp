@@ -276,6 +276,8 @@ int quiesce(Board& board, int alpha, int beta,
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
 
     BranchStats best_stats;
+    int best_score = stand_pat; // stand-pat is the floor
+
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = buf[i].move;
         const Color mover = board.side_to_move();
@@ -295,17 +297,18 @@ int quiesce(Board& board, int alpha, int beta,
         if (stop.abort) return 0;
 
         const BranchStats combined = combine(delta, child_stats);
+        if (score > best_score) {
+            best_score = score;
+            best_stats = combined;
+        }
+        if (score > alpha) alpha = score;
         if (!stop.disable_alpha_beta && score >= beta) {
             out_stats = combined;
             return score;
         }
-        if (score > alpha) {
-            alpha = score;
-            best_stats = combined;
-        }
     }
     out_stats = best_stats;
-    return alpha;
+    return best_score;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +387,12 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
     const int original_alpha = alpha;
     Move best_move{};
     BranchStats best_stats;
+    // `best_score` tracks the best result actually observed in
+    // this subtree, independent of the starting α. Returning
+    // it (fail-soft) preserves the true magnitude for fail-
+    // low nodes: a move that's clearly worse than the current
+    // best at root no longer masquerades as the alpha bound.
+    int best_score = -Search::INF_SCORE;
 
     const int child_ply = ply + 1;
     const bool report_children =
@@ -453,19 +462,13 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         if (stop.abort) return 0;
 
-        if (!stop.disable_alpha_beta && score >= beta) {
-            remember_killer(killers, p, m);
-            if (tt != nullptr) {
-                tt->store(key, depth, to_tt_score(score, ply),
-                          TtBound::Lower, m);
-            }
-            out_stats = combined;
-            return score; // fail-soft
-        }
-        if (score > alpha) {
-            alpha = score;
+        if (score > best_score) {
+            best_score = score;
             best_move = m;
             best_stats = combined;
+            // Refresh PV on every genuine improvement — not
+            // only when alpha moves, so fail-low-but-best-
+            // among-bad still carries a PV through.
             pv.moves[p][0] = m;
             const std::size_t child_len = pv.length[p + 1];
             for (std::size_t j = 0; j < child_len; ++j) {
@@ -473,17 +476,29 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
             }
             pv.length[p] = 1 + child_len;
         }
+        if (score > alpha) alpha = score;
+
+        if (!stop.disable_alpha_beta && score >= beta) {
+            remember_killer(killers, p, m);
+            if (tt != nullptr) {
+                tt->store(key, depth, to_tt_score(score, ply),
+                          TtBound::Lower, m);
+            }
+            out_stats = combined;
+            return score; // fail-soft fail-high
+        }
     }
 
     if (tt != nullptr) {
-        const TtBound bound = (alpha > original_alpha)
+        const TtBound bound = (best_score > original_alpha)
                                   ? TtBound::Exact
                                   : TtBound::Upper;
-        tt->store(key, depth, to_tt_score(alpha, ply), bound, best_move);
+        tt->store(key, depth, to_tt_score(best_score, ply),
+                  bound, best_move);
     }
 
     out_stats = best_stats;
-    return alpha;
+    return best_score; // fail-soft fail-low
 }
 
 int iteration(Board& board, int depth, std::uint64_t& nodes,
