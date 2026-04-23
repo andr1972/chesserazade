@@ -13,6 +13,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -169,6 +170,13 @@ TEST_CASE("TreeRecorder: a check-giving move increments the "
     REQUIRE(r.pv_stats.captures_white == 900); // queen
     REQUIRE(r.pv_stats.checks_white >= 1);
     REQUIRE(r.pv_stats.checks_black == 0);
+    // Score nets to ~0 because quiescence spots Kxd8 (black
+    // recaptures the rook). That's correct minimax — but the
+    // capture columns must reflect both legs of the exchange,
+    // otherwise W:900 / B:0 vs score=0 looks inconsistent on
+    // the tree view.
+    REQUIRE(r.pv_stats.captures_black == 500);  // black rook recapture
+    REQUIRE(std::abs(r.score) < 200);
 }
 
 TEST_CASE("TreeRecorder: cutoff flag fires on fail-high moves",

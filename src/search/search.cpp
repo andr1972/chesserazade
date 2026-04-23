@@ -218,6 +218,18 @@ void remember_killer(KillerTable& killers, std::size_t ply,
     killers.killers[ply][0] = m;
 }
 
+/// Add two `BranchStats` field-wise. Small enough that the
+/// compiler inlines the four adds.
+[[nodiscard]] BranchStats combine(const BranchStats& a,
+                                  const BranchStats& b) noexcept {
+    return {
+        a.captures_white + b.captures_white,
+        a.captures_black + b.captures_black,
+        a.checks_white   + b.checks_white,
+        a.checks_black   + b.checks_black,
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Quiescence search
 // ---------------------------------------------------------------------------
@@ -233,11 +245,12 @@ void remember_killer(KillerTable& killers, std::size_t ply,
 // look for captures that improve on it.
 
 int quiesce(Board& board, int alpha, int beta,
-            std::uint64_t& nodes, Stop& stop);
+            std::uint64_t& nodes, Stop& stop, BranchStats& out_stats);
 
 int quiesce(Board& board, int alpha, int beta,
-            std::uint64_t& nodes, Stop& stop) {
+            std::uint64_t& nodes, Stop& stop, BranchStats& out_stats) {
     ++nodes;
+    out_stats = {};
     if ((nodes & STOP_CHECK_MASK) == 0 && stop.should_stop(nodes)) {
         return 0;
     }
@@ -262,33 +275,42 @@ int quiesce(Board& board, int alpha, int beta,
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
 
+    BranchStats best_stats;
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = buf[i].move;
+        const Color mover = board.side_to_move();
+
+        BranchStats delta;
+        const int cap_val = capture_value(m);
+        if (cap_val > 0) {
+            if (mover == Color::White) delta.captures_white = cap_val;
+            else                       delta.captures_black = cap_val;
+        }
+
         board.make_move(m);
-        const int score = -quiesce(board, -beta, -alpha, nodes, stop);
+        BranchStats child_stats;
+        const int score =
+            -quiesce(board, -beta, -alpha, nodes, stop, child_stats);
         board.unmake_move(m);
         if (stop.abort) return 0;
-        if (!stop.disable_alpha_beta && score >= beta) return score;
-        if (score > alpha) alpha = score;
+
+        const BranchStats combined = combine(delta, child_stats);
+        if (!stop.disable_alpha_beta && score >= beta) {
+            out_stats = combined;
+            return score;
+        }
+        if (score > alpha) {
+            alpha = score;
+            best_stats = combined;
+        }
     }
+    out_stats = best_stats;
     return alpha;
 }
 
 // ---------------------------------------------------------------------------
 // Main negamax
 // ---------------------------------------------------------------------------
-
-/// Add two `BranchStats` field-wise. Small enough that the
-/// compiler inlines the four adds.
-[[nodiscard]] BranchStats combine(const BranchStats& a,
-                                  const BranchStats& b) noexcept {
-    return {
-        a.captures_white + b.captures_white,
-        a.captures_black + b.captures_black,
-        a.checks_white   + b.checks_white,
-        a.checks_black   + b.checks_black,
-    };
-}
 
 int negamax(Board& board, int depth, int ply, int alpha, int beta,
             std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
@@ -337,7 +359,12 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
             // opt-in to see what "pure depth-N minimax" gives.
             return evaluate(board);
         }
-        return quiesce(board, alpha, beta, nodes, stop);
+        // Pass out_stats through so quiescence captures /
+        // recaptures are reflected in the parent's tree view
+        // — otherwise the Captures columns under-report (a
+        // rook-takes-queen with quiesce-recapture would show
+        // W:900, B:0 while the score is 0).
+        return quiesce(board, alpha, beta, nodes, stop, out_stats);
     }
 
     // --- Legality + terminal ------------------------------------------
