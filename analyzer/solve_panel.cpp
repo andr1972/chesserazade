@@ -476,6 +476,18 @@ void SolvePanel::on_finished(const QString& best_uci, int final_score,
         .arg(best_uci).arg(score).arg(depth_reached)
         .arg(nodes).arg(elapsed_ms));
 
+    // Stop polling and write the exact final tallies into the
+    // progress label. The timer's atomic reads lag by up to
+    // ~2048 nodes (STOP_CHECK_MASK cadence); the `finished`
+    // signal carries the true totals, so we render those.
+    progress_timer_->stop();
+    const double s  = static_cast<double>(elapsed_ms) / 1000.0;
+    const double mn = static_cast<double>(nodes) / 1.0e6;
+    progress_label_->setText(
+        QStringLiteral("%1 s   %2 M nodes")
+            .arg(s, 0, 'f', 1)
+            .arg(mn, 0, 'f', 2));
+
     // Tree was already installed by the last
     // `iteration_tree_ready` signal from the deepest completed
     // iteration — nothing further to do here.
