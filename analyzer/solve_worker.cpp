@@ -10,8 +10,11 @@
 namespace chesserazade::analyzer {
 
 SolveWorker::SolveWorker(Board8x8Mailbox start, SolveBudget budget,
+                         std::atomic<bool>* cancel,
+                         std::atomic<std::uint64_t>* progress_nodes,
                          QObject* parent)
-    : QObject(parent), start_(std::move(start)), budget_(budget) {
+    : QObject(parent), start_(std::move(start)), budget_(budget),
+      cancel_(cancel), progress_nodes_(progress_nodes) {
     // Queued connections serialise `SearchTree` through Qt's
     // metatype system; register once on first use.
     qRegisterMetaType<SearchTree>("chesserazade::analyzer::SearchTree");
@@ -67,6 +70,8 @@ void SolveWorker::start() {
         lim.max_depth = d;
         lim.disable_alpha_beta = budget_.disable_alpha_beta;
         lim.disable_quiescence = budget_.disable_quiescence;
+        lim.cancel = cancel_;
+        lim.progress_nodes = progress_nodes_;
         if (budget_ms > 0) {
             const auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(

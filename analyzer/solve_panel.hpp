@@ -18,6 +18,10 @@
 
 #include <QWidget>
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
@@ -28,6 +32,7 @@ class QPushButton;
 class QRadioButton;
 class QSpinBox;
 class QThread;
+class QTimer;
 class QTreeView;
 
 namespace chesserazade::analyzer {
@@ -66,6 +71,9 @@ private:
     void on_tree_row_clicked(const QModelIndex& idx);
     void on_expansion_requested(int node_idx);
     void on_filter_clicked();
+    void on_run_or_break_clicked();
+    void on_progress_tick();
+    void on_worker_thread_destroyed();
 
     [[nodiscard]] SolveBudget current_budget() const;
     void set_running(bool running);
@@ -91,6 +99,7 @@ private:
 
     QPushButton*  run_btn_  = nullptr;
     QPushButton*  back_btn_ = nullptr;
+    QLabel*       progress_label_ = nullptr;
     QPlainTextEdit* log_    = nullptr;
     QTreeView*    tree_view_ = nullptr;
     SearchTreeModel* tree_model_ = nullptr;
@@ -99,6 +108,14 @@ private:
     Board8x8Mailbox position_;
     QThread*      thread_ = nullptr;
     SolveWorker*  worker_ = nullptr;
+
+    /// Cancellation + live-progress atomics, pointed into by
+    /// the worker's SearchLimits. Lives on the panel so the
+    /// UI can poll them independently of the worker's lifetime.
+    std::atomic<bool> cancel_{false};
+    std::atomic<std::uint64_t> progress_nodes_{0};
+    std::chrono::steady_clock::time_point search_start_{};
+    QTimer* progress_timer_ = nullptr;
 };
 
 } // namespace chesserazade::analyzer

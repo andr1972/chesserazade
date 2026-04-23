@@ -32,6 +32,7 @@
 
 #include <chesserazade/move.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <limits>
@@ -76,6 +77,18 @@ struct SearchLimits {
     /// follow-through that normally papers over the horizon
     /// effect.
     bool disable_quiescence = false;
+
+    /// Optional external cancel — setting the pointed-to flag
+    /// to `true` makes the search abort at the next budget
+    /// check (same cadence as the time / node budgets). The
+    /// analyzer's Break button wires into this.
+    std::atomic<bool>* cancel = nullptr;
+
+    /// Optional progress counter — Search stores the running
+    /// node visit count into the pointed-to atomic at every
+    /// budget-check boundary. The analyzer's live-progress
+    /// label polls it; other callers can leave it null.
+    std::atomic<std::uint64_t>* progress_nodes = nullptr;
 };
 
 /// Cumulative capture-value and check-giving counts along a

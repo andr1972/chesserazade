@@ -77,10 +77,21 @@ struct Stop {
     std::uint64_t node_budget;
     bool disable_alpha_beta = false;
     bool disable_quiescence = false;
+    std::atomic<bool>* cancel = nullptr;
+    std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
 
     bool should_stop(std::uint64_t nodes_so_far) noexcept {
         if (abort) return true;
+        if (progress_nodes != nullptr) {
+            progress_nodes->store(nodes_so_far,
+                                  std::memory_order_relaxed);
+        }
+        if (cancel != nullptr
+            && cancel->load(std::memory_order_relaxed)) {
+            abort = true;
+            return true;
+        }
         if (node_budget > 0 && nodes_so_far >= node_budget) {
             abort = true;
             return true;
@@ -498,6 +509,8 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.node_budget,
         limits.disable_alpha_beta,
         limits.disable_quiescence,
+        limits.cancel,
+        limits.progress_nodes,
         false,
     };
 

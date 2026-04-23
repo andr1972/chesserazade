@@ -23,6 +23,9 @@
 #include <QObject>
 #include <QString>
 
+#include <atomic>
+#include <cstdint>
+
 Q_DECLARE_METATYPE(chesserazade::analyzer::SearchTree)
 
 namespace chesserazade::analyzer {
@@ -46,6 +49,8 @@ class SolveWorker final : public QObject {
     Q_OBJECT
 public:
     SolveWorker(Board8x8Mailbox start_position, SolveBudget budget,
+                std::atomic<bool>* cancel,
+                std::atomic<std::uint64_t>* progress_nodes,
                 QObject* parent = nullptr);
 
     /// Tree of the last completed iteration. Only valid after
@@ -86,6 +91,8 @@ private:
     Board8x8Mailbox start_;
     SolveBudget     budget_;
     SearchTree      tree_;
+    std::atomic<bool>* cancel_ = nullptr;
+    std::atomic<std::uint64_t>* progress_nodes_ = nullptr;
 };
 
 } // namespace chesserazade::analyzer

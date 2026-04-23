@@ -21,6 +21,7 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QThread>
+#include <QTimer>
 #include <QTreeView>
 #include <QVBoxLayout>
 
@@ -144,8 +145,10 @@ SolvePanel::SolvePanel(QWidget* parent)
     run_btn_ = new QPushButton(tr("&Run"), right);
     auto* filter_btn = new QPushButton(tr("&Filter…"), right);
     back_btn_ = new QPushButton(tr("&Back"), right);
+    progress_label_ = new QLabel(right);
+    progress_label_->setMinimumWidth(160);
     connect(run_btn_,  &QPushButton::clicked,
-            this, &SolvePanel::on_run_clicked);
+            this, &SolvePanel::on_run_or_break_clicked);
     connect(filter_btn, &QPushButton::clicked,
             this, &SolvePanel::on_filter_clicked);
     connect(back_btn_, &QPushButton::clicked,
@@ -153,8 +156,16 @@ SolvePanel::SolvePanel(QWidget* parent)
     btn_row->addWidget(run_btn_);
     btn_row->addWidget(filter_btn);
     btn_row->addWidget(back_btn_);
+    btn_row->addWidget(progress_label_);
     btn_row->addStretch(1);
     rlay->addLayout(btn_row);
+
+    // Refreshes the "progress_label_" from the atomics written
+    // by the search thread. 100 ms → 10 Hz updates.
+    progress_timer_ = new QTimer(this);
+    progress_timer_->setInterval(100);
+    connect(progress_timer_, &QTimer::timeout,
+            this, &SolvePanel::on_progress_tick);
 
     // -- Tree + info log (vertical split; tree on top) --------------
     auto* tree_log = new QSplitter(Qt::Vertical, right);
@@ -283,7 +294,9 @@ void SolvePanel::append_log(const QString& line) {
 }
 
 void SolvePanel::set_running(bool running) {
-    run_btn_->setEnabled(!running);
+    // run_btn_ stays enabled during a search — it doubles as
+    // the Break button — so its label is swapped by the
+    // run / cancel / finished handlers, not here.
     rb_depth_->setEnabled(!running);
     rb_time_->setEnabled(!running);
     rb_nodes_->setEnabled(!running);
@@ -294,6 +307,35 @@ void SolvePanel::set_running(bool running) {
     back_btn_->setEnabled(!running);
 }
 
+void SolvePanel::on_run_or_break_clicked() {
+    if (thread_ != nullptr) {
+        // A search is in flight — the button is labelled
+        // "Break"; clicking it sets the atomic the search
+        // polls on its stop cadence. The button remains
+        // enabled but read-only till the worker actually
+        // exits (usually within a few milliseconds).
+        cancel_.store(true, std::memory_order_relaxed);
+        run_btn_->setEnabled(false);
+        append_log(tr("Break requested…"));
+        return;
+    }
+    on_run_clicked();
+}
+
+void SolvePanel::on_progress_tick() {
+    const auto elapsed =
+        std::chrono::steady_clock::now() - search_start_;
+    const double s =
+        std::chrono::duration<double>(elapsed).count();
+    const double mn =
+        static_cast<double>(progress_nodes_.load(
+            std::memory_order_relaxed)) / 1.0e6;
+    progress_label_->setText(
+        QStringLiteral("%1 s   %2 M nodes")
+            .arg(s, 0, 'f', 1)
+            .arg(mn, 0, 'f', 2));
+}
+
 void SolvePanel::on_run_clicked() {
     if (thread_ != nullptr) return; // already running
 
@@ -301,8 +343,21 @@ void SolvePanel::on_run_clicked() {
     append_log(tr("Searching…"));
     set_running(true);
 
+    // Reset the atomics before arming the worker; start the
+    // progress timer so the label ticks from 0.
+    cancel_.store(false, std::memory_order_relaxed);
+    progress_nodes_.store(0, std::memory_order_relaxed);
+    search_start_ = std::chrono::steady_clock::now();
+    progress_label_->clear();
+    progress_timer_->start();
+
+    // Run button now means "Break" while the search runs.
+    run_btn_->setText(tr("&Break"));
+    run_btn_->setEnabled(true);
+
     thread_ = new QThread(this);
-    worker_ = new SolveWorker(position_, current_budget());
+    worker_ = new SolveWorker(position_, current_budget(),
+                              &cancel_, &progress_nodes_);
     worker_->moveToThread(thread_);
 
     connect(thread_, &QThread::started,
@@ -320,13 +375,21 @@ void SolvePanel::on_run_clicked() {
     connect(thread_, &QThread::finished,
             thread_, &QObject::deleteLater);
     connect(thread_, &QThread::destroyed,
-            this, [this]() {
-                thread_ = nullptr;
-                worker_ = nullptr;
-                set_running(false);
-            });
+            this, &SolvePanel::on_worker_thread_destroyed);
 
     thread_->start();
+}
+
+void SolvePanel::on_worker_thread_destroyed() {
+    thread_ = nullptr;
+    worker_ = nullptr;
+    set_running(false);
+    // Put the button back into "Run" mode for the next search.
+    run_btn_->setText(tr("&Run"));
+    run_btn_->setEnabled(true);
+    progress_timer_->stop();
+    // Leave the progress_label_ showing the final numbers; the
+    // next on_run_clicked will clear it.
 }
 
 void SolvePanel::on_progress(int depth, int score_cp,
