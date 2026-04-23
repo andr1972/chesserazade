@@ -77,6 +77,7 @@ struct Stop {
     std::uint64_t node_budget;
     bool disable_alpha_beta = false;
     bool disable_quiescence = false;
+    bool root_full_window   = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
@@ -434,8 +435,19 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         // value is what drives the recursive call's window, and
         // it is what the child observed at its root. Persisting
         // it lets a lazy sub-search seed the identical window.
-        const int child_alpha = -beta;
-        const int child_beta  = -alpha;
+        //
+        // When `root_full_window` is set AND we're at ply 0,
+        // give each child a fresh full window so every root
+        // move gets an exact score, not a bound influenced by
+        // earlier siblings.
+        int recurse_alpha = -beta;
+        int recurse_beta  = -alpha;
+        if (stop.root_full_window && ply == 0) {
+            recurse_alpha = -Search::INF_SCORE;
+            recurse_beta  =  Search::INF_SCORE;
+        }
+        const int child_alpha = recurse_alpha;
+        const int child_beta  = recurse_beta;
 
         // Snapshot the global node counter so we can report the
         // child subtree's visit count — counts alpha-beta-cut
@@ -444,7 +456,8 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         BranchStats child_stats;
         const int score =
-            -negamax(board, depth - 1, child_ply, -beta, -alpha,
+            -negamax(board, depth - 1, child_ply,
+                     recurse_alpha, recurse_beta,
                      nodes, pv, killers, stop, tt,
                      rec, child_stats);
         board.unmake_move(m);
@@ -555,6 +568,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.node_budget,
         limits.disable_alpha_beta,
         limits.disable_quiescence,
+        limits.root_full_window,
         limits.cancel,
         limits.progress_nodes,
         false,

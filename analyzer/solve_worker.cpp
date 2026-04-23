@@ -70,6 +70,7 @@ void SolveWorker::start() {
         lim.max_depth = d;
         lim.disable_alpha_beta = budget_.disable_alpha_beta;
         lim.disable_quiescence = budget_.disable_quiescence;
+        lim.root_full_window   = budget_.root_full_window;
         lim.cancel = cancel_;
         lim.progress_nodes = progress_nodes_;
         if (budget_ms > 0) {

@@ -142,6 +142,16 @@ SolvePanel::SolvePanel(QWidget* parent)
         "as if the trade never happened)."));
     cap_row->addWidget(qs_check_);
 
+    rfw_check_ = new QCheckBox(tr("root exact"), right);
+    rfw_check_->setChecked(false);
+    rfw_check_->setToolTip(tr(
+        "Search each root move with a full α-β window so "
+        "every score in the top of the tree is exact, not a "
+        "bound dragged toward α by earlier siblings. Deeper "
+        "nodes still prune normally. Costs 2–3× more work at "
+        "the root — useful for analysis, off for speed."));
+    cap_row->addWidget(rfw_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -289,6 +299,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.tree_cap = tree_cap_spin_->value();
     b.disable_alpha_beta = !ab_check_->isChecked();
     b.disable_quiescence = !qs_check_->isChecked();
+    b.root_full_window   =  rfw_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();
@@ -542,6 +553,7 @@ void SolvePanel::on_expansion_requested(int node_idx) {
     lim.max_depth = node.remaining_depth;
     lim.disable_alpha_beta = !ab_check_->isChecked();
     lim.disable_quiescence = !qs_check_->isChecked();
+    lim.root_full_window   =  rfw_check_->isChecked();
 
     SearchTree sub;
     SearchTreeRecorder sub_rec(sub, tree_cap_spin_->value());

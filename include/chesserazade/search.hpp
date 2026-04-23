@@ -78,6 +78,14 @@ struct SearchLimits {
     /// effect.
     bool disable_quiescence = false;
 
+    /// At the root (ply 0), give every child its own full
+    /// α-β window instead of the shrinking one that improves
+    /// as good siblings are found. Each root move is therefore
+    /// exact — no fail-low clamping to the current best — at
+    /// the cost of losing root-level pruning. Deeper nodes
+    /// prune normally. Useful for the analyzer's tree view.
+    bool root_full_window = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The
