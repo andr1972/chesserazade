@@ -243,7 +243,11 @@ int quiesce(Board& board, int alpha, int beta,
     }
 
     const int stand_pat = evaluate(board);
-    if (!stop.disable_alpha_beta && stand_pat >= beta) return beta;
+    // Fail-soft: return the actual value we know, not just the
+    // window bound. Keeps the correctness of α-β (the caller
+    // only needs "≥ beta" for a cut) while letting the tree
+    // view show the true magnitude of bad moves.
+    if (!stop.disable_alpha_beta && stand_pat >= beta) return stand_pat;
     if (stand_pat > alpha) alpha = stand_pat;
 
     const MoveList legal = MoveGenerator::generate_legal(board);
@@ -264,7 +268,7 @@ int quiesce(Board& board, int alpha, int beta,
         const int score = -quiesce(board, -beta, -alpha, nodes, stop);
         board.unmake_move(m);
         if (stop.abort) return 0;
-        if (!stop.disable_alpha_beta && score >= beta) return beta;
+        if (!stop.disable_alpha_beta && score >= beta) return score;
         if (score > alpha) alpha = score;
     }
     return alpha;
@@ -425,11 +429,11 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         if (!stop.disable_alpha_beta && score >= beta) {
             remember_killer(killers, p, m);
             if (tt != nullptr) {
-                tt->store(key, depth, to_tt_score(beta, ply),
+                tt->store(key, depth, to_tt_score(score, ply),
                           TtBound::Lower, m);
             }
             out_stats = combined;
-            return beta;
+            return score; // fail-soft
         }
         if (score > alpha) {
             alpha = score;
