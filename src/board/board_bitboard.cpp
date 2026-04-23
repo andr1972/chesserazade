@@ -2,6 +2,7 @@
 
 #include "io/fen_fields.hpp"
 
+#include <chesserazade/evaluator.hpp>
 #include <chesserazade/zobrist.hpp>
 
 #include <cassert>
@@ -21,6 +22,10 @@ void BoardBitboard::clear() noexcept {
     fullmove_ = 1;
     zobrist_ = 0;
     history_.clear();
+}
+
+int BoardBitboard::evaluate_incremental() const noexcept {
+    return evaluate(*this);
 }
 
 void BoardBitboard::recompute_zobrist() noexcept {

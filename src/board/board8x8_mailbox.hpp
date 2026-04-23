@@ -51,6 +51,12 @@ public:
     [[nodiscard]] int fullmove_number() const noexcept override { return fullmove_number_; }
     [[nodiscard]] ZobristKey zobrist_key() const noexcept override { return zobrist_; }
 
+    /// O(1) evaluator: returns the incrementally-maintained
+    /// material + PST score, adjusted for the side to move.
+    /// Always in sync with the full scan of `evaluate(board)`
+    /// from `chesserazade/evaluator.hpp`.
+    [[nodiscard]] int evaluate_incremental() const noexcept override;
+
     // Board interface — mutation ---------------------------------------
     void make_move(const Move& m) noexcept override;
     void unmake_move(const Move& m) noexcept override;
@@ -59,6 +65,12 @@ public:
     /// parser after piece placement; also useful as a rarely-run
     /// consistency check.
     void recompute_zobrist() noexcept;
+    /// Recompute `eval_score_` by summing every square's
+    /// contribution from scratch. Call after any code path
+    /// that populated the board via `set_piece_at` (which
+    /// bypasses the `place()` incremental hook), e.g.
+    /// `from_fen`.
+    void recompute_eval() noexcept;
 
     // FEN-level setters (used by the FEN parser and unit tests) -------
     void clear() noexcept;
@@ -90,6 +102,7 @@ private:
         CastlingRights castling{};
         int halfmove_clock = 0;
         ZobristKey zobrist = 0;
+        int eval_score = 0;
     };
 
     std::array<Piece, NUM_SQUARES> squares_{};
@@ -99,6 +112,13 @@ private:
     int halfmove_clock_ = 0;
     int fullmove_number_ = 1;
     ZobristKey zobrist_ = 0;
+
+    /// Running sum of (material + PST) from White's perspective —
+    /// maintained incrementally by `place()` on every piece
+    /// write. `evaluate_incremental()` returns this adjusted for
+    /// the side to move; the full-scan `evaluate(board)` remains
+    /// available for comparison.
+    int eval_score_ = 0;
 
     /// History stack for unmake_move. Each make_move pushes one entry;
     /// each unmake_move pops one. The depth is bounded by the search

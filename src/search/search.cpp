@@ -78,6 +78,7 @@ struct Stop {
     bool disable_alpha_beta = false;
     bool disable_quiescence = false;
     bool root_full_window   = false;
+    bool use_incremental_eval = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
@@ -256,7 +257,9 @@ int quiesce(Board& board, int alpha, int beta,
         return 0;
     }
 
-    const int stand_pat = evaluate(board);
+    const int stand_pat = stop.use_incremental_eval
+        ? board.evaluate_incremental()
+        : evaluate(board);
     // Fail-soft: return the actual value we know, not just the
     // window bound. Keeps the correctness of α-β (the caller
     // only needs "≥ beta" for a cut) while letting the tree
@@ -361,7 +364,9 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         if (stop.disable_quiescence) {
             // Raw static eval — horizon effect visible. User
             // opt-in to see what "pure depth-N minimax" gives.
-            return evaluate(board);
+            return stop.use_incremental_eval
+                ? board.evaluate_incremental()
+                : evaluate(board);
         }
         // Pass out_stats through so quiescence captures /
         // recaptures are reflected in the parent's tree view
@@ -569,6 +574,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.disable_alpha_beta,
         limits.disable_quiescence,
         limits.root_full_window,
+        limits.use_incremental_eval,
         limits.cancel,
         limits.progress_nodes,
         false,

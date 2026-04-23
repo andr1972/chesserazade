@@ -163,6 +163,15 @@ SolvePanel::SolvePanel(QWidget* parent)
         "of pure search without caching."));
     cap_row->addWidget(tt_check_);
 
+    incr_eval_check_ = new QCheckBox(tr("incr eval"), right);
+    incr_eval_check_->setChecked(false);
+    incr_eval_check_->setToolTip(tr(
+        "Use the board's O(1) incrementally-maintained eval "
+        "(material + PST running sum) instead of the full "
+        "64-square scan. Identical results; purely a speed "
+        "toggle to measure the saving."));
+    cap_row->addWidget(incr_eval_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -312,6 +321,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.disable_quiescence = !qs_check_->isChecked();
     b.root_full_window   =  rfw_check_->isChecked();
     b.use_tt             =  tt_check_->isChecked();
+    b.use_incremental_eval = incr_eval_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();

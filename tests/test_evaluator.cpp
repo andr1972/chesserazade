@@ -12,10 +12,12 @@
 
 #include <chesserazade/evaluator.hpp>
 #include <chesserazade/fen.hpp>
+#include <chesserazade/move_generator.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
+#include <string_view>
 
 using namespace chesserazade;
 
@@ -99,4 +101,36 @@ TEST_CASE("piece_value: constants match the enum", "[eval]") {
     REQUIRE(piece_value(PieceType::Rook)   == 500);
     REQUIRE(piece_value(PieceType::Queen)  == 900);
     REQUIRE(piece_value(PieceType::None)   == 0);
+}
+
+TEST_CASE("incremental eval: identical to full scan after make/unmake",
+          "[eval][incremental]") {
+    // Run perft-like sequences: make every legal move, compare
+    // incremental vs full, unmake, compare again. One level deep
+    // across the six classical perft positions is enough to
+    // exercise every move kind — quiet, capture, EP, promotion,
+    // castle short, castle long — via the move generator's full
+    // output on varied pieces.
+    constexpr std::string_view POSITIONS[] = {
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+    };
+
+    for (std::string_view fen : POSITIONS) {
+        auto board = *Board8x8Mailbox::from_fen(fen);
+        // Parity at the starting position.
+        REQUIRE(board.evaluate_incremental() == evaluate(board));
+
+        const auto legal = MoveGenerator::generate_legal(board);
+        for (const Move& m : legal) {
+            board.make_move(m);
+            REQUIRE(board.evaluate_incremental() == evaluate(board));
+            board.unmake_move(m);
+            REQUIRE(board.evaluate_incremental() == evaluate(board));
+        }
+    }
 }

@@ -41,6 +41,7 @@ struct SolveBudget {
     bool disable_quiescence = false;  ///< Skip capture follow-through.
     bool root_full_window   = false;  ///< Exact root-move scores.
     bool use_tt             = true;   ///< Consult the TT.
+    bool use_incremental_eval = false; ///< O(1) cached eval.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called

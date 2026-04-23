@@ -144,4 +144,14 @@ int evaluate(const Board& board) noexcept {
     return (board.side_to_move() == Color::White) ? score : -score;
 }
 
+int piece_contribution(Piece p, Square sq) noexcept {
+    if (p.is_none()) return 0;
+    const std::uint8_t i = static_cast<std::uint8_t>(sq);
+    const int material = piece_value(p.type);
+    const std::uint8_t idx = (p.color == Color::White) ? i : mirror(i);
+    const int positional = pst_for(p.type)[idx];
+    const int total = material + positional;
+    return (p.color == Color::White) ? total : -total;
+}
+
 } // namespace chesserazade

@@ -49,6 +49,11 @@ public:
     [[nodiscard]] int fullmove_number() const noexcept override { return fullmove_; }
     [[nodiscard]] ZobristKey zobrist_key() const noexcept override { return zobrist_; }
 
+    /// Fallback: bitboard does not maintain an incremental
+    /// eval cache, so return the full-scan result. Mailbox
+    /// overrides this with an O(1) cached lookup.
+    [[nodiscard]] int evaluate_incremental() const noexcept override;
+
     // Board interface — mutation (stubbed in 1.1.2; real in 1.1.3) ----
     void make_move(const Move& m) noexcept override;
     void unmake_move(const Move& m) noexcept override;

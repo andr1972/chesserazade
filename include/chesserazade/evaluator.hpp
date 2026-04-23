@@ -71,4 +71,13 @@ struct PieceValue {
 /// roughly 2.5 pawns".
 [[nodiscard]] int evaluate(const Board& board) noexcept;
 
+/// Single-piece contribution to the whole-board score, keyed
+/// from white's perspective: material + PST for white pieces,
+/// negated for black. Returns 0 for an empty square. Used by
+/// board implementations that maintain an incremental running
+/// sum on piece writes — add the new piece's contribution,
+/// subtract the old one, and `evaluate(board)` stays in sync
+/// at O(1).
+[[nodiscard]] int piece_contribution(Piece p, Square sq) noexcept;
+
 } // namespace chesserazade

@@ -1,8 +1,11 @@
 #include "board/board8x8_mailbox.hpp"
 
+#include <chesserazade/evaluator.hpp>
 #include <chesserazade/zobrist.hpp>
 
+#include <array>
 #include <cassert>
+#include <cstdint>
 
 namespace chesserazade {
 
@@ -14,15 +17,20 @@ Piece Board8x8Mailbox::piece_at(Square s) const noexcept {
 namespace {
 
 /// Place `p` on square `sq`, keeping the incremental Zobrist key
-/// in sync. Every piece write in `make_move` / `unmake_move` goes
-/// through this helper so the hash never drifts from the board
-/// state — we XOR out whatever was on the square and XOR in the
-/// new piece.
+/// **and** the incremental eval score in sync. Every piece write
+/// in `make_move` / `unmake_move` goes through this helper so
+/// neither quantity drifts from the board state.
 inline void place(std::array<Piece, NUM_SQUARES>& squares,
-                  ZobristKey& zob, Square sq, Piece p) noexcept {
+                  ZobristKey& zob, int& eval_score,
+                  Square sq, Piece p) noexcept {
     const std::size_t idx = to_index(sq);
+    // Zobrist: XOR out the old piece, XOR in the new.
     zob ^= Zobrist::piece(squares[idx], sq);
     zob ^= Zobrist::piece(p, sq);
+    // Eval: subtract the old contribution, add the new. An empty
+    // square on either side contributes 0.
+    eval_score -= piece_contribution(squares[idx], sq);
+    eval_score += piece_contribution(p, sq);
     squares[idx] = p;
 }
 
@@ -37,10 +45,23 @@ void Board8x8Mailbox::clear() noexcept {
     fullmove_number_ = 1;
     history_.clear();
     zobrist_ = 0;
+    eval_score_ = 0;
+}
+
+int Board8x8Mailbox::evaluate_incremental() const noexcept {
+    return (side_to_move_ == Color::White) ? eval_score_ : -eval_score_;
 }
 
 void Board8x8Mailbox::recompute_zobrist() noexcept {
     zobrist_ = compute_zobrist_key(*this);
+}
+
+void Board8x8Mailbox::recompute_eval() noexcept {
+    int s = 0;
+    for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
+        s += piece_contribution(squares_[i], static_cast<Square>(i));
+    }
+    eval_score_ = s;
 }
 
 void Board8x8Mailbox::set_piece_at(Square s, Piece p) noexcept {
@@ -68,7 +89,8 @@ void Board8x8Mailbox::make_move(const Move& m) noexcept {
 
     // 1. Save irrecoverable state (incl. pre-move Zobrist key so
     //    unmake_move can restore it without re-XORing).
-    history_.push_back({ep_square_, castling_, halfmove_clock_, zobrist_});
+    history_.push_back({ep_square_, castling_, halfmove_clock_,
+                        zobrist_, eval_score_});
 
     // 2. XOR out the pre-move non-piece hash contributions so we
     //    can XOR the post-move values back in at the end.
@@ -91,16 +113,16 @@ void Board8x8Mailbox::make_move(const Move& m) noexcept {
 
     // 4. Execute the move. Every piece write goes through `place`,
     //    which XOR-updates zobrist_ as a side effect.
-    place(squares_, zobrist_, m.from, Piece::none());
+    place(squares_, zobrist_, eval_score_, m.from, Piece::none());
 
     switch (m.kind) {
         case MoveKind::Quiet:
         case MoveKind::Capture:
-            place(squares_, zobrist_, m.to, m.moved_piece);
+            place(squares_, zobrist_, eval_score_, m.to, m.moved_piece);
             break;
 
         case MoveKind::DoublePush:
-            place(squares_, zobrist_, m.to, m.moved_piece);
+            place(squares_, zobrist_, eval_score_, m.to, m.moved_piece);
             // EP target = the square the pawn skipped over.
             if (m.moved_piece.color == Color::White) {
                 ep_square_ = make_square(file_of(m.from), Rank::R3);
@@ -110,36 +132,36 @@ void Board8x8Mailbox::make_move(const Move& m) noexcept {
             break;
 
         case MoveKind::KingsideCastle: {
-            place(squares_, zobrist_, m.to, m.moved_piece); // king to g1/g8
+            place(squares_, zobrist_, eval_score_, m.to, m.moved_piece); // king to g1/g8
             const Rank r = rank_of(m.from);
             const Piece rook{PieceType::Rook, m.moved_piece.color};
-            place(squares_, zobrist_, make_square(File::H, r), Piece::none());
-            place(squares_, zobrist_, make_square(File::F, r), rook);
+            place(squares_, zobrist_, eval_score_, make_square(File::H, r), Piece::none());
+            place(squares_, zobrist_, eval_score_, make_square(File::F, r), rook);
             break;
         }
 
         case MoveKind::QueensideCastle: {
-            place(squares_, zobrist_, m.to, m.moved_piece); // king to c1/c8
+            place(squares_, zobrist_, eval_score_, m.to, m.moved_piece); // king to c1/c8
             const Rank r = rank_of(m.from);
             const Piece rook{PieceType::Rook, m.moved_piece.color};
-            place(squares_, zobrist_, make_square(File::A, r), Piece::none());
-            place(squares_, zobrist_, make_square(File::D, r), rook);
+            place(squares_, zobrist_, eval_score_, make_square(File::A, r), Piece::none());
+            place(squares_, zobrist_, eval_score_, make_square(File::D, r), rook);
             break;
         }
 
         case MoveKind::EnPassant: {
-            place(squares_, zobrist_, m.to, m.moved_piece);
+            place(squares_, zobrist_, eval_score_, m.to, m.moved_piece);
             // The captured pawn sits on the rank of `from`, at
             // the file of `to` (the EP target is one rank ahead).
             const Square captured_sq =
                 make_square(file_of(m.to), rank_of(m.from));
-            place(squares_, zobrist_, captured_sq, Piece::none());
+            place(squares_, zobrist_, eval_score_, captured_sq, Piece::none());
             break;
         }
 
         case MoveKind::Promotion:
         case MoveKind::PromotionCapture:
-            place(squares_, zobrist_, m.to,
+            place(squares_, zobrist_, eval_score_, m.to,
                   Piece{m.promotion, m.moved_piece.color});
             break;
     }
@@ -205,6 +227,7 @@ void Board8x8Mailbox::unmake_move(const Move& m) noexcept {
     castling_ = snap.castling;
     halfmove_clock_ = snap.halfmove_clock;
     zobrist_ = snap.zobrist;
+    eval_score_ = snap.eval_score;
 
     // Restore pieces.
     switch (m.kind) {

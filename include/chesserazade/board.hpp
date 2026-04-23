@@ -84,6 +84,13 @@ public:
     /// `zobrist.hpp` for the precise hashing scheme.
     [[nodiscard]] virtual ZobristKey zobrist_key() const noexcept = 0;
 
+    /// Material + PST score for the side to move, in centipawns.
+    /// Mathematically equivalent to `evaluate(board)` from
+    /// `evaluator.hpp`; concrete boards may compute it in O(1)
+    /// via an incrementally-maintained running sum (mailbox
+    /// does), or fall back to the full scan (bitboard).
+    [[nodiscard]] virtual int evaluate_incremental() const noexcept = 0;
+
     // ------------------------------------------------------------------
     // Mutation
     // ------------------------------------------------------------------

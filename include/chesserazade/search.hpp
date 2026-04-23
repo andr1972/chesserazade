@@ -86,6 +86,11 @@ struct SearchLimits {
     /// prune normally. Useful for the analyzer's tree view.
     bool root_full_window = false;
 
+    /// Use the board's O(1) incrementally-maintained eval
+    /// instead of the 64-square full scan. Mathematically
+    /// equivalent; purely a speed toggle for measurement.
+    bool use_incremental_eval = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The

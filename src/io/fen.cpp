@@ -328,6 +328,7 @@ std::expected<Board8x8Mailbox, FenError> Board8x8Mailbox::from_fen(std::string_v
     board.set_halfmove_clock(fields->halfmove);
     board.set_fullmove_number(fields->fullmove);
     board.recompute_zobrist();
+    board.recompute_eval();
     return board;
 }
 
