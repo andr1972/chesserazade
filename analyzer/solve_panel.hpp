@@ -76,6 +76,7 @@ private:
     void on_worker_thread_destroyed();
     void on_copy_fen_clicked();
     void on_set_fen_clicked();
+    void on_tree_context_menu(const QPoint& pos);
 
     [[nodiscard]] SolveBudget current_budget() const;
     void set_running(bool running);

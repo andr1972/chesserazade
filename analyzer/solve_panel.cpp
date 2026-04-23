@@ -22,6 +22,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QInputDialog>
+#include <QMenu>
 #include <QMessageBox>
 #include <QSplitter>
 #include <QThread>
@@ -279,6 +280,13 @@ SolvePanel::SolvePanel(QWidget* parent)
     connect(tree_model_, &SearchTreeModel::expansion_requested,
             this, &SolvePanel::on_expansion_requested,
             Qt::QueuedConnection);
+    // Right-click → copy-as-CSV context menu. The handler
+    // operates on the tree node under the click, so you can
+    // copy root moves (right-click the "/" row) or children of
+    // any deeper node (right-click a move).
+    tree_view_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(tree_view_, &QTreeView::customContextMenuRequested,
+            this, &SolvePanel::on_tree_context_menu);
     tree_lay->addWidget(tree_view_, /*stretch=*/1);
     tree_log->addWidget(tree_group);
 
@@ -529,6 +537,80 @@ void SolvePanel::on_tree_row_clicked(const QModelIndex& idx) {
     }
     displayed_board_ = b;
     board_->set_position(b);
+}
+
+void SolvePanel::on_tree_context_menu(const QPoint& pos) {
+    // Figure out which node was right-clicked. Invalid index
+    // (clicked empty area) defaults to the sentinel so the
+    // menu still offers "root moves".
+    const QModelIndex idx = tree_view_->indexAt(pos);
+    // Model stores the tree node index in `internalId`; `0` =
+    // sentinel, which is what we want when the user clicks an
+    // empty area (copy root moves).
+    const int parent_node = idx.isValid()
+        ? static_cast<int>(idx.internalId())
+        : 0;
+
+    if (parent_node < 0 || parent_node >= tree_.size()) return;
+    if (tree_.at(parent_node).children.empty()) return;
+
+    QMenu menu(this);
+    QAction* copy_children =
+        menu.addAction(tr("Copy children as CSV (%1 rows)")
+                           .arg(tree_.at(parent_node).children.size()));
+    QAction* chosen = menu.exec(tree_view_->viewport()->mapToGlobal(pos));
+    if (chosen != copy_children) return;
+
+    // Build CSV: header + one row per child.
+    QString out;
+    out += QStringLiteral(
+        "#,Move,Score,CaptW,CaptB,ChkW,ChkB,Nodes,InTree,Cutoff,PV\n");
+    const auto& kids = tree_.at(parent_node).children;
+    for (std::size_t i = 0; i < kids.size(); ++i) {
+        const TreeNode& n = tree_.at(kids[i]);
+        const QString san = n.san.empty()
+            ? QString::fromStdString(to_uci(n.move))
+            : QString::fromStdString(n.san);
+        QString score_s;
+        if (Search::is_mate_score(n.score)) {
+            score_s = QStringLiteral("mate %1")
+                          .arg(Search::plies_to_mate(n.score));
+        } else {
+            score_s = QString::number(n.score);
+        }
+        // Model stores in_tree_count_; recompute here for the
+        // simple cases too — we just want visible count, which
+        // equals the recursive count when filter is off. For
+        // CSV dump we report the raw tree-side count.
+        int in_tree = 1;
+        // Count recursive descendants cheaply by walking the
+        // tree. Bounded by cap so it's fine.
+        std::vector<int> stack{kids[static_cast<std::size_t>(i)]};
+        while (!stack.empty()) {
+            const int cur = stack.back();
+            stack.pop_back();
+            for (int c : tree_.at(cur).children) {
+                ++in_tree;
+                stack.push_back(c);
+            }
+        }
+        out += QStringLiteral("%1,%2,%3,%4,%5,%6,%7,%8,%9,%10,%11\n")
+                   .arg(i + 1)
+                   .arg(san)
+                   .arg(score_s)
+                   .arg(n.stats.captures_white)
+                   .arg(n.stats.captures_black)
+                   .arg(n.stats.checks_white)
+                   .arg(n.stats.checks_black)
+                   .arg(n.subtree_nodes)
+                   .arg(in_tree)
+                   .arg(n.was_cutoff ? "yes" : "no")
+                   .arg(n.on_pv ? "yes" : "no");
+    }
+
+    QGuiApplication::clipboard()->setText(out);
+    append_log(tr("Copied %1 rows to clipboard (CSV).")
+                   .arg(kids.size()));
 }
 
 void SolvePanel::on_copy_fen_clicked() {
