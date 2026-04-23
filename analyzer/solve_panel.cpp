@@ -19,6 +19,10 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSpinBox>
+#include <QApplication>
+#include <QClipboard>
+#include <QInputDialog>
+#include <QMessageBox>
 #include <QSplitter>
 #include <QThread>
 #include <QTimer>
@@ -29,7 +33,8 @@ namespace chesserazade::analyzer {
 
 SolvePanel::SolvePanel(QWidget* parent)
     : QWidget(parent),
-      position_(*Board8x8Mailbox::from_fen(STARTING_POSITION_FEN)) {
+      position_(*Board8x8Mailbox::from_fen(STARTING_POSITION_FEN)),
+      displayed_board_(*Board8x8Mailbox::from_fen(STARTING_POSITION_FEN)) {
     setFocusPolicy(Qt::StrongFocus);
 
     // Create the tree model up-front so later widget wiring
@@ -153,9 +158,22 @@ SolvePanel::SolvePanel(QWidget* parent)
             this, &SolvePanel::on_filter_clicked);
     connect(back_btn_, &QPushButton::clicked,
             this, &SolvePanel::back_requested);
+    auto* copy_fen_btn = new QPushButton(tr("Copy &FEN"), right);
+    auto* set_fen_btn  = new QPushButton(tr("Set FEN…"), right);
+    copy_fen_btn->setToolTip(tr(
+        "Copy the FEN of the board currently shown (sentinel "
+        "or a tree-node descent) to the clipboard."));
+    set_fen_btn->setToolTip(tr(
+        "Replace the solve's base position with a FEN string."));
+    connect(copy_fen_btn, &QPushButton::clicked,
+            this, &SolvePanel::on_copy_fen_clicked);
+    connect(set_fen_btn, &QPushButton::clicked,
+            this, &SolvePanel::on_set_fen_clicked);
     btn_row->addWidget(run_btn_);
     btn_row->addWidget(filter_btn);
     btn_row->addWidget(back_btn_);
+    btn_row->addWidget(copy_fen_btn);
+    btn_row->addWidget(set_fen_btn);
     btn_row->addWidget(progress_label_);
     btn_row->addStretch(1);
     rlay->addLayout(btn_row);
@@ -257,6 +275,7 @@ SolvePanel::~SolvePanel() {
 void SolvePanel::set_position(const Board8x8Mailbox& board,
                               const QString& header_label) {
     position_ = board;
+    displayed_board_ = board;
     board_->set_position(board);
     header_->setText(tr("Solve from: %1").arg(header_label));
     clear_log();
@@ -451,7 +470,36 @@ void SolvePanel::on_tree_row_clicked(const QModelIndex& idx) {
     for (const Move& m : moves) {
         b.make_move(m);
     }
+    displayed_board_ = b;
     board_->set_position(b);
+}
+
+void SolvePanel::on_copy_fen_clicked() {
+    const std::string fen = serialize_fen(displayed_board_);
+    QGuiApplication::clipboard()->setText(QString::fromStdString(fen));
+    // Short-lived toast via the log so the user has a
+    // confirmation without an intrusive dialog.
+    append_log(tr("FEN copied: %1").arg(QString::fromStdString(fen)));
+}
+
+void SolvePanel::on_set_fen_clicked() {
+    bool ok = false;
+    const QString fen = QInputDialog::getText(
+        this, tr("Set solve position from FEN"),
+        tr("FEN:"),
+        QLineEdit::Normal,
+        QString::fromStdString(serialize_fen(displayed_board_)),
+        &ok);
+    if (!ok || fen.isEmpty()) return;
+    auto parsed = Board8x8Mailbox::from_fen(fen.toStdString());
+    if (!parsed) {
+        QMessageBox::warning(
+            this, tr("Invalid FEN"),
+            tr("Could not parse the FEN: %1")
+                .arg(QString::fromStdString(parsed.error().message)));
+        return;
+    }
+    set_position(*parsed, tr("FEN: %1").arg(fen));
 }
 
 void SolvePanel::on_filter_clicked() {

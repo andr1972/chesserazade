@@ -74,6 +74,8 @@ private:
     void on_run_or_break_clicked();
     void on_progress_tick();
     void on_worker_thread_destroyed();
+    void on_copy_fen_clicked();
+    void on_set_fen_clicked();
 
     [[nodiscard]] SolveBudget current_budget() const;
     void set_running(bool running);
@@ -106,6 +108,10 @@ private:
     SearchTree    tree_;
 
     Board8x8Mailbox position_;
+    /// Whichever board the BoardWidget is currently showing —
+    /// kept in sync with it so Copy FEN grabs what the user
+    /// sees (sentinel root, a tree-node descent, etc.).
+    Board8x8Mailbox displayed_board_;
     QThread*      thread_ = nullptr;
     SolveWorker*  worker_ = nullptr;
 
