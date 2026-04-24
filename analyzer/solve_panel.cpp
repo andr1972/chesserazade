@@ -15,9 +15,11 @@
 #include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QRegularExpression>
 #include <QSpinBox>
 #include <QApplication>
 #include <QClipboard>
@@ -232,11 +234,26 @@ SolvePanel::SolvePanel(QWidget* parent)
     auto* tree_group = new QWidget(tree_log);
     auto* tree_lay = new QVBoxLayout(tree_group);
     tree_lay->setContentsMargins(0, 0, 0, 0);
+    auto* tree_header_row = new QHBoxLayout;
+    tree_header_row->setContentsMargins(0, 0, 0, 0);
     auto* tree_label = new QLabel(tr("Search tree"), tree_group);
     QFont tl_font = tree_label->font();
     tl_font.setBold(true);
     tree_label->setFont(tl_font);
-    tree_lay->addWidget(tree_label);
+    tree_header_row->addWidget(tree_label);
+
+    tree_search_edit_ = new QLineEdit(tree_group);
+    tree_search_edit_->setPlaceholderText(tr("find move, e.g. Be6"));
+    tree_search_edit_->setClearButtonEnabled(true);
+    tree_search_edit_->setToolTip(tr(
+        "Select the first tree row whose SAN (or UCI fallback) "
+        "contains this text. The filter persists across search "
+        "re-runs — useful for watching where a specific move "
+        "lands at different plies / budgets."));
+    connect(tree_search_edit_, &QLineEdit::textChanged,
+            this, [this](const QString&) { apply_tree_search(); });
+    tree_header_row->addWidget(tree_search_edit_, /*stretch=*/1);
+    tree_lay->addLayout(tree_header_row);
 
     tree_view_ = new QTreeView(tree_group);
     tree_view_->setModel(tree_model_);
@@ -526,6 +543,79 @@ void SolvePanel::on_iteration_tree_ready(const SearchTree& incoming) {
     tree_view_->collapseAll();
     tree_view_->expandToDepth(0);
     tree_view_->resizeColumnToContents(SearchTreeModel::ColMove);
+    apply_tree_search();
+}
+
+void SolvePanel::apply_tree_search() {
+    if (tree_view_ == nullptr || tree_model_ == nullptr) return;
+    auto* sel = tree_view_->selectionModel();
+    if (sel == nullptr) return;
+
+    const QString needle = tree_search_edit_->text().trimmed();
+    if (needle.isEmpty()) {
+        sel->clearSelection();
+        return;
+    }
+
+    // Tokenise on whitespace: "Be6" → one token (root-level
+    // only), "Nb5 Bxb6" → path ["Nb5", "Bxb6"] where each
+    // token must match a child of the previous match. This
+    // keeps a common first-move query ("Be6") from jumping
+    // into some deep subtree that happens to also contain
+    // Be6, while still letting the user target a specific
+    // deeper line by typing it out.
+    const QStringList tokens =
+        needle.split(QRegularExpression(QStringLiteral("\\s+")),
+                     Qt::SkipEmptyParts);
+    if (tokens.isEmpty()) {
+        sel->clearSelection();
+        return;
+    }
+
+    // Longest-prefix match: descend as long as each successive
+    // token finds a matching child; stop on the first miss and
+    // select whatever we got. A 9-move PV typed into a 3-ply
+    // tree thus lands on the 3rd move, not on "nothing found".
+    int parent = 0; // sentinel
+    int matched = 0;
+    for (const QString& tok : tokens) {
+        int match = -1;
+        for (int ch : tree_.at(parent).children) {
+            const TreeNode& node = tree_.at(ch);
+            const QString san = QString::fromStdString(node.san);
+            const QString uci = QString::fromStdString(to_uci(node.move));
+            if (san.contains(tok, Qt::CaseInsensitive)
+                || uci.contains(tok, Qt::CaseInsensitive)) {
+                match = ch;
+                break;
+            }
+        }
+        if (match < 0) break;
+        parent = match;
+        ++matched;
+    }
+    if (matched == 0) {
+        sel->clearSelection();
+        return;
+    }
+
+    const QModelIndex idx = tree_model_->index_for_node(parent);
+    if (!idx.isValid()) {
+        sel->clearSelection();
+        return;
+    }
+    // Expand ancestors so the hit row is actually drawn — a
+    // match deep under a collapsed parent would be selected
+    // but invisible.
+    QModelIndex p = idx.parent();
+    while (p.isValid()) {
+        tree_view_->expand(p);
+        p = p.parent();
+    }
+    sel->setCurrentIndex(idx,
+        QItemSelectionModel::ClearAndSelect
+        | QItemSelectionModel::Rows);
+    tree_view_->scrollTo(idx, QAbstractItemView::PositionAtCenter);
 }
 
 void SolvePanel::on_tree_row_clicked(const QModelIndex& idx) {

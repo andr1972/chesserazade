@@ -26,6 +26,7 @@ class QButtonGroup;
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QLineEdit;
 class QModelIndex;
 class QPlainTextEdit;
 class QPushButton;
@@ -77,6 +78,14 @@ private:
     void on_copy_fen_clicked();
     void on_set_fen_clicked();
     void on_tree_context_menu(const QPoint& pos);
+    /// Re-apply the tree-search filter by selecting the first
+    /// node whose SAN (or UCI fallback) matches the text in
+    /// `tree_search_edit_`. Empty text clears the selection.
+    /// Invoked on text change and after each re-populate of
+    /// the tree — so the same query auto-selects the same
+    /// move in every iteration of the same search, and again
+    /// after re-running at a different depth/budget.
+    void apply_tree_search();
 
     [[nodiscard]] SolveBudget current_budget() const;
     void set_running(bool running);
@@ -109,6 +118,7 @@ private:
     QPlainTextEdit* log_    = nullptr;
     QTreeView*    tree_view_ = nullptr;
     SearchTreeModel* tree_model_ = nullptr;
+    QLineEdit*    tree_search_edit_ = nullptr;
     SearchTree    tree_;
 
     Board8x8Mailbox position_;
