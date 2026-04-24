@@ -38,6 +38,15 @@ struct TreeNode {
     /// — the "tu nastąpiło cięcie" marker for the tree view.
     bool was_cutoff = false;
 
+    /// True iff the search inside this node's subtree visited
+    /// every direct child (no β-cutoff break in its own move
+    /// loop). False → the stored `score` is a bound, not the
+    /// exact value, and the view renders it as "≤score".
+    /// Orthogonal to `was_cutoff`: `was_cutoff` describes what
+    /// this move did to its *parent's* loop, `exact` describes
+    /// what happened *inside* this node.
+    bool exact = true;
+
     /// True when this node sits on the principal variation of
     /// the final completed iteration. Populated after the
     /// search by `SearchTree::mark_pv`; renders bold in the
@@ -137,7 +146,8 @@ public:
                int remaining_depth,
                int alpha, int beta,
                std::uint64_t subtree_nodes,
-               bool gives_check) override;
+               bool gives_check,
+               bool exact) override;
 
     /// Re-anchor to a fresh tree state (clears the node stack
     /// back to the sentinel root). Normally invoked from

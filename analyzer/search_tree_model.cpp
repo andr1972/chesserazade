@@ -292,11 +292,21 @@ int SearchTreeModel::columnCount(const QModelIndex& /*parent*/) const {
 
 namespace {
 
-[[nodiscard]] QString format_score(int score) {
+[[nodiscard]] QString format_score(int score, bool exact) {
+    QString body;
     if (Search::is_mate_score(score)) {
-        return QStringLiteral("mate %1").arg(Search::plies_to_mate(score));
+        body = QStringLiteral("mate %1")
+                   .arg(Search::plies_to_mate(score));
+    } else {
+        body = QStringLiteral("%1").arg(score);
     }
-    return QStringLiteral("%1").arg(score);
+    if (exact) return body;
+    // Non-exact = the child's own search hit a β-cutoff. From
+    // the child's point of view that's a lower bound on its
+    // true value; once negated into the parent-POV score we
+    // display here, it becomes an upper bound. So we always
+    // prefix "≤" for non-exact tree rows.
+    return QStringLiteral("≤%1").arg(body);
 }
 
 } // namespace
@@ -355,7 +365,7 @@ QVariant SearchTreeModel::data(const QModelIndex& idx, int role) const {
                 ? QStringLiteral("%1  [cut]").arg(base)
                 : base;
         }
-        case ColScore: return format_score(node.score);
+        case ColScore: return format_score(node.score, node.exact);
         case ColCapW:  return node.stats.captures_white;
         case ColCapB:  return node.stats.captures_black;
         case ColChkW:  return node.stats.checks_white;

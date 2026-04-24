@@ -59,6 +59,18 @@ struct PvTable {
     std::array<std::size_t, PV_SIZE> length{};
 };
 
+/// Return value of `negamax` / `quiesce`. `score` has the usual
+/// fail-soft semantics; `exact` is true iff the move loop at this
+/// node visited all direct children (no β-cutoff break). Children
+/// may themselves be bounds — `exact` only describes the loop at
+/// *this* node, not the whole subtree. At a TT probe-cut `exact`
+/// is reconstructed from the stored bound: `Lower` (fail-high
+/// when stored) → false, anything else → true.
+struct NegamaxResult {
+    int score = 0;
+    bool exact = false;
+};
+
 /// Two killer-move slots per ply. A "killer" is a quiet move that
 /// caused a beta cutoff at the same ply of a sibling node — the
 /// heuristic bet is that it will cut again here. We keep only the
@@ -246,15 +258,17 @@ void remember_killer(KillerTable& killers, std::size_t ply,
 // beta we can cut; otherwise use it as the initial alpha while we
 // look for captures that improve on it.
 
-int quiesce(Board& board, int alpha, int beta,
-            std::uint64_t& nodes, Stop& stop, BranchStats& out_stats);
+NegamaxResult quiesce(Board& board, int alpha, int beta,
+                      std::uint64_t& nodes, Stop& stop,
+                      BranchStats& out_stats);
 
-int quiesce(Board& board, int alpha, int beta,
-            std::uint64_t& nodes, Stop& stop, BranchStats& out_stats) {
+NegamaxResult quiesce(Board& board, int alpha, int beta,
+                      std::uint64_t& nodes, Stop& stop,
+                      BranchStats& out_stats) {
     ++nodes;
     out_stats = {};
     if ((nodes & STOP_CHECK_MASK) == 0 && stop.should_stop(nodes)) {
-        return 0;
+        return {0, false};
     }
 
     const int stand_pat = stop.use_incremental_eval
@@ -264,7 +278,14 @@ int quiesce(Board& board, int alpha, int beta,
     // window bound. Keeps the correctness of α-β (the caller
     // only needs "≥ beta" for a cut) while letting the tree
     // view show the true magnitude of bad moves.
-    if (!stop.disable_alpha_beta && stand_pat >= beta) return stand_pat;
+    //
+    // Stand-pat cut counts as non-exact: we short-circuit
+    // before even looking at any capture reply, so from the
+    // "visited all direct children" point of view zero of N
+    // were visited.
+    if (!stop.disable_alpha_beta && stand_pat >= beta) {
+        return {stand_pat, false};
+    }
     if (stand_pat > alpha) alpha = stand_pat;
 
     const MoveList legal = MoveGenerator::generate_legal(board);
@@ -282,6 +303,12 @@ int quiesce(Board& board, int alpha, int beta,
     BranchStats best_stats;
     int best_score = stand_pat; // stand-pat is the floor
 
+    // Counts captures whose recursive call fully returned
+    // (incremented *before* the possible β-cut break so that
+    // a cut on the final capture still yields `visited == n`
+    // and therefore `exact == true`).
+    std::size_t visited = 0;
+
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = buf[i].move;
         const Color mover = board.side_to_move();
@@ -295,10 +322,13 @@ int quiesce(Board& board, int alpha, int beta,
 
         board.make_move(m);
         BranchStats child_stats;
-        const int score =
-            -quiesce(board, -beta, -alpha, nodes, stop, child_stats);
+        const NegamaxResult child =
+            quiesce(board, -beta, -alpha, nodes, stop, child_stats);
+        const int score = -child.score;
         board.unmake_move(m);
-        if (stop.abort) return 0;
+        if (stop.abort) return {0, false};
+
+        ++visited;
 
         const BranchStats combined = combine(delta, child_stats);
         if (score > best_score) {
@@ -308,21 +338,21 @@ int quiesce(Board& board, int alpha, int beta,
         if (score > alpha) alpha = score;
         if (!stop.disable_alpha_beta && score >= beta) {
             out_stats = combined;
-            return score;
+            return {score, visited == n};
         }
     }
     out_stats = best_stats;
-    return best_score;
+    return {best_score, true};
 }
 
 // ---------------------------------------------------------------------------
 // Main negamax
 // ---------------------------------------------------------------------------
 
-int negamax(Board& board, int depth, int ply, int alpha, int beta,
-            std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
-            Stop& stop, TranspositionTable* tt,
-            TreeRecorder* rec, BranchStats& out_stats) {
+NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
+                      std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
+                      Stop& stop, TranspositionTable* tt,
+                      TreeRecorder* rec, BranchStats& out_stats) {
     ++nodes;
     out_stats = {};
 
@@ -330,10 +360,15 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
     pv.length[p] = 0;
 
     if ((nodes & STOP_CHECK_MASK) == 0 && stop.should_stop(nodes)) {
-        return 0;
+        return {0, false};
     }
 
     // --- TT probe -----------------------------------------------------
+    // On a probe-cut we reconstruct `exact` from the stored bound.
+    // Loop-completed stores use `Exact` (best > α₀) or `Upper`
+    // (fail-low, all children visited) — both mean "all direct
+    // children were visited" in our sense. A `Lower` store only
+    // happens at a β-cutoff, which is precisely `exact=false`.
     const ZobristKey key = board.zobrist_key();
     Move tt_move{};
     if (tt != nullptr) {
@@ -343,15 +378,17 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
             if (ply > 0
                 && static_cast<int>(probe.entry.depth) >= depth) {
                 const int s = from_tt_score(probe.entry.score, ply);
+                const bool tt_exact =
+                    (probe.entry.bound() != TtBound::Lower);
                 switch (probe.entry.bound()) {
-                    case TtBound::Exact: return s;
+                    case TtBound::Exact: return {s, tt_exact};
                     case TtBound::Lower:
                         if (!stop.disable_alpha_beta && s >= beta)
-                            return s;
+                            return {s, tt_exact};
                         break;
                     case TtBound::Upper:
                         if (!stop.disable_alpha_beta && s <= alpha)
-                            return s;
+                            return {s, tt_exact};
                         break;
                     case TtBound::None:  break;
                 }
@@ -364,9 +401,10 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         if (stop.disable_quiescence) {
             // Raw static eval — horizon effect visible. User
             // opt-in to see what "pure depth-N minimax" gives.
-            return stop.use_incremental_eval
+            const int e = stop.use_incremental_eval
                 ? board.evaluate_incremental()
                 : evaluate(board);
+            return {e, true}; // a static-eval leaf has no children to miss.
         }
         // Pass out_stats through so quiescence captures /
         // recaptures are reflected in the parent's tree view
@@ -380,9 +418,9 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
     const MoveList legal = MoveGenerator::generate_legal(board);
     if (legal.empty()) {
         if (MoveGenerator::is_in_check(board, board.side_to_move())) {
-            return -Search::MATE_SCORE + ply;
+            return {-Search::MATE_SCORE + ply, true};
         }
-        return 0; // stalemate
+        return {0, true}; // stalemate
     }
 
     // --- Move ordering ------------------------------------------------
@@ -399,6 +437,12 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
     // low nodes: a move that's clearly worse than the current
     // best at root no longer masquerades as the alpha bound.
     int best_score = -Search::INF_SCORE;
+
+    // Counts children whose recursive call fully returned
+    // (incremented *before* the possible β-cut break so that
+    // a cut on the final child still yields `visited == n`
+    // and therefore `exact == true`).
+    std::size_t visited = 0;
 
     const int child_ply = ply + 1;
     const bool report_children =
@@ -460,11 +504,12 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
         const std::uint64_t nodes_before = nodes;
 
         BranchStats child_stats;
-        const int score =
-            -negamax(board, depth - 1, child_ply,
-                     recurse_alpha, recurse_beta,
-                     nodes, pv, killers, stop, tt,
-                     rec, child_stats);
+        const NegamaxResult child =
+            negamax(board, depth - 1, child_ply,
+                    recurse_alpha, recurse_beta,
+                    nodes, pv, killers, stop, tt,
+                    rec, child_stats);
+        const int score = -child.score;
         board.unmake_move(m);
 
         const BranchStats combined = combine(delta, child_stats);
@@ -475,10 +520,12 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
                        /*remaining_depth=*/depth - 1,
                        child_alpha, child_beta,
                        /*subtree_nodes=*/nodes - nodes_before,
-                       gives_check);
+                       gives_check, child.exact);
         }
 
-        if (stop.abort) return 0;
+        if (stop.abort) return {0, false};
+
+        ++visited;
 
         if (score > best_score) {
             best_score = score;
@@ -503,7 +550,9 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
                           TtBound::Lower, m);
             }
             out_stats = combined;
-            return score; // fail-soft fail-high
+            // Cutoff on the last child still visited every
+            // direct child — mark exact in that edge case.
+            return {score, visited == n};
         }
     }
 
@@ -516,7 +565,7 @@ int negamax(Board& board, int depth, int ply, int alpha, int beta,
     }
 
     out_stats = best_stats;
-    return best_score; // fail-soft fail-low
+    return {best_score, true}; // loop completed → every direct child visited.
 }
 
 int iteration(Board& board, int depth, std::uint64_t& nodes,
@@ -524,10 +573,12 @@ int iteration(Board& board, int depth, std::uint64_t& nodes,
               Stop& stop, TranspositionTable* tt,
               TreeRecorder* rec, BranchStats& out_stats,
               int alpha, int beta) {
-    return negamax(board, depth, /*ply=*/0,
-                   alpha, beta,
-                   nodes, pv, killers, stop, tt,
-                   rec, out_stats);
+    const NegamaxResult r =
+        negamax(board, depth, /*ply=*/0,
+                alpha, beta,
+                nodes, pv, killers, stop, tt,
+                rec, out_stats);
+    return r.score;
 }
 
 } // namespace

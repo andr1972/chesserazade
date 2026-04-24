@@ -44,7 +44,8 @@ public:
                int /*remaining_depth*/,
                int /*alpha*/, int /*beta*/,
                std::uint64_t /*subtree_nodes*/,
-               bool /*gives_check*/) override {
+               bool /*gives_check*/,
+               bool /*exact*/) override {
         events.push_back({Event::Kind::Leave, ply, Move{}, score,
                           was_cutoff, s});
     }

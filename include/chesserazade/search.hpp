@@ -179,12 +179,19 @@ public:
     /// a post-move board probe; we do it in the search once
     /// and pass the result through for the analyzer's filter
     /// dialog.
+    /// `exact` is true iff the subtree rooted at this move's
+    /// position visited all direct children in its own move
+    /// loop (no β-cutoff at that node). When false, the
+    /// reported `score` is a bound, not the true minimax
+    /// value — the tree view renders it as "≤score" to
+    /// distinguish it from a fully-resolved score.
     virtual void leave(int ply, int score, bool was_cutoff,
                        const BranchStats& stats,
                        int remaining_depth,
                        int alpha, int beta,
                        std::uint64_t subtree_nodes,
-                       bool gives_check) = 0;
+                       bool gives_check,
+                       bool exact) = 0;
 };
 
 struct SearchResult {

@@ -126,7 +126,8 @@ void SearchTreeRecorder::leave(int /*ply*/, int score, bool was_cutoff,
                                int remaining_depth,
                                int alpha, int beta,
                                std::uint64_t subtree_nodes,
-                               bool gives_check) {
+                               bool gives_check,
+                               bool exact) {
     const int idx = stack_.back();
     stack_.pop_back();
     TreeNode& n = tree_.at(idx);
@@ -138,6 +139,7 @@ void SearchTreeRecorder::leave(int /*ply*/, int score, bool was_cutoff,
     n.beta  = beta;
     n.subtree_nodes = subtree_nodes;
     n.gives_check = gives_check;
+    n.exact = exact;
 }
 
 } // namespace chesserazade::analyzer
