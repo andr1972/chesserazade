@@ -157,6 +157,10 @@ if(CHESSERAZADE_BUILD_ANALYZER)
             analyzer/add_bookmark_dialog.hpp
             analyzer/bookmarks.cpp
             analyzer/bookmarks.hpp
+            analyzer/bookmarks_dialog.cpp
+            analyzer/bookmarks_dialog.hpp
+            analyzer/pgn_cache.cpp
+            analyzer/pgn_cache.hpp
             analyzer/fetch_dialog.cpp
             analyzer/fetch_dialog.hpp
             analyzer/filter_dialog.cpp

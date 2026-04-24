@@ -54,6 +54,12 @@ public:
     /// Read by MainWindow when the user asks to bookmark.
     [[nodiscard]] int current_ply() const noexcept { return current_ply_; }
 
+    /// Jump the view to `ply`, clamped to the legal range.
+    /// Called by MainWindow when a bookmark is opened, so the
+    /// GameView lands on the saved position right after
+    /// `load_pgn` replays the moves.
+    void go_to_ply(int ply);
+
     /// STR tags parsed out of the current PGN — surfaced for
     /// bookmark creation so the saved row carries enough header
     /// to re-resolve the game after cache rebuilds.

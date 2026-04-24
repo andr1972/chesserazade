@@ -75,6 +75,10 @@ Board8x8Mailbox GameView::current_board() const {
     return display_board_;
 }
 
+void GameView::go_to_ply(int ply) {
+    seek_to_ply(ply);
+}
+
 QString GameView::header_label() const {
     return header_label_;
 }

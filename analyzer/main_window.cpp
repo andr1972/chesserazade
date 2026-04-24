@@ -2,10 +2,16 @@
 
 #include "add_bookmark_dialog.hpp"
 #include "bookmarks.hpp"
+#include "bookmarks_dialog.hpp"
 #include "fetch_dialog.hpp"
 #include "game_list_view.hpp"
 #include "game_view.hpp"
+#include "pgn_cache.hpp"
 #include "solve_panel.hpp"
+
+#include <chesserazade/pgn_index.hpp>
+
+#include <QFile>
 
 #include <QAction>
 #include <QApplication>
@@ -69,6 +75,13 @@ void MainWindow::build_menus() {
     add_bookmark_action_->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
     connect(add_bookmark_action_, &QAction::triggered,
             this, &MainWindow::on_add_bookmark);
+
+    auto* browse_bookmarks_action =
+        bookmarks_menu->addAction(tr("&Browse…"));
+    browse_bookmarks_action->setShortcut(
+        QKeySequence(QStringLiteral("Ctrl+B")));
+    connect(browse_bookmarks_action, &QAction::triggered,
+            this, &MainWindow::on_browse_bookmarks);
 
     auto* help_menu = menuBar()->addMenu(tr("&Help"));
     auto* about_action = help_menu->addAction(tr("&About"));
@@ -162,6 +175,86 @@ void MainWindow::on_add_bookmark() {
         return;
     }
     statusBar()->showMessage(tr("Bookmark saved."), 3000);
+}
+
+void MainWindow::on_browse_bookmarks() {
+    BookmarksDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    const auto picked = dlg.chosen();
+    if (!picked) return;
+    const Bookmark& bm = *picked;
+
+    if (bm.zip.isEmpty()) {
+        QMessageBox::warning(this, tr("Bookmark"),
+            tr("Bookmark has no source archive filename."));
+        return;
+    }
+
+    const auto pgn_path = ensure_pgn(bm.zip, this);
+    if (!pgn_path) return; // user cancelled or error already shown
+
+    QFile f(*pgn_path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, tr("Bookmark"),
+            tr("Could not read %1.").arg(*pgn_path));
+        return;
+    }
+    const QByteArray bytes = f.readAll();
+    f.close();
+
+    const std::string_view all(bytes.constData(),
+                               static_cast<std::size_t>(bytes.size()));
+    const auto headers = index_games(all);
+
+    const auto match = resolve_game(bm, headers);
+    if (!match) {
+        QMessageBox::warning(this, tr("Bookmark"),
+            tr("Could not locate the saved game in %1.\n"
+               "The archive may have changed since the bookmark "
+               "was made, or the bookmark's header fields may be "
+               "ambiguous.").arg(bm.zip));
+        return;
+    }
+
+    const PgnGameHeader& h = headers[*match];
+    if (h.offset + h.length > static_cast<std::size_t>(bytes.size())) return;
+    const QString pgn_text = QString::fromUtf8(
+        bytes.constData() + h.offset,
+        static_cast<qsizetype>(h.length));
+    const QString label = bm.label.isEmpty()
+        ? QStringLiteral("%1 — %2, %3")
+            .arg(QString::fromStdString(h.white),
+                 QString::fromStdString(h.black),
+                 QString::fromStdString(h.date))
+        : bm.label;
+
+    // Also refresh the game-list so "back to list" from the
+    // game view lands on the archive the bookmark came from,
+    // not whatever was previously loaded.
+    loaded_pgn_path_ = *pgn_path;
+    if (game_list_ != nullptr) game_list_->load(*pgn_path);
+
+    if (!game_view_->load_pgn(pgn_text, label)) {
+        QMessageBox::warning(this, tr("Bookmark"),
+            tr("Found the game but could not parse it."));
+        return;
+    }
+    game_view_->go_to_ply(bm.ply);
+
+    // If the user opened the browser from the Solve panel,
+    // they probably still want to be analyzing — just the new
+    // bookmark's position. Re-seed the solve panel with the
+    // new board and keep the stack where it was. From anywhere
+    // else (game list, game view), land on the game view so
+    // the position is immediately readable.
+    if (stack_->currentWidget() == solve_panel_) {
+        solve_source_ply_ = bm.ply;
+        solve_panel_->set_position(game_view_->current_board(), label);
+    } else {
+        stack_->setCurrentWidget(game_view_);
+    }
+    statusBar()->showMessage(
+        tr("Opened bookmark: %1").arg(bm.label), 3000);
 }
 
 void MainWindow::on_back_to_game_view() {

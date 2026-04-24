@@ -37,6 +37,11 @@ private:
     /// at solve-entry time when the Solve panel is on top),
     /// show the AddBookmarkDialog, and persist.
     void on_add_bookmark();
+    /// "Bookmarks → Browse…" — pop the list dialog, on accept
+    /// locate the zip in the cache (downloading if needed),
+    /// resolve the saved game via `resolve_game`, switch the
+    /// view to GameView seeked to the saved ply.
+    void on_browse_bookmarks();
     void update_bookmark_action_enabled();
 
     QStackedWidget* stack_    = nullptr;
