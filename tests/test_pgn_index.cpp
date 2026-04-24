@@ -58,7 +58,7 @@ TEST_CASE("PGN index: single game populates STR fields", "[pgn_index]") {
     REQUIRE(g.result == "1/2-1/2");
 }
 
-TEST_CASE("PGN index: offset points at the '[Event' header", "[pgn_index]") {
+TEST_CASE("PGN index: offset points at the Event header", "[pgn_index]") {
     const auto games = index_games(ONE_GAME);
     REQUIRE(games.size() == 1);
     const auto& g = games[0];
