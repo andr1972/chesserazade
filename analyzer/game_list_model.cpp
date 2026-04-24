@@ -10,7 +10,7 @@ namespace chesserazade::analyzer {
 GameListModel::GameListModel(QObject* parent)
     : QAbstractTableModel(parent) {}
 
-void GameListModel::set_games(const std::vector<PgnGameHeader>* games) {
+void GameListModel::set_games(const std::vector<GameRecord>* games) {
     beginResetModel();
     games_ = games;
     endResetModel();
@@ -35,7 +35,7 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
 
     const auto row = static_cast<std::size_t>(idx.row());
     if (row >= games_->size()) return {};
-    const PgnGameHeader& g = (*games_)[row];
+    const PgnGameHeader& g = (*games_)[row].header;
 
     switch (idx.column()) {
         case ColDate:   return QString::fromStdString(g.date);

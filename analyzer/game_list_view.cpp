@@ -5,7 +5,10 @@
 
 #include "game_list_model.hpp"
 
+#include <QApplication>
 #include <QComboBox>
+#include <QDateTime>
+#include <QDir>
 #include <QEvent>
 #include <QFile>
 #include <QFileInfo>
@@ -15,12 +18,15 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QModelIndex>
+#include <QProgressDialog>
 #include <QSet>
 #include <QSortFilterProxyModel>
 #include <QTableView>
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <atomic>
+#include <string>
 
 namespace chesserazade::analyzer {
 
@@ -173,7 +179,56 @@ bool GameListView::load(const QString& pgn_path) {
     pgn_bytes_.assign(bytes.constData(),
                       bytes.constData() + bytes.size());
 
-    games_ = index_games(pgn_bytes_);
+    // Index sidecar: <PGN>.idx.json next to the PGN.
+    // Reuse when mtime matches; otherwise rebuild with a
+    // progress dialog and persist.
+    const QFileInfo info(pgn_path);
+    const std::int64_t pgn_mtime =
+        info.lastModified().toSecsSinceEpoch();
+    const QString idx_path =
+        info.absolutePath() + QDir::separator()
+        + info.completeBaseName() + QStringLiteral(".idx.json");
+
+    bool reused = false;
+    if (QFileInfo::exists(idx_path)) {
+        auto loaded = load_index(idx_path.toStdString());
+        if (loaded.has_value() && loaded->pgn_mtime == pgn_mtime) {
+            games_ = std::move(loaded->games);
+            reused = true;
+        }
+    }
+
+    if (!reused) {
+        QProgressDialog dlg(tr("Indexing %1 …").arg(info.fileName()),
+                            tr("Cancel"),
+                            /*min=*/0, /*max=*/0, this);
+        dlg.setWindowModality(Qt::WindowModal);
+        dlg.setMinimumDuration(200);
+        std::atomic<bool> cancel{false};
+
+        GameIndex idx = build_index(
+            pgn_bytes_,
+            pgn_mtime,
+            [&](std::size_t done, std::size_t total) {
+                // First progress tick: fix the range so the bar
+                // reflects real progress instead of the busy
+                // marquee.
+                if (dlg.maximum() == 0) {
+                    dlg.setMaximum(static_cast<int>(total));
+                }
+                dlg.setValue(static_cast<int>(done));
+                if (dlg.wasCanceled()) cancel.store(true);
+                QApplication::processEvents();
+            },
+            cancel);
+
+        // Persist even partial indexes on cancel — next open
+        // will re-detect mtime match and skip re-work for the
+        // prefix that did complete.
+        (void)save_index(idx_path.toStdString(), idx);
+        games_ = std::move(idx.games);
+    }
+
     if (games_.empty()) {
         status_->setText(tr(
             "No games found in %1 (the file is either empty "
@@ -227,7 +282,8 @@ void GameListView::refresh_year_combo() {
     const QString name = name_filter_->text().trimmed();
 
     QSet<QString> years;
-    for (const PgnGameHeader& g : games_) {
+    for (const GameRecord& rec : games_) {
+        const PgnGameHeader& g = rec.header;
         if (!name.isEmpty()) {
             const QString w = QString::fromStdString(g.white);
             const QString b = QString::fromStdString(g.black);
@@ -271,7 +327,7 @@ void GameListView::on_activated(const QModelIndex& idx) {
     const auto r = static_cast<std::size_t>(row);
     if (r >= games_.size()) return;
 
-    const PgnGameHeader& g = games_[r];
+    const PgnGameHeader& g = games_[r].header;
     if (g.offset + g.length > pgn_bytes_.size()) return;
 
     const std::string_view slice(

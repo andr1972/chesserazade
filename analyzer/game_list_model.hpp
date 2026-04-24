@@ -10,7 +10,7 @@
 /// and hands the model a pointer that outlives it.
 #pragma once
 
-#include <chesserazade/pgn_index.hpp>
+#include <chesserazade/game_index.hpp>
 
 #include <QAbstractTableModel>
 
@@ -36,7 +36,7 @@ public:
 
     /// Point the model at a new index. The vector must outlive
     /// the model; pass `nullptr` to clear.
-    void set_games(const std::vector<PgnGameHeader>* games);
+    void set_games(const std::vector<GameRecord>* games);
 
     [[nodiscard]] int rowCount(const QModelIndex& parent
                                = QModelIndex{}) const override;
@@ -49,7 +49,7 @@ public:
                                       int role) const override;
 
 private:
-    const std::vector<PgnGameHeader>* games_ = nullptr;
+    const std::vector<GameRecord>* games_ = nullptr;
 };
 
 } // namespace chesserazade::analyzer

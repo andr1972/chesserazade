@@ -12,7 +12,7 @@
 /// populate the board + move-list pane.
 #pragma once
 
-#include <chesserazade/pgn_index.hpp>
+#include <chesserazade/game_index.hpp>
 
 #include <QString>
 #include <QWidget>
@@ -66,7 +66,7 @@ private:
     [[nodiscard]] int source_row(const QModelIndex& idx) const;
 
     std::string pgn_bytes_;
-    std::vector<PgnGameHeader> games_;
+    std::vector<GameRecord> games_;
 
     QTableView*    table_   = nullptr;
     GameListModel* model_   = nullptr;
