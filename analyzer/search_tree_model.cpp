@@ -24,6 +24,25 @@ void SearchTreeModel::set_filter(const FilterState& f) {
     endResetModel();
 }
 
+void SearchTreeModel::set_relative_mode(bool on) {
+    if (relative_mode_ == on) return;
+    relative_mode_ = on;
+    // Only the Score column changed; hand the view a narrowed
+    // dataChanged so the rest of the tree does not re-layout.
+    if (tree_ == nullptr) return;
+    const int rows = rowCount(QModelIndex{});
+    if (rows <= 0) return;
+    // A coarse-grained signal that covers every row, top-level
+    // only. Qt walks into child indexes on its own when drawing.
+    emit dataChanged(index(0, ColScore, QModelIndex{}),
+                     index(rows - 1, ColScore, QModelIndex{}),
+                     {Qt::DisplayRole});
+    // Sub-rows may also be visible. Rather than recursing, do
+    // a fall-through layoutChanged so anything expanded gets
+    // re-polled.
+    emit layoutChanged();
+}
+
 namespace {
 
 [[nodiscard]] bool is_capture_move(const Move& m) noexcept {
@@ -365,7 +384,25 @@ QVariant SearchTreeModel::data(const QModelIndex& idx, int role) const {
                 ? QStringLiteral("%1  [cut]").arg(base)
                 : base;
         }
-        case ColScore: return format_score(node.score, node.exact);
+        case ColScore: {
+            if (!relative_mode_) {
+                return format_score(node.score, node.exact);
+            }
+            // Relative mode: subtract the best score among this
+            // node's siblings (parent's direct children) from
+            // our own. Best sibling → 0; worse sibs → negative.
+            // Non-exact stored score remains an upper bound on
+            // the true value, so the computed diff is likewise
+            // an upper bound — keep the "≤" prefix.
+            const int p = node.parent;
+            if (p < 0) return format_score(node.score, node.exact);
+            int best = node.score;
+            for (int sib : tree_->at(p).children) {
+                const int s = tree_->at(sib).score;
+                if (s > best) best = s;
+            }
+            return format_score(node.score - best, node.exact);
+        }
         case ColCapW:  return node.stats.captures_white;
         case ColCapB:  return node.stats.captures_black;
         case ColChkW:  return node.stats.checks_white;

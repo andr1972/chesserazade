@@ -102,28 +102,10 @@ SolvePanel::SolvePanel(QWidget* parent)
     rb_depth_->setChecked(true);
     rlay->addWidget(budget_box);
 
+    // Row 1 — knobs that change what the search does at
+    // physical nodes: α-β pruning mode, quiescence, TT,
+    // and the two "same result, faster path" toggles.
     auto* cap_row = new QHBoxLayout;
-    cap_row->addWidget(new QLabel(tr("Tree ply cap:"), right));
-    tree_cap_spin_ = new QSpinBox(right);
-    tree_cap_spin_->setRange(1, 6);
-    tree_cap_spin_->setValue(3);
-    tree_cap_spin_->setToolTip(tr(
-        "Only moves at this depth or shallower are recorded "
-        "into the tree view. Deeper search still runs; its "
-        "effects bubble up as capture / check totals."));
-    cap_row->addWidget(tree_cap_spin_);
-
-    lazy_check_ = new QCheckBox(tr("Lazy"), right);
-    lazy_check_->setChecked(true);
-    lazy_check_->setToolTip(tr(
-        "When enabled, arrows on cap-bounded leaves trigger a "
-        "sub-search and graft the resulting subtree in place. "
-        "When disabled, the arrows still render (so you can "
-        "inspect which nodes are expandable) but clicking them "
-        "does nothing — useful as a debug view."));
-    connect(lazy_check_, &QCheckBox::toggled,
-            tree_model_, &SearchTreeModel::set_lazy_enabled);
-    cap_row->addWidget(lazy_check_);
 
     ab_mode_combo_ = new QComboBox(right);
     // Index 0/1/2 matter — `current_budget` reads them below.
@@ -187,6 +169,45 @@ SolvePanel::SolvePanel(QWidget* parent)
 
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
+
+    // Row 2 — knobs that only shape what the tree *view*
+    // records or shows. None of them change the search result.
+    auto* cap_row2 = new QHBoxLayout;
+    cap_row2->addWidget(new QLabel(tr("Tree ply cap:"), right));
+    tree_cap_spin_ = new QSpinBox(right);
+    tree_cap_spin_->setRange(1, 6);
+    tree_cap_spin_->setValue(3);
+    tree_cap_spin_->setToolTip(tr(
+        "Only moves at this depth or shallower are recorded "
+        "into the tree view. Deeper search still runs; its "
+        "effects bubble up as capture / check totals."));
+    cap_row2->addWidget(tree_cap_spin_);
+
+    lazy_check_ = new QCheckBox(tr("Lazy"), right);
+    lazy_check_->setChecked(true);
+    lazy_check_->setToolTip(tr(
+        "When enabled, arrows on cap-bounded leaves trigger a "
+        "sub-search and graft the resulting subtree in place. "
+        "When disabled, the arrows still render (so you can "
+        "inspect which nodes are expandable) but clicking them "
+        "does nothing — useful as a debug view."));
+    connect(lazy_check_, &QCheckBox::toggled,
+            tree_model_, &SearchTreeModel::set_lazy_enabled);
+    cap_row2->addWidget(lazy_check_);
+
+    relative_score_check_ = new QCheckBox(tr("relative score"), right);
+    relative_score_check_->setChecked(false);
+    relative_score_check_->setToolTip(tr(
+        "Re-render the Score column relative to the best score "
+        "among each node's siblings. The best sibling becomes "
+        "0; worse moves become negative (e.g. \"-120\"). Pure "
+        "display toggle — does not re-run the search."));
+    connect(relative_score_check_, &QCheckBox::toggled,
+            tree_model_, &SearchTreeModel::set_relative_mode);
+    cap_row2->addWidget(relative_score_check_);
+
+    cap_row2->addStretch(1);
+    rlay->addLayout(cap_row2);
 
     // -- Run / Filter / Back ----------------------------------------
     auto* btn_row = new QHBoxLayout;

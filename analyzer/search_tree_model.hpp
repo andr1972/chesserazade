@@ -85,6 +85,12 @@ public:
     void set_filter(const FilterState& f);
     [[nodiscard]] const FilterState& filter() const noexcept { return filter_; }
 
+    /// Switch the Score column between absolute (default) and
+    /// relative-to-best-sibling. Pure display toggle — no
+    /// structural change. A dataChanged signal on the Score
+    /// column tells the view to re-render.
+    void set_relative_mode(bool on);
+
     /// Map an underlying tree-node index back to a column-0
     /// QModelIndex. Useful to scroll to / re-expand a node
     /// after the tree has been grafted.
@@ -138,6 +144,7 @@ private:
     mutable std::vector<int> pending_expansions_;
 
     bool lazy_enabled_ = true;
+    bool relative_mode_ = false;
 
     FilterState filter_;
     /// Parallel to `tree_->nodes()`; `visible_children_[i]` is
