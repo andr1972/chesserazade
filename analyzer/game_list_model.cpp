@@ -68,6 +68,25 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
         case ColKF:
             if (rec.knight_fork_plies.empty()) return QString{};
             return static_cast<int>(rec.knight_fork_plies.size());
+        case ColSac: {
+            // Summarize by the biggest single sacrifice's loss
+            // and the fraction recovered. E.g. "Q 60%" means
+            // "queen dropped, 60% of its cp won back within
+            // the window". No sacrifice → blank.
+            if (rec.material_sacs.empty()) return QString{};
+            const MaterialSac* best = &rec.material_sacs.front();
+            for (const auto& s : rec.material_sacs) {
+                if (s.loss_cp > best->loss_cp) best = &s;
+            }
+            const char* tag = "?";
+            if      (best->loss_cp >= 900) tag = "Q";
+            else if (best->loss_cp >= 500) tag = "R";
+            else if (best->loss_cp >= 300) tag = "m";  // minor
+            const int pct = (best->loss_cp > 0)
+                ? (100 * best->recovery_cp / best->loss_cp)
+                : 0;
+            return QStringLiteral("%1 %2%").arg(tag).arg(pct);
+        }
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
     }
@@ -88,6 +107,7 @@ QVariant GameListModel::headerData(int section,
         case ColEnd:    return tr("End");
         case ColUP:     return tr("UP");
         case ColKF:     return tr("KF");
+        case ColSac:    return tr("Sac");
         case ColEvent:  return tr("Event");
         default:        return {};
     }

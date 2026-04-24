@@ -67,6 +67,11 @@ public:
         kf_only_ = on;
         invalidateFilter();
     }
+    void set_sac_only(bool on) {
+        if (on == sac_only_) return;
+        sac_only_ = on;
+        invalidateFilter();
+    }
 
 protected:
     [[nodiscard]] bool filterAcceptsRow(int row,
@@ -116,6 +121,12 @@ protected:
                                                 parent));
             if (!v.isValid() || v.toString().isEmpty()) return false;
         }
+        if (sac_only_) {
+            const QString sv = m->data(m->index(row,
+                                                GameListModel::ColSac,
+                                                parent)).toString();
+            if (sv.isEmpty()) return false;
+        }
         return true;
     }
 
@@ -125,6 +136,7 @@ private:
     bool    mate_only_ = false;
     bool    up_only_   = false;
     bool    kf_only_   = false;
+    bool    sac_only_  = false;
 };
 
 GameListView::GameListView(QWidget* parent) : QWidget(parent) {
@@ -188,6 +200,17 @@ GameListView::GameListView(QWidget* parent) : QWidget(parent) {
     connect(kf_filter_, &QCheckBox::toggled,
             this, [this](bool on) { proxy_->set_kf_only(on); });
     filter_row->addWidget(kf_filter_);
+
+    sac_filter_ = new QCheckBox(tr("sacrifice"), this);
+    sac_filter_->setToolTip(tr(
+        "Show only games where one side lost ≥ 3 cp worth of "
+        "material over two consecutive plies — a sacrifice "
+        "(sound or otherwise). The Sac column shows the "
+        "biggest single-event loss (Q/R/m) and how much of "
+        "it was won back within a 10-ply window."));
+    connect(sac_filter_, &QCheckBox::toggled,
+            this, [this](bool on) { proxy_->set_sac_only(on); });
+    filter_row->addWidget(sac_filter_);
 
     layout->addLayout(filter_row);
 

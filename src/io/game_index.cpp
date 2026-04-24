@@ -23,11 +23,13 @@
 
 #include <chesserazade/bitboard.hpp>
 #include <chesserazade/board.hpp>
+#include <chesserazade/evaluator.hpp>
 #include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
 #include <chesserazade/move_generator.hpp>
 #include <chesserazade/pgn.hpp>
 #include <chesserazade/san.hpp>
+#include <chesserazade/types.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -73,7 +75,87 @@ struct Derived {
     EndKind  end_kind = EndKind::Unknown;
     std::vector<UnderPromotion> underpromotions;
     std::vector<int> knight_fork_plies;
+    std::vector<MaterialSac> material_sacs;
 };
+
+/// Net material balance from white's perspective, in cp.
+/// Positive = white ahead. Kings excluded.
+[[nodiscard]] int material_balance(const Board& b) noexcept {
+    int bal = 0;
+    for (int i = 0; i < 64; ++i) {
+        const Square sq = static_cast<Square>(i);
+        const Piece p = b.piece_at(sq);
+        if (p.type == PieceType::None
+            || p.type == PieceType::King) continue;
+        const int v = piece_value(p.type);
+        bal += (p.color == Color::White) ? v : -v;
+    }
+    return bal;
+}
+
+/// Threshold at which a two-ply material drop counts as a
+/// sacrifice (rather than a trade). 300 cp ≈ a minor piece
+/// unreturned.
+constexpr int SAC_THRESHOLD_CP = 300;
+
+/// Forward window (plies) to check for recovery.
+constexpr int SAC_RECOVERY_WINDOW = 10;
+
+/// Find sacrifice events given a per-ply white-perspective
+/// balance series. `balances[0]` is the starting position
+/// (= 0); `balances[k]` is the balance after move index k-1.
+/// A sacrifice for side S occurs when S's advantage drops
+/// by ≥ SAC_THRESHOLD_CP from "before S's move" to "after
+/// opponent's reply". Overlapping sacrifices for the same
+/// side are suppressed: once a sac is recorded at ply p, we
+/// skip forward past the recovery window before looking for
+/// the next one, so a single long combination counts once.
+std::vector<MaterialSac> find_sacs(const std::vector<int>& balances) {
+    std::vector<MaterialSac> out;
+    const int n_plies = static_cast<int>(balances.size()) - 1;
+    if (n_plies <= 1) return out;
+
+    int skip_until = -1;
+    for (int i = 0; i < n_plies; ++i) {
+        if (i < skip_until) continue;
+
+        // Mover: white on even i, black on odd i.
+        const int mover_sign = (i % 2 == 0) ? +1 : -1;
+        const auto ui = static_cast<std::size_t>(i);
+        // Advantage before mover's move.
+        const int adv_before = mover_sign * balances[ui];
+        // Advantage after opponent's reply, or end-of-game.
+        const int after_idx = std::min(i + 2,
+                                        static_cast<int>(balances.size()) - 1);
+        const int adv_after =
+            mover_sign * balances[static_cast<std::size_t>(after_idx)];
+        const int loss = adv_before - adv_after;
+        if (loss < SAC_THRESHOLD_CP) continue;
+
+        // Recovery: look forward up to SAC_RECOVERY_WINDOW
+        // plies past the reply. Track the *peak* of mover's
+        // advantage reached — that's how close to recovered
+        // the balance got.
+        int max_adv = adv_after;
+        const int window_end = std::min(
+            after_idx + SAC_RECOVERY_WINDOW,
+            static_cast<int>(balances.size()) - 1);
+        for (int k = after_idx; k <= window_end; ++k) {
+            const int a =
+                mover_sign * balances[static_cast<std::size_t>(k)];
+            if (a > max_adv) max_adv = a;
+        }
+        const int recovery = std::max(0, max_adv - adv_after);
+
+        MaterialSac s;
+        s.ply = i + 1; // 1-based
+        s.loss_cp = loss;
+        s.recovery_cp = recovery;
+        out.push_back(s);
+        skip_until = after_idx + SAC_RECOVERY_WINDOW;
+    }
+    return out;
+}
 
 /// True iff a knight of `mover` sitting on `sq` in `board`
 /// both checks the opposing king and attacks at least one
@@ -137,6 +219,10 @@ Derived compute_derived(const PgnGame& pg) {
     if (!b) return out;
     Board8x8Mailbox board = *b;
 
+    std::vector<int> balances;
+    balances.reserve(pg.moves.size() + 1);
+    balances.push_back(material_balance(board));
+
     std::uint64_t h = FNV64_OFFSET;
     bool first = true;
     int ply = 0;
@@ -169,8 +255,11 @@ Derived compute_derived(const PgnGame& pg) {
             && detect_knight_fork(board, mover, m.to)) {
             out.knight_fork_plies.push_back(ply);
         }
+
+        balances.push_back(material_balance(board));
     }
     out.hash = h;
+    out.material_sacs = find_sacs(balances);
 
     const MoveList legal = MoveGenerator::generate_legal(board);
     if (legal.empty()) {
@@ -265,6 +354,15 @@ void write_record(std::ostream& os, const GameRecord& r) {
     for (std::size_t i = 0; i < r.knight_fork_plies.size(); ++i) {
         if (i > 0) os << ", ";
         os << r.knight_fork_plies[i];
+    }
+    os << "],\n";
+    os << "      \"material_sacs\": [";
+    for (std::size_t i = 0; i < r.material_sacs.size(); ++i) {
+        const auto& s = r.material_sacs[i];
+        if (i > 0) os << ", ";
+        os << "{\"ply\": " << s.ply
+           << ", \"loss_cp\": " << s.loss_cp
+           << ", \"recovery_cp\": " << s.recovery_cp << "}";
     }
     os << "]\n";
     os << "    }";
@@ -448,6 +546,31 @@ bool parse_record(Cursor& c, GameRecord& r) {
         }
     }
     if (!c.match(']')) return false;
+    if (!c.match(',')) return false;
+    if (!expect_key(c, "material_sacs")) return false;
+    if (!c.match('[')) return false;
+    c.skip_ws();
+    if (c.peek() != ']') {
+        while (true) {
+            if (!c.match('{')) return false;
+            MaterialSac s;
+            long long v = 0;
+            if (!expect_key(c, "ply") || !parse_int(c, v)) return false;
+            s.ply = static_cast<int>(v);
+            if (!c.match(',')) return false;
+            if (!expect_key(c, "loss_cp") || !parse_int(c, v)) return false;
+            s.loss_cp = static_cast<int>(v);
+            if (!c.match(',')) return false;
+            if (!expect_key(c, "recovery_cp")
+                || !parse_int(c, v)) return false;
+            s.recovery_cp = static_cast<int>(v);
+            if (!c.match('}')) return false;
+            r.material_sacs.push_back(s);
+            if (c.match(',')) continue;
+            break;
+        }
+    }
+    if (!c.match(']')) return false;
     if (!c.match('}')) return false;
     return true;
 }
@@ -459,7 +582,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
-    idx.schema = 4;
+    idx.schema = 5;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -483,6 +606,7 @@ GameIndex build_index(std::string_view pgn_bytes,
             r.end_kind = d.end_kind;
             r.underpromotions = std::move(d.underpromotions);
             r.knight_fork_plies = std::move(d.knight_fork_plies);
+            r.material_sacs = std::move(d.material_sacs);
         }
         idx.games.push_back(std::move(r));
 
@@ -531,7 +655,7 @@ std::optional<GameIndex> load_index(const std::string& path) {
     // rather than migrate we return nullopt so the caller
     // rebuilds from the PGN — rebuild is cheap and keeps the
     // loader free of per-version fixup code.
-    if (idx.schema != 4) return std::nullopt;
+    if (idx.schema != 5) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;

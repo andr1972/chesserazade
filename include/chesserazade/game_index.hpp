@@ -72,6 +72,19 @@ struct UnderPromotion {
     PieceType piece = PieceType::None;
 };
 
+/// Sharp material drop against the mover, detected during
+/// index build. `loss_cp` is net material the mover lost over
+/// their move + opponent's reply (always positive). `recovery_cp`
+/// is the most they won back within a 10-ply forward window;
+/// equal to `loss_cp` means "fully repaid", zero means "never
+/// regained anything", negative values don't happen (we clamp
+/// at zero). `ply` is the sacrificing move (1-based).
+struct MaterialSac {
+    int ply = 0;
+    int loss_cp = 0;
+    int recovery_cp = 0;
+};
+
 /// A single game's metadata. Extends `PgnGameHeader` with a
 /// content-stable hash and replay-derived events.
 struct GameRecord {
@@ -90,14 +103,22 @@ struct GameRecord {
     /// plies. Empty for most games; a filter hit is usually
     /// worth looking at.
     std::vector<int> knight_fork_plies;
+
+    /// All sacrifice / blunder events in play order.
+    /// Recovery is checked over a 10-ply window; a sacrifice
+    /// that recovered its full material cost is a "sound"
+    /// sacrifice, while one that never got repaid is a
+    /// blunder (or loss-leading sac that won by threat /
+    /// checkmate pressure, not material).
+    std::vector<MaterialSac> material_sacs;
 };
 
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way. Current: 4 (added
-    /// `knight_fork_plies` per record).
-    int schema = 4;
+    /// changes in a non-additive way. Current: 5 (added
+    /// `material_sacs` per record).
+    int schema = 5;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares
