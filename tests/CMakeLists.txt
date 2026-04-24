@@ -50,6 +50,18 @@ target_include_directories(chesserazade_tests
     PRIVATE ${CMAKE_SOURCE_DIR}/src
 )
 
+# Bookmark tests use QString / QJsonDocument through the
+# analyzer's bookmarks module — pull them in only when the
+# analyzer (and therefore Qt6) is available. Leaves the
+# "pure C++" build path untouched on machines without Qt.
+if(CHESSERAZADE_BUILD_ANALYZER AND Qt6_FOUND)
+    target_sources(chesserazade_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/analyzer/bookmarks.cpp
+        test_bookmarks.cpp
+    )
+    target_link_libraries(chesserazade_tests PRIVATE Qt6::Core)
+endif()
+
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 catch_discover_tests(chesserazade_tests)

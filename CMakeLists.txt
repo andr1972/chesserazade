@@ -153,6 +153,8 @@ if(CHESSERAZADE_BUILD_ANALYZER)
             analyzer/main_window.hpp
             analyzer/board_widget.cpp
             analyzer/board_widget.hpp
+            analyzer/bookmarks.cpp
+            analyzer/bookmarks.hpp
             analyzer/fetch_dialog.cpp
             analyzer/fetch_dialog.hpp
             analyzer/filter_dialog.cpp
