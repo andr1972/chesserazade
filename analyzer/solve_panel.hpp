@@ -64,7 +64,8 @@ private:
     void on_progress(int depth, int score_cp,
                      const QString& pv_uci,
                      int captures_white, int captures_black,
-                     int checks_white,   int checks_black);
+                     int checks_white,   int checks_black,
+                     quint64 nodes, qint64 elapsed_ms);
     void on_finished(const QString& best_uci, int final_score,
                      int depth_reached, quint64 nodes,
                      qint64 elapsed_ms);

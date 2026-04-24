@@ -505,20 +505,27 @@ void SolvePanel::on_worker_thread_destroyed() {
 void SolvePanel::on_progress(int depth, int score_cp,
                              const QString& pv_uci,
                              int captures_white, int captures_black,
-                             int checks_white,   int checks_black) {
+                             int checks_white,   int checks_black,
+                             quint64 nodes, qint64 elapsed_ms) {
     const QString score = Search::is_mate_score(score_cp)
         ? QStringLiteral("mate %1").arg(Search::plies_to_mate(score_cp))
         : QStringLiteral("cp %1").arg(score_cp);
 
+    // Two lines per iteration: header with counters on the
+    // first, PV on the second. The PV can get long at depth 8+
+    // and used to push nodes/time off the screen.
     append_log(QStringLiteral(
-        "depth %1  score %2  capt W/B %3/%4  chk W/B %5/%6  pv %7")
+        "depth %1  score %2  capt W/B %3/%4  chk W/B %5/%6  "
+        "nodes %7  time %8 ms")
         .arg(depth, 2)
         .arg(score, -10)
         .arg(captures_white)
         .arg(captures_black)
         .arg(checks_white)
         .arg(checks_black)
-        .arg(pv_uci));
+        .arg(nodes)
+        .arg(elapsed_ms));
+    append_log(QStringLiteral("  pv %1").arg(pv_uci));
 }
 
 void SolvePanel::on_finished(const QString& best_uci, int final_score,

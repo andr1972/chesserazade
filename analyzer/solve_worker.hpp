@@ -69,11 +69,15 @@ public slots:
 
 signals:
     /// One signal per completed ID iteration. `pv_uci` is a
-    /// space-separated list of UCI moves.
+    /// space-separated list of UCI moves. `nodes` / `elapsed_ms`
+    /// are the totals from the `find_best` call that produced
+    /// this iteration — useful for plotting per-depth cost in
+    /// the progress log.
     void progress(int depth, int score_cp,
                   const QString& pv_uci,
                   int captures_white, int captures_black,
-                  int checks_white,   int checks_black);
+                  int checks_white,   int checks_black,
+                  quint64 nodes, qint64 elapsed_ms);
 
     /// Fires right after `progress` for the same iteration.
     /// Carries a snapshot of the tree that iteration built —

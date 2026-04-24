@@ -130,7 +130,9 @@ void SolveWorker::start() {
                       r.pv_stats.captures_white,
                       r.pv_stats.captures_black,
                       r.pv_stats.checks_white,
-                      r.pv_stats.checks_black);
+                      r.pv_stats.checks_black,
+                      static_cast<quint64>(r.nodes),
+                      static_cast<qint64>(r.elapsed.count()));
 
         // Copy on the worker thread, finalise SAN, mark the
         // PV so the view can bold it, then hand off. The next
