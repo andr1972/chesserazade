@@ -6,11 +6,15 @@
 #include <chesserazade/net_fetcher.hpp>
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
@@ -53,6 +57,26 @@ FetchDialog::FetchDialog(QWidget* parent) : QDialog(parent) {
         this);
     header->setWordWrap(true);
     layout->addWidget(header);
+
+    auto* filter_row = new QHBoxLayout;
+    filter_edit_ = new QLineEdit(this);
+    filter_edit_->setPlaceholderText(tr("filter (first or last name)"));
+    filter_edit_->setClearButtonEnabled(true);
+    filter_edit_->installEventFilter(this);
+    connect(filter_edit_, &QLineEdit::textChanged,
+            this, [this](const QString&) { rebuild_list(); });
+    filter_row->addWidget(filter_edit_, /*stretch=*/1);
+
+    only_cached_check_ = new QCheckBox(tr("only cached"), this);
+    only_cached_check_->setToolTip(tr(
+        "Hide players whose archive is not yet in the local "
+        "cache. Useful for picking up where you left off without "
+        "scrolling past remote-only entries."));
+    connect(only_cached_check_, &QCheckBox::toggled,
+            this, [this](bool) { rebuild_list(); });
+    filter_row->addWidget(only_cached_check_);
+
+    layout->addLayout(filter_row);
 
     list_ = new QListWidget(this);
     list_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -108,6 +132,23 @@ QString FetchDialog::pgn_path_for(const PgnMentorEntry& e) const {
          + QStringLiteral(".pgn");
 }
 
+bool FetchDialog::entry_matches(const PgnMentorEntry& e) const {
+    if (only_cached_check_ != nullptr
+        && only_cached_check_->isChecked()
+        && !QFileInfo::exists(pgn_path_for(e))) {
+        return false;
+    }
+    const QString needle = filter_edit_ != nullptr
+        ? filter_edit_->text().trimmed()
+        : QString{};
+    if (needle.isEmpty()) return true;
+    // `name` is already "Last, First" so substring-match against
+    // it finds hits on either half ("polgar" → "Polgar, Judit",
+    // "judit" → same). Case-insensitive; no regex to keep the
+    // search feeling instant on every keystroke.
+    return e.name.contains(needle, Qt::CaseInsensitive);
+}
+
 void FetchDialog::rebuild_list() {
     list_->clear();
     QStyle* style = QApplication::style();
@@ -116,21 +157,40 @@ void FetchDialog::rebuild_list() {
     const QIcon remote_icon =
         style->standardIcon(QStyle::SP_FileIcon);
 
-    for (const auto& e : entries_) {
+    // Filtering breaks the row-index ↔ entries_-index parity,
+    // so we stash the original index on each item via UserRole;
+    // the open/selection handlers read that back.
+    for (std::size_t i = 0; i < entries_.size(); ++i) {
+        const auto& e = entries_[i];
+        if (!entry_matches(e)) continue;
         const bool cached = QFileInfo::exists(pgn_path_for(e));
         auto* item = new QListWidgetItem(list_);
         item->setText(e.name
                       + (cached ? tr("   [cached]") : QString{}));
         item->setIcon(cached ? cached_icon : remote_icon);
         item->setToolTip(e.url());
+        item->setData(Qt::UserRole, static_cast<int>(i));
     }
 }
 
+bool FetchDialog::eventFilter(QObject* obj, QEvent* e) {
+    if (obj == filter_edit_ && e->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(e);
+        if (ke->key() == Qt::Key_Escape
+            && !filter_edit_->text().isEmpty()) {
+            filter_edit_->clear();
+            return true; // consumed — do not close the dialog.
+        }
+    }
+    return QDialog::eventFilter(obj, e);
+}
+
 void FetchDialog::on_selection_changed() {
-    open_btn_->setEnabled(list_->currentItem() != nullptr);
-    if (list_->currentItem() != nullptr) {
-        const int row = list_->currentRow();
-        const auto& e = entries_[static_cast<std::size_t>(row)];
+    QListWidgetItem* item = list_->currentItem();
+    open_btn_->setEnabled(item != nullptr);
+    if (item != nullptr) {
+        const int idx = item->data(Qt::UserRole).toInt();
+        const auto& e = entries_[static_cast<std::size_t>(idx)];
         const bool cached = QFileInfo::exists(pgn_path_for(e));
         if (cached) {
             status_->setText(tr("Cached: %1 — will open without "
@@ -142,10 +202,11 @@ void FetchDialog::on_selection_changed() {
 }
 
 void FetchDialog::on_open_clicked() {
-    const int row = list_->currentRow();
-    if (row < 0
-        || static_cast<std::size_t>(row) >= entries_.size()) return;
-    const PgnMentorEntry& e = entries_[static_cast<std::size_t>(row)];
+    QListWidgetItem* item = list_->currentItem();
+    if (item == nullptr) return;
+    const int idx = item->data(Qt::UserRole).toInt();
+    if (idx < 0 || static_cast<std::size_t>(idx) >= entries_.size()) return;
+    const PgnMentorEntry& e = entries_[static_cast<std::size_t>(idx)];
 
     const QString pgn_path = pgn_path_for(e);
     if (QFileInfo::exists(pgn_path)) {

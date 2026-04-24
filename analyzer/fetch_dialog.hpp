@@ -14,7 +14,9 @@
 
 #include <vector>
 
+class QCheckBox;
 class QLabel;
+class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
@@ -37,15 +39,25 @@ signals:
     /// Carries the same value as `selected_pgn_path()`.
     void pgn_ready(const QString& pgn_path);
 
+protected:
+    /// Catch Escape on the filter edit so it clears the text
+    /// instead of closing the dialog (the usual QDialog
+    /// behaviour). Esc on an already-empty filter falls
+    /// through to the default reject.
+    bool eventFilter(QObject* obj, QEvent* e) override;
+
 private:
     void on_selection_changed();
     void on_open_clicked();
     void rebuild_list();
+    [[nodiscard]] bool entry_matches(const PgnMentorEntry& e) const;
     [[nodiscard]] QString cache_dir() const;
     [[nodiscard]] QString pgn_path_for(const PgnMentorEntry& e) const;
     [[nodiscard]] QString zip_path_for(const PgnMentorEntry& e) const;
 
     std::vector<PgnMentorEntry> entries_;
+    QLineEdit*   filter_edit_ = nullptr;
+    QCheckBox*   only_cached_check_ = nullptr;
     QListWidget* list_     = nullptr;
     QLabel*      status_   = nullptr;
     QPushButton* open_btn_ = nullptr;
