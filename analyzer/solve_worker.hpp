@@ -48,6 +48,7 @@ struct SolveBudget {
     bool use_bitboard       = false;  ///< Search on BoardBitboard.
     bool enable_lmr         = true;   ///< Late Move Reductions.
     bool enable_history     = true;   ///< History heuristic ordering.
+    bool enable_aspiration  = true;   ///< Aspiration windows at root.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called

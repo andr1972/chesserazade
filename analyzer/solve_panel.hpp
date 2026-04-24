@@ -117,6 +117,7 @@ private:
     QCheckBox*    bitboard_check_ = nullptr;
     QCheckBox*    lmr_check_      = nullptr;
     QCheckBox*    history_check_  = nullptr;
+    QCheckBox*    asp_check_      = nullptr;
     QCheckBox*    relative_score_check_ = nullptr;
 
     QPushButton*  run_btn_  = nullptr;

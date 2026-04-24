@@ -121,6 +121,7 @@ struct Stop {
     bool use_incremental_eval = false;
     bool enable_lmr = false;
     bool enable_history = false;
+    bool enable_aspiration = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
@@ -807,6 +808,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.use_incremental_eval,
         limits.enable_lmr,
         limits.enable_history,
+        limits.enable_aspiration,
         limits.cancel,
         limits.progress_nodes,
         false,
@@ -848,15 +850,57 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
     KillerTable killers;
     HistoryTable history;
 
+    // Aspiration windows: initial half-width around the
+    // previous iteration's score. 50 cp is comfortable margin
+    // over typical iter-to-iter score drift; anything wider
+    // would rarely fail but lose the ordering benefit.
+    constexpr int ASP_INITIAL_HALF = 50;
+    constexpr int ASP_MIN_DEPTH    = 4;
+
     for (int d = 1; d <= max_depth; ++d) {
         PvTable pv;
         const std::uint64_t nodes_before = result.nodes;
         BranchStats pv_stats;
 
-        if (recorder != nullptr) recorder->begin_iteration(d);
-        int score =
-            iteration(board, d, result.nodes, pv, killers, history, stop, tt,
-                      recorder, pv_stats, alpha, beta);
+        int asp_a = alpha;
+        int asp_b = beta;
+        int asp_half = ASP_INITIAL_HALF;
+        const bool use_asp =
+               stop.enable_aspiration
+            && d >= ASP_MIN_DEPTH
+            && result.completed_depth > 0
+            && !is_mate_score(result.score)
+            && !stop.disable_alpha_beta;
+        if (use_asp) {
+            asp_a = std::max(alpha, result.score - asp_half);
+            asp_b = std::min(beta,  result.score + asp_half);
+        }
+
+        int score = 0;
+        while (true) {
+            if (recorder != nullptr) recorder->begin_iteration(d);
+            score =
+                iteration(board, d, result.nodes, pv, killers, history,
+                          stop, tt, recorder, pv_stats, asp_a, asp_b);
+            if (stop.abort) break;
+
+            // Fail-low / fail-high check only matters when the
+            // tested bound is narrower than the outer one —
+            // otherwise the score is a real value, not a bound.
+            const bool fail_low  = score <= asp_a && asp_a > alpha;
+            const bool fail_high = score >= asp_b && asp_b < beta;
+            if (!fail_low && !fail_high) break;
+
+            asp_half *= 4;
+            if (asp_half > 2 * Search::INF_SCORE) {
+                asp_a = alpha;
+                asp_b = beta;
+            } else if (fail_low) {
+                asp_a = std::max(alpha, result.score - asp_half);
+            } else {
+                asp_b = std::min(beta,  result.score + asp_half);
+            }
+        }
 
         if (stop.abort) {
             result.nodes = nodes_before;

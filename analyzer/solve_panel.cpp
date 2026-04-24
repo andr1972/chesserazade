@@ -194,6 +194,18 @@ SolvePanel::SolvePanel(QWidget* parent)
         "genuinely untested quiets."));
     cap_row->addWidget(history_check_);
 
+    asp_check_ = new QCheckBox(tr("aspiration"), right);
+    asp_check_->setChecked(true);
+    asp_check_->setToolTip(tr(
+        "Aspiration windows — from depth 4 onwards each ID "
+        "iteration starts with a narrow α-β window (± 50 cp) "
+        "around the previous iteration's score, widening "
+        "geometrically on fail-low / fail-high. The root "
+        "window is tight from the first move, tightening "
+        "every child's α-β, which improves ordering-driven "
+        "cutoffs without changing the search result."));
+    cap_row->addWidget(asp_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -409,6 +421,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.use_bitboard         = bitboard_check_->isChecked();
     b.enable_lmr           = lmr_check_->isChecked();
     b.enable_history       = history_check_->isChecked();
+    b.enable_aspiration    = asp_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();

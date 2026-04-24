@@ -82,6 +82,7 @@ void SolveWorker::start() {
         lim.use_incremental_eval = budget_.use_incremental_eval;
         lim.enable_lmr = budget_.enable_lmr;
         lim.enable_history = budget_.enable_history;
+        lim.enable_aspiration = budget_.enable_aspiration;
         lim.cancel = cancel_;
         lim.progress_nodes = progress_nodes_;
         if (budget_ms > 0) {

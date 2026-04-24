@@ -121,6 +121,17 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/History_Heuristic
     bool enable_history = false;
 
+    /// Aspiration windows at the root. For iterations at depth
+    /// ≥ 4 the root α-β window is seeded narrow around the
+    /// previous iteration's score (± 50 cp) instead of ±INF;
+    /// a fail-low / fail-high triggers a re-search with a
+    /// geometrically widened window. Most iterations stay
+    /// inside the narrow window so the root α-β is tight from
+    /// the first move — a cheap ordering win. Orthogonal to
+    /// NMP / LMR / history (applies only to the outer ID loop).
+    /// See https://www.chessprogramming.org/Aspiration_Windows
+    bool enable_aspiration = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The
