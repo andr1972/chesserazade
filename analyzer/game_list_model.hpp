@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Table model over the output of `chesserazade::index_games`.
 ///
 /// Five columns — Date / White / Black / Result / Event — map

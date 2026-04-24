@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Perft correctness on the BoardBitboard implementation.
 ///
 /// `MoveGenerator::generate_legal(Board&)` dispatches to

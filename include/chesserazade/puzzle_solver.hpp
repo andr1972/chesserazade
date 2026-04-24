@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// PuzzleSolver — find forced mates from a given position.
 ///
 /// Given a mate-in-N puzzle (a position where the side to move

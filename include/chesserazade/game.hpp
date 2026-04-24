@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Game — a `Board` plus the sequence of moves that led to it.
 ///
 /// `Board` is enough for the move generator and the search: they only

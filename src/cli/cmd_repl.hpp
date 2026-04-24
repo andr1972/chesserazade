@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `chesserazade repl` (alias: `play`) — interactive text session.
 ///
 /// A minimal REPL for manually driving a `Game`: enter moves (UCI

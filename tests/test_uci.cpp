@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// UCI protocol tests.
 ///
 /// We drive `process_uci_line` directly instead of spawning a

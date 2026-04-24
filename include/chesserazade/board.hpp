@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Abstract Board interface.
 ///
 /// `Board` is the single shared view that every higher-level subsystem

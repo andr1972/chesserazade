@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for quiescence search and move ordering.
 ///
 /// These are behavioural tests on the search as a whole rather

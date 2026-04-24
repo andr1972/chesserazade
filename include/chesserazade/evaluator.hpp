@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Evaluator — static position assessment in centipawns.
 ///
 /// This is the classical, educational evaluator described in the

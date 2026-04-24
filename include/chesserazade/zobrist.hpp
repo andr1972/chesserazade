@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Zobrist hashing — 64-bit position keys.
 ///
 /// A Zobrist key is the XOR of a fixed set of 64-bit random

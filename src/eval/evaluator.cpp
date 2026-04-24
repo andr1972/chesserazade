@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Implementation of the Simplified Evaluation Function.
 ///
 /// Tables are laid out in **LERF order** to match the rest of the

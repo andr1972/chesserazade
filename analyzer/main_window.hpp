@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Top-level window for `chesserazade-analyzer`.
 ///
 /// The 1.3.3 skeleton only hosts an empty central widget, a File

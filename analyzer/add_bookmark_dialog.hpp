@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Modal for creating a new bookmark. The caller pre-fills the
 /// game-identification fields (zip, white/black/date/event/round,
 /// ply) from whichever view it was invoked from; the dialog

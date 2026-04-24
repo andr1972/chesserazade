@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// FEN — Forsyth-Edwards Notation I/O.
 ///
 /// FEN is the ASCII serialization of a chess position:

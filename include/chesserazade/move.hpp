@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Move — the unit of play between layers.
 ///
 /// A `Move` carries everything the engine needs to apply it to the

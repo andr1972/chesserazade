@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `SearchTreeModel` — adapts a `SearchTree` to QTreeView.
 ///
 /// Columns, left to right:

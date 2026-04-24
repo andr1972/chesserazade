@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// PGN — Portable Game Notation I/O.
 ///
 /// PGN is the standard archival format for a chess game:

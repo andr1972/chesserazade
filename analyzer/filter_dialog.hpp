@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `FilterDialog` — lets the user prune the search-tree view
 /// down to "significant events" only: branches that contain a
 /// capture or a check at one of the selected plies.

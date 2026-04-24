@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2024-2026 Andrzej Borucki
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Regenerate data/pgnmentor_index.json from the Players section of
 https://www.pgnmentor.com/files.html.

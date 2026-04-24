@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Move generator implementation.
 ///
 /// Approach: iterate all 64 squares, find pieces of the side-to-move

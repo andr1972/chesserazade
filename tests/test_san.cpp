@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for SAN I/O.
 ///
 /// We test parse and write together on the same positions — a

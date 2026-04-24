@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `chesserazade uci` — UCI (Universal Chess Interface) mode.
 ///
 /// Line-based stdin/stdout protocol used by Arena / CuteChess /

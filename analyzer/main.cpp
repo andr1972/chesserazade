@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `chesserazade-analyzer` — Qt6 GUI entry point.
 ///
 /// Thin shell: construct a `QApplication`, show the main

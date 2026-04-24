@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Bitboard — 64-bit set of squares, one bit per square.
 ///
 /// A chess board has exactly 64 squares, so a `std::uint64_t`

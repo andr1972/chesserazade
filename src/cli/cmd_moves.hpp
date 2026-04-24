@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `chesserazade moves --fen <fen>` — list the legal moves from a position.
 ///
 /// Output format: one UCI-encoded move per line, sorted by from-square then

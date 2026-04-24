@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Fetch dialog — pick a PGN Mentor player archive, download
 /// (unless cached), unzip, and hand the resulting `.pgn` path
 /// back to the MainWindow.

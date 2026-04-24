@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Mailbox implementation of the `Board` interface.
 ///
 /// A "mailbox" board stores one `Piece` per square in a flat 64-entry

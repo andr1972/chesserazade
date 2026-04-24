@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `BoardWidget` — a read-only 8×8 chess board display.
 ///
 /// Renders the current position with Unicode figurines

@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Bitboard-native move generator.
 ///
 /// Same output contract as `MoveGenerator` (populates the same

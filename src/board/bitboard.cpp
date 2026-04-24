@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Attack-table initialization for non-sliding pieces.
 ///
 /// We build the tables by walking every square and computing

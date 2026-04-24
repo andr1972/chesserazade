@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Alpha-beta negamax with iterative deepening, TT cutoffs,
 /// move ordering, and quiescence search.
 ///

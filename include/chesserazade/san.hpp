@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// SAN — Standard Algebraic Notation I/O.
 ///
 /// SAN is the human-readable move notation used in printed chess

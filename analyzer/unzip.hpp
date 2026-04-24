@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Thin wrapper around the system `unzip` binary.
 ///
 /// 1.3.0 §"unzip" decision: shell out rather than bundle

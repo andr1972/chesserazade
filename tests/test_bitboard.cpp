@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for bitboard primitives and non-slider attack tables.
 ///
 /// Two kinds of assertion:

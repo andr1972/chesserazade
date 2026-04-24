@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for the analyzer's `SearchTreeRecorder` and
 /// `SearchTree` — the data structures that back the 1.3.8 Qt
 /// tree view, independent of Qt itself. We drive

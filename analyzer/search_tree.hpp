@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Flat arena that collects the tree of moves explored by
 /// `Search::find_best` — one entry per `TreeRecorder::enter` /
 /// `leave` pair. The tree is capped at `ply_cap` plies; deeper

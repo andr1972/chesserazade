@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Chesserazade entry point.
 ///
 /// The executable is a thin shell that parses argv[1] as a subcommand name

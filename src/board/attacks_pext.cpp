@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// PEXT slider attacks.
 ///
 /// Uses the x86 `PEXT` (parallel bits extract) instruction

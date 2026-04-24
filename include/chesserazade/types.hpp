@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Core types shared by every module in chesserazade.
 ///
 /// The types here are deliberately small and transparent — the reader

@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for the game analyzer.
 ///
 /// Strategy: construct a `Game` that plays a clearly bad move in

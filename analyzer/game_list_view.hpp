@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `GameListView` — a widget that loads a multi-game PGN,
 /// indexes it via `chesserazade::index_games`, and exposes the
 /// games as a sortable QTableView. Double-click (or Enter) on

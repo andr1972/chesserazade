@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `chesserazade show --fen <fen>` — render a position to the terminal.
 ///
 /// By default the renderer uses ASCII letters for pieces (uppercase for

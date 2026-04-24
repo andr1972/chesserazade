@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for the TreeRecorder hook on `Search::find_best`.
 ///
 /// We attach a vector-backed recorder and check the recorded

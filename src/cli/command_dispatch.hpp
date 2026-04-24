@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Command dispatch for the `chesserazade` CLI.
 ///
 /// Each subcommand lives in its own `cmd_*.cpp` file and exposes a single

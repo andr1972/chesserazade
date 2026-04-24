@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for the bookmarks module. The UI (dialogs, list view)
 /// is exercised by hand; here we pin down the parts that matter
 /// for correctness across bookmark lifetimes:

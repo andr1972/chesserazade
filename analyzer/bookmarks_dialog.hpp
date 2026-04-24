@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Modal browser for saved bookmarks. Groups entries by folder,
 /// shows a comment pane on the right, and returns the selected
 /// bookmark to `MainWindow` so it can resolve it to an actual

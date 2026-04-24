@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// UCI mode.
 ///
 /// Implements a single-threaded, blocking UCI loop. The search

@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// PGN Mentor player index — a static snapshot shipped as
 /// `data/pgnmentor_index.json`.
 ///

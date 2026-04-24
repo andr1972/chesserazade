@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Search — alpha-beta negamax with iterative deepening and
 /// optional time / node limits.
 ///

@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Zobrist random-constant initialization and feature accessors.
 ///
 /// The constants are laid out in a single `Tables` struct that

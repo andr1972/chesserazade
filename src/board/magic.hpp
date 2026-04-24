@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Magic bitboards — O(1) slider attack lookup.
 ///
 /// The idea (Vlastimil Sejvl / Pradu Kannan, ca. 2006): for a

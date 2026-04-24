@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// PGN archive cache helpers — locate / download / unzip
 /// pgnmentor player archives.
 ///

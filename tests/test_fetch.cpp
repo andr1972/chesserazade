@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for the `NetFetcher` abstraction.
 ///
 /// The production fetcher shells out to `curl`, so it cannot be

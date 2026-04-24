@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Bookmarks — user-saved pointers into specific positions of
 /// specific games inside pgnmentor ZIP archives.
 ///

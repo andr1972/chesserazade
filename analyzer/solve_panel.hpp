@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `SolvePanel` — budget picker + Run + info log for driving
 /// `Search::find_best` on a worker thread.
 ///

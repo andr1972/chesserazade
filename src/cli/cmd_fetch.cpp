@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 #include "cli/cmd_fetch.hpp"
 
 #include <chesserazade/net_fetcher.hpp>

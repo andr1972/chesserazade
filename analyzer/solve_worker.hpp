@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `SolveWorker` — runs `Search::find_best` on a worker thread
 /// so the Qt event loop keeps drawing while the engine thinks.
 ///

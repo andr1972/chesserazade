@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// `chesserazade analyze --pgn <file> --depth N` — annotate every
 /// move of a PGN with the engine's verdict.
 ///

@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// FEN parser and serializer.
 ///
 /// Parsing strategy: the FEN string is a small, fixed grammar, so a

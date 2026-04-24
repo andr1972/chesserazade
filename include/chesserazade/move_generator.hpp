@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Move generator — pseudo-legal and legal move enumeration.
 ///
 /// The classical move-generation pipeline has two stages:

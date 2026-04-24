@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 #include "cli/cmd_solve.hpp"
 
 #include "board/board8x8_mailbox.hpp"

@@ -1,3 +1,6 @@
+// Copyright (c) 2024-2026 Andrzej Borucki
+// SPDX-License-Identifier: Apache-2.0
+//
 /// Tests for the bitboard Board implementation.
 ///
 /// The 1.1.2 skeleton does not yet support make_move — those
