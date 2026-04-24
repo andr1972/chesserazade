@@ -279,10 +279,134 @@ later.
 
 ### Not planned
 
-- **Singular extensions.** Modest gain (5–10%),
-  significant code, considerable tuning. Out of scope.
-- **NNUE.** Out of scope per HANDOFF — undermines the
-  classical / educational identity.
+- **NNUE / neural eval.** Out of scope per HANDOFF — undermines
+  the classical / educational identity.
+- **Syzygy tablebases.** Out of scope for the 2.x line — data
+  format + probe infrastructure is more plumbing than algorithm.
+
+---
+
+## 2.x — Stockfish-inspired classical additions
+
+Background reading: `TECHNIKI_STOCKFISH.md` (paragraph numbers
+in parentheses below). Everything here is classical — no NN,
+no tablebases. Ordered roughly by expected bang-per-buck and
+dependency chain, not by commit order.
+
+### Foundations reused by everything else
+
+- **Static Exchange Evaluation (SEE)** (2.7). Swap-list on the
+  target square: cheap "will this capture sequence leave the
+  captor ahead?" check. Blocks the door for five follow-on
+  techniques: SEE-driven capture ordering (good/bad captures),
+  SEE-filtered quiet ordering, futility filter in the parent,
+  qsearch capture pruning, ProbCut candidate filter. Roughly
+  100 lines + tests. Highest leverage per line of code here.
+
+### Pruning heuristics
+
+- **Mate Distance Pruning** (1.14). At every node, tighten
+  α/β with `mated_in(ply)` / `mate_in(ply+1)`; if the window
+  collapses return immediately. Three lines + one test.
+  Nearly free, always correct.
+- **Razoring** (1.6). Shallow depth, `eval < α − margin*depth²`
+  → drop straight into qsearch. Simple, classical, modest
+  gain. Pairs with the existing α-β mode combo so a user can
+  see the pruning kick in.
+- **Futility Pruning** (1.7). Two flavours:
+  * *child-node* — before recursing, if `eval + margin < α`
+    and the move can't capture or give check, prune.
+  * *parent-node* — in the move loop, if the optimistic
+    futility value stays ≤ α, prune the remaining quiet
+    moves.
+  Margin scales with depth and `improving`.
+- **ProbCut** (1.12). On a reduced depth, a capture that
+  already produces `score ≥ β + margin` is taken as a hard
+  cut on the entire branch. SEE-filtered candidate list;
+  qsearch verification before the full search. Classical
+  (Buro, 1995) and fits 2.x cleanly.
+- **Multi-Cut** (1.10). Free rider on Singular Extensions
+  (same singular-beta test): if multiple moves return
+  `≥ singular_beta`, the position is multi-cut — return
+  that value immediately. ~30 extra lines once SE is in.
+
+### Depth adjustment
+
+- **Internal Iterative Reductions (IIR)** (1.13). In PV /
+  cut nodes with no TT-move at sufficient depth, search
+  with `depth − 1`. Forces the next iteration to populate
+  the TT, which then drives better ordering on re-visit.
+  A modern, shorter replacement for classical IID.
+
+### Move-ordering refinements
+
+Additional history tables, each indexed differently, each
+feeding into the move picker's sort key:
+
+- **Continuation History** (2.5). Tables of "previous move →
+  current move" pairs at multiple stack offsets (typically
+  1 and 2 ply back). Captures "after they play X, Y is
+  usually strong for me" patterns that butterfly history
+  can't see.
+- **Capture History** (2.4). `[piece][to][captured_type]`.
+  Stockfish uses it alongside MVV to rank captures — a
+  Bxc3 that keeps hanging doesn't float to the top just
+  because it takes a piece.
+- **Pawn History** (2.6). Indexed by `pawn_key`: strategic
+  context across positions with the same pawn skeleton.
+  Useful mostly in the middlegame.
+- **Low-Ply History** (2.3). Separate, faster-decaying
+  table for ply ≤ N; reacts quickly to the root move
+  changing between iterations.
+
+### Meta / integration
+
+- **`improving` / `opponentWorsening` flags** (8.4). Compare
+  current static eval to `(ss − 2)->staticEval` and
+  `−(ss − 1)->staticEval`. Fed into margins for futility /
+  NMP / LMR — lots of heuristics get a "widen the margin when
+  the trend is against us" knob for free once these flags
+  exist.
+- **Correction History** (4.3). Track the observed gap
+  between `staticEval` and the eventual search score,
+  indexed by pawn-key / minor-piece-key / continuation.
+  Add that correction back into `staticEval` on the next
+  visit. Elegant bridge between static eval and search;
+  cheap to compute.
+- **Aspiration Windows (Stockfish-style)** (1.4). We had a
+  simple version and removed it in v1.4 for being net-zero.
+  The full version is: track `iterValue[depth]`, compute
+  `delta` growing exponentially on fail-high / fail-low,
+  centre the window on the previous iteration's score.
+  Only worth re-adding after enough pruning is in place
+  that the wide-window search visibly stalls.
+
+### Observability
+
+- **seldepth** (8.3). Track the deepest ply any branch
+  actually visited inside one ID iteration (after
+  extensions, before qsearch leaves). Expose it in the
+  solve-panel log line alongside `depth` so the user can
+  see how much the extensions are digging past the nominal.
+- **cutoffCnt** (8.5). Per-node running count of β-cutoffs
+  in its subtree. Useful on its own for the analyzer's
+  tree view, and a direct input into LMR once that lands
+  (a node that's been cutting a lot gets less reduction).
+
+### Low priority — kept on the list for completeness
+
+- **Singular Extensions** (1.9). TT-move + singular-beta test
+  at reduced window/depth; if no other move beats singular-
+  beta, extend the TT-move by +1 ply (or more for wide
+  margins). Stockfish measures it in the 15–20 Elo range;
+  in a simpler engine the absolute gain is smaller but the
+  algorithm is still classical and well-documented. Pairs
+  naturally with LMR — SE extends critical TT-moves just as
+  LMR shortens the others. Implementation needs an
+  `excluded_move` parameter on negamax and ~1 tuned margin
+  parameter; ~200 lines + tests. Deferred until LMR lands,
+  because without LMR there's not much to compensate for.
+  Not a first target, but no longer in "not planned".
 
 ---
 
