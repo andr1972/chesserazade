@@ -393,6 +393,61 @@ feeding into the move picker's sort key:
   tree view, and a direct input into LMR once that lands
   (a node that's been cutting a lot gets less reduction).
 
+### Multi-core search
+
+Currently single-threaded. On a 12P/24L box we are leaving ~10×
+NPS on the floor. A full design is out of scope here; this
+bullet just captures the requirement and the question space.
+
+**Scope goal:** all physical cores used, TT shared, UCI option
+`Threads` controlling the count. HT (logical > physical) tested
+empirically — gains ~10–25% NPS on reference engines but the
+actual Elo bump is typically smaller because the extra threads
+compete for L1/L2 and memory bandwidth against their HT twin.
+Start at `Threads = physical_cores`, benchmark `= 2×physical`
+as well, pick per-machine.
+
+**Candidate architectures (decide later):**
+- *Lazy SMP (Stockfish-style).* Each thread searches the
+  whole root with independently perturbed history / move
+  order; they synchronise only through the shared TT; after
+  the budget, the deepest-completed thread's answer wins.
+  Wins on engineering simplicity — search code stays
+  single-threaded, thread-pool is the only new piece.
+  Under-uses memory bandwidth (every thread scans similar
+  regions of the tree) and scales ~√N in Elo with thread
+  count.
+- *Task / subtree parallelism.* Split the root move list
+  across threads; each owns its subtree; merge scores at
+  the root. Intuitive but historically loses to Lazy SMP —
+  alpha-beta narrowing across siblings breaks when they
+  search in isolation, so the "unclaimed" subtree doesn't
+  shrink under cutoffs from the others.
+- *Hybrid (YBWC / PV-splitting).* Parallelise once the
+  first move at each node is done (so α is informed);
+  spawn on later moves. Used in older engines, more code
+  than Lazy SMP for similar gains at our complexity
+  level.
+
+**Sub-tasks when we actually build this:**
+- `Board::make_null_move` / `unmake_null_move` prerequisites
+  are shared with NMP; thread safety of `Board` state (is
+  make/unmake re-entrant? do we need one board per thread?).
+- TT entry must become atomic or use a lock-free
+  compare-and-swap scheme — current 16-byte entry with the
+  key as verifier is already close; an aligned store of the
+  pair (key, data) gives us "probably correct" reads across
+  threads. A proper "lockless XOR trick" replacement lands
+  later.
+- `Search::find_best` spawns the pool and aggregates; the
+  UCI layer owns the `Threads` option.
+- Analyzer: SolvePanel needs a "threads" spinbox alongside
+  the other budget toggles; the recorder needs to survive
+  multiple-thread writes (probably: recorder runs on one
+  specific thread, the others don't record).
+
+---
+
 ### Low priority — kept on the list for completeness
 
 - **Singular Extensions** (1.9). TT-move + singular-beta test
