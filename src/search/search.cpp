@@ -596,9 +596,35 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     const bool report_children =
         (rec != nullptr) && child_ply <= rec->ply_cap();
 
+    // Non-PV-node detection for LMP (and later pruning work).
+    // `beta - alpha == 1` at entry means the caller ran a
+    // zero-width probe (PVS non-first move or a null-move
+    // shadow search); we only have to prove "does not beat α".
+    const bool is_non_pv = (beta - original_alpha == 1);
+
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = buf[i].move;
         const Color mover = board.side_to_move();
+
+        // --- LMP: skip late quiet moves in non-PV-nodes ---
+        // Classical formula: at depth d ≤ 3, keep the first
+        // `3 + d*d` scored moves (4 at d=1, 7 at d=2, 12 at
+        // d=3) and drop the rest outright — no probe, no
+        // re-search. PV-nodes need every move because they
+        // aim at the exact best; non-PV-nodes only prove a
+        // bound, so the speculative cut is safe. Quiet bucket
+        // check (score < 50'000) spares captures, killers,
+        // promotions and the TT move. Ties on-and-off with
+        // PVS since without PVS there are essentially no
+        // non-PV-nodes to prune on.
+        if (stop.enable_pvs
+            && is_non_pv
+            && !stop.disable_alpha_beta
+            && depth <= 3
+            && buf[i].score < 50'000
+            && i >= static_cast<std::size_t>(3 + depth * depth)) {
+            continue;
+        }
 
         // Per-move stat delta. Capture value is free from the
         // move itself; check detection needs an after-move probe

@@ -206,17 +206,21 @@ SolvePanel::SolvePanel(QWidget* parent)
         "cutoffs without changing the search result."));
     cap_row->addWidget(asp_check_);
 
-    pvs_check_ = new QCheckBox(tr("PVS"), right);
-    pvs_check_->setChecked(false);
+    pvs_check_ = new QCheckBox(tr("PVS+LMP"), right);
+    pvs_check_->setChecked(true);
     pvs_check_->setToolTip(tr(
-        "Principal Variation Search — only the first move "
-        "after sorting runs with the full α-β window; later "
-        "moves are probed with a zero-width window [α, α+1] "
-        "that only proves 'does not beat α'. A probe that "
-        "beats α triggers a full-window re-search. With good "
-        "ordering most non-first moves fail the probe on the "
-        "first try. Composable with LMR (probe uses reduced "
-        "depth AND zero window when both fire)."));
+        "Principal Variation Search + Late Move Pruning.\n"
+        "PVS: only the first move after sorting runs with the "
+        "full α-β window; later moves are probed with a "
+        "zero-width window [α, α+1] that only proves 'does "
+        "not beat α'. A probe that beats α triggers a "
+        "full-window re-search.\n"
+        "LMP: in non-PV-nodes (those zero-width probes) at "
+        "depth ≤ 3, skip late quiet moves outright — no "
+        "probe, no re-search. Threshold: 3 + depth², so 4 "
+        "moves at d=1, 7 at d=2, 12 at d=3.\n"
+        "They're bundled because LMP needs non-PV-nodes to "
+        "act on, and PVS is what creates them."));
     cap_row->addWidget(pvs_check_);
 
     cap_row->addStretch(1);
