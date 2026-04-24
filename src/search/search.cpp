@@ -83,6 +83,31 @@ struct KillerTable {
     std::array<std::array<Move, 2>, PV_SIZE> killers{};
 };
 
+/// History heuristic — `[color][from][to]` score, bumped by
+/// `depth^2` when a quiet move triggers a β-cutoff. The same
+/// `(from, to)` pair reappears in many positions across a
+/// single search tree, so the table converges on a useful
+/// "which quiet moves have been cutting lately" ordering
+/// signal after a few thousand nodes. Unlike killers (per-ply
+/// slots), history is global across plies and survives for
+/// the whole `find_best` call. Cleared at search start by
+/// zero-init; no persistence between searches — the table
+/// means nothing for an unrelated root position.
+/// See https://www.chessprogramming.org/History_Heuristic
+struct HistoryTable {
+    std::array<std::array<std::array<std::int32_t, 64>, 64>, 2> table{};
+
+    [[nodiscard]] std::int32_t get(Color stm,
+                                   Square from, Square to) const noexcept {
+        return table[static_cast<std::size_t>(stm)]
+                    [to_index(from)][to_index(to)];
+    }
+    void bump(Color stm, Square from, Square to, int depth) noexcept {
+        table[static_cast<std::size_t>(stm)]
+             [to_index(from)][to_index(to)] += depth * depth;
+    }
+};
+
 /// Budget enforcement. A single `abort` flag short-circuits the
 /// recursion; we check the clock / node count only on a power-of-
 /// two boundary to keep the per-node overhead negligible.
@@ -181,9 +206,11 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
 ///   ~   900'000 — first killer.
 ///   ~   800'000 — second killer.
 ///   ~    50'000 — promotions without capture.
-///              0 — plain quiet moves.
+///   0..49'999   — quiet moves, ranked by history heuristic.
 [[nodiscard]] int score_move(const Move& m, const Move& tt_move,
                              const KillerTable& killers,
+                             const HistoryTable& history,
+                             Color stm,
                              std::size_t ply) noexcept {
     if (m == tt_move && tt_move.from != Square::None) {
         return 10'000'000;
@@ -196,7 +223,13 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
     if (m.kind == MoveKind::Promotion) {
         return 50'000 + piece_value(m.promotion);
     }
-    return 0;
+    // Quiet move: use history. Clamped below the promotion
+    // bucket so a very old, over-accumulated (from,to) can't
+    // leapfrog categories. LMR keys on "score == 0" to detect
+    // genuinely untested quiets, so we also floor at 0.
+    const std::int32_t h = history.get(stm, m.from, m.to);
+    if (h <= 0) return 0;
+    return h < 49'999 ? static_cast<int>(h) : 49'999;
 }
 
 struct ScoredMove {
@@ -215,11 +248,13 @@ std::size_t score_and_sort(const MoveList& legal,
                            std::array<ScoredMove, MoveList::CAPACITY>& buf,
                            const Move& tt_move,
                            const KillerTable& killers,
+                           const HistoryTable& history,
+                           Color stm,
                            std::size_t ply) noexcept {
     const std::size_t n = legal.count;
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = legal.moves[i];
-        buf[i] = {m, score_move(m, tt_move, killers, ply)};
+        buf[i] = {m, score_move(m, tt_move, killers, history, stm, ply)};
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
     return n;
@@ -234,6 +269,17 @@ void remember_killer(KillerTable& killers, std::size_t ply,
     if (killers.killers[ply][0] == m) return;
     killers.killers[ply][1] = killers.killers[ply][0];
     killers.killers[ply][0] = m;
+}
+
+/// Bump history for a quiet move that caused a β-cutoff. Only
+/// quiet moves qualify — captures / promotions already sort
+/// high by their own buckets and polluting history with them
+/// would wash out the signal for genuinely quiet winners.
+void remember_history(HistoryTable& history, Color stm,
+                      const Move& m, int depth) noexcept {
+    if (is_capture(m)) return;
+    if (m.kind == MoveKind::Promotion) return;
+    history.bump(stm, m.from, m.to, depth);
 }
 
 /// Add two `BranchStats` field-wise. Small enough that the
@@ -381,6 +427,7 @@ NegamaxResult quiesce(Board& board, int alpha, int beta,
 
 NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                       std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
+                      HistoryTable& history,
                       Stop& stop, TranspositionTable* tt,
                       TreeRecorder* rec, BranchStats& out_stats,
                       bool allow_null = true) {
@@ -489,7 +536,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             const NegamaxResult nr = negamax(
                 board, depth - NMP_R - 1, ply + 1,
                 -beta, -beta + 1,
-                nodes, pv, killers, stop, tt,
+                nodes, pv, killers, history, stop, tt,
                 /*rec=*/nullptr, null_stats,
                 /*allow_null=*/false);
             board.unmake_null_move();
@@ -518,7 +565,8 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     // --- Move ordering ------------------------------------------------
     std::array<ScoredMove, MoveList::CAPACITY> buf;
     const std::size_t n =
-        score_and_sort(legal, buf, tt_move, killers, p);
+        score_and_sort(legal, buf, tt_move, killers, history,
+                       board.side_to_move(), p);
 
     const int original_alpha = alpha;
     Move best_move{};
@@ -618,14 +666,14 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         NegamaxResult child =
             negamax(board, depth - 1 - R, child_ply,
                     recurse_alpha, recurse_beta,
-                    nodes, pv, killers, stop, tt,
+                    nodes, pv, killers, history, stop, tt,
                     (R > 0 ? nullptr : rec), child_stats);
         int score = -child.score;
         if (R > 0 && !stop.abort && score > alpha) {
             child_stats = {};
             child = negamax(board, depth - 1, child_ply,
                             recurse_alpha, recurse_beta,
-                            nodes, pv, killers, stop, tt,
+                            nodes, pv, killers, history, stop, tt,
                             rec, child_stats);
             score = -child.score;
         }
@@ -664,6 +712,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         if (!stop.disable_alpha_beta && score >= beta) {
             remember_killer(killers, p, m);
+            remember_history(history, mover, m, depth);
             if (tt != nullptr) {
                 tt->store(key, depth, to_tt_score(score, ply),
                           TtBound::Lower, m);
@@ -689,13 +738,14 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 
 int iteration(Board& board, int depth, std::uint64_t& nodes,
               PvTable& pv, KillerTable& killers,
+              HistoryTable& history,
               Stop& stop, TranspositionTable* tt,
               TreeRecorder* rec, BranchStats& out_stats,
               int alpha, int beta) {
     const NegamaxResult r =
         negamax(board, depth, /*ply=*/0,
                 alpha, beta,
-                nodes, pv, killers, stop, tt,
+                nodes, pv, killers, history, stop, tt,
                 rec, out_stats);
     return r.score;
 }
@@ -785,6 +835,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
     // a move that cut the sibling at ply N in depth D-1 is still
     // a plausible cut at depth D.
     KillerTable killers;
+    HistoryTable history;
 
     for (int d = 1; d <= max_depth; ++d) {
         PvTable pv;
@@ -793,7 +844,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
 
         if (recorder != nullptr) recorder->begin_iteration(d);
         int score =
-            iteration(board, d, result.nodes, pv, killers, stop, tt,
+            iteration(board, d, result.nodes, pv, killers, history, stop, tt,
                       recorder, pv_stats, alpha, beta);
 
         if (stop.abort) {
