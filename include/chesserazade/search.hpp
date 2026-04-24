@@ -132,6 +132,19 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Aspiration_Windows
     bool enable_aspiration = false;
 
+    /// Principal Variation Search. The first move after sorting
+    /// runs with the full `[α, β]` window; subsequent moves are
+    /// probed with a zero-width window `[α, α+1]` — the probe
+    /// only needs to prove "this move does not beat α". A probe
+    /// that beats α triggers a re-search with the full window
+    /// to pin down the exact score. With good ordering (TT +
+    /// MVV-LVA + killers + history) most non-first moves fail
+    /// the probe on the first try, saving the cost of a
+    /// full-window search. Composable with LMR: when both fire
+    /// the probe uses the reduced depth *and* the zero window.
+    /// See https://www.chessprogramming.org/Principal_Variation_Search
+    bool enable_pvs = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The

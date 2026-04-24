@@ -49,6 +49,7 @@ struct SolveBudget {
     bool enable_lmr         = true;   ///< Late Move Reductions.
     bool enable_history     = true;   ///< History heuristic ordering.
     bool enable_aspiration  = true;   ///< Aspiration windows at root.
+    bool enable_pvs         = false;  ///< Principal Variation Search.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called

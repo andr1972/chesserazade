@@ -122,6 +122,7 @@ struct Stop {
     bool enable_lmr = false;
     bool enable_history = false;
     bool enable_aspiration = false;
+    bool enable_pvs = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
@@ -650,35 +651,56 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         // nodes and quiescence + sub-cap nodes too.
         const std::uint64_t nodes_before = nodes;
 
-        // --- LMR: probe late quiet moves at reduced depth ---
-        // A "late" move here means one ordered at index ≥ 3
-        // (after TT / captures / killers) AND scoring below the
-        // promotion bucket (< 50'000) — which captures every
-        // quiet move whether or not history has bumped it,
-        // while still excluding captures (≥1'000'000), killers
-        // (800'000/900'000), promotions (≥50'000) and the TT
-        // move (10'000'000). The probe runs with the recorder
-        // detached, like null-move pruning: if it fails low
-        // (score ≤ alpha) we accept it as truth and the tree
-        // view shows this branch as a leaf; if it beats alpha
-        // we re-search at full depth with the recorder
-        // attached, so the tree reflects the confirmed subtree
-        // exactly once.
+        // --- LMR / PVS: cheap probe, re-search when it fires ---
+        // LMR candidate: "late" quiet move — index ≥ 3 (after
+        // TT / captures / killers) AND score below the
+        // promotion bucket (< 50'000). That covers every quiet
+        // whether or not history has bumped it, while still
+        // excluding captures (≥1'000'000), killers (800k/900k),
+        // promotions (≥50'000) and the TT move (10'000'000).
+        //
+        // PVS candidate: every non-first move, provided α-β is
+        // on and we're not at a root_full_window root. The
+        // first move is always searched with the full window
+        // because it *is* the (current) principal variation.
+        //
+        // When either fires the probe runs with the recorder
+        // detached, identical to null-move pruning. If the
+        // probe score beats α — meaning the reduction and/or
+        // the zero-width window may have hidden a better move
+        // — we re-search at full depth with the full window
+        // and the recorder attached, so the tree view sees the
+        // confirmed subtree exactly once.
         const bool lmr_candidate =
                stop.enable_lmr
             && !stop.disable_alpha_beta
             && depth >= 3
             && i >= 3
             && buf[i].score < 50'000;
+        const bool pvs_probe =
+               stop.enable_pvs
+            && !stop.disable_alpha_beta
+            && !(stop.root_full_window && ply == 0)
+            && i > 0;
+
         const int R = lmr_candidate ? 1 : 0;
+        int probe_alpha = recurse_alpha;
+        int probe_beta  = recurse_beta;
+        if (pvs_probe) {
+            probe_alpha = -alpha - 1;
+            probe_beta  = -alpha;
+        }
+        const bool detach_rec_for_probe = (R > 0) || pvs_probe;
+
         BranchStats child_stats;
         NegamaxResult child =
             negamax(board, depth - 1 - R, child_ply,
-                    recurse_alpha, recurse_beta,
+                    probe_alpha, probe_beta,
                     nodes, pv, killers, history, stop, tt,
-                    (R > 0 ? nullptr : rec), child_stats);
+                    detach_rec_for_probe ? nullptr : rec,
+                    child_stats);
         int score = -child.score;
-        if (R > 0 && !stop.abort && score > alpha) {
+        if (detach_rec_for_probe && !stop.abort && score > alpha) {
             child_stats = {};
             child = negamax(board, depth - 1, child_ply,
                             recurse_alpha, recurse_beta,
@@ -809,6 +831,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_lmr,
         limits.enable_history,
         limits.enable_aspiration,
+        limits.enable_pvs,
         limits.cancel,
         limits.progress_nodes,
         false,
