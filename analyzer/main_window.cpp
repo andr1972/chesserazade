@@ -262,17 +262,23 @@ void MainWindow::on_browse_bookmarks() {
     }
     game_view_->go_to_ply(bm.ply);
 
-    // If the user opened the browser from the Solve panel,
-    // they probably still want to be analyzing — just the new
-    // bookmark's position. Re-seed the solve panel with the
-    // new board and keep the stack where it was. From anywhere
-    // else (game list, game view), land on the game view so
-    // the position is immediately readable.
-    if (stack_->currentWidget() == solve_panel_) {
+    // Landing view depends on where the user was when they
+    // opened the browser:
+    //   * GameView → stay there, so "I was reading this game,
+    //     jump me to the saved move" doesn't kick me into the
+    //     solve panel.
+    //   * Anywhere else (initial empty GameList, or SolvePanel)
+    //     → go straight to the solve panel seeded with the
+    //     bookmarked position. Most bookmarks are interesting
+    //     *because* they're analysis-worthy, and starting
+    //     the session from an empty state into the analyzer is
+    //     fewer clicks than list → view → solve.
+    if (stack_->currentWidget() == game_view_) {
+        // Stay in the board view.
+    } else {
         solve_source_ply_ = bm.ply;
         solve_panel_->set_position(game_view_->current_board(), label);
-    } else {
-        stack_->setCurrentWidget(game_view_);
+        stack_->setCurrentWidget(solve_panel_);
     }
     statusBar()->showMessage(
         tr("Opened bookmark: %1").arg(bm.label), 3000);
