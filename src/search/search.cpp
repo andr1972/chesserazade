@@ -615,69 +615,20 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
     // a plausible cut at depth D.
     KillerTable killers;
 
-    // Aspiration-window setup: once we have a score from a
-    // completed iteration, the next iteration starts with a
-    // tight window centred on that score. Typical case (most
-    // scores move only a handful of centipawns between
-    // iterations) gets significantly more α-β pruning; on a
-    // fail-high / fail-low we re-search with the full window
-    // so correctness is preserved.
-    //
-    // Disabled when:
-    //   - α-β is off (nothing to save),
-    //   - a recorder is attached (analyzer's tree view — we
-    //     want every root move visible, not cut by a tight β),
-    //   - the caller specified a custom root window (lazy
-    //     sub-search),
-    //   - d < 2 (no previous score to centre on).
-    constexpr int ASPIRATION_DELTA = 50;
-    const bool aspiration_allowed =
-        (recorder == nullptr)
-        && !limits.disable_alpha_beta
-        && alpha == -Search::INF_SCORE
-        && beta  ==  Search::INF_SCORE;
-    int prev_score = 0;
-    bool have_prev = false;
-
     for (int d = 1; d <= max_depth; ++d) {
         PvTable pv;
         const std::uint64_t nodes_before = result.nodes;
         BranchStats pv_stats;
 
-        int iter_alpha = alpha;
-        int iter_beta  = beta;
-        const bool use_aspiration = aspiration_allowed && have_prev;
-        if (use_aspiration) {
-            iter_alpha = prev_score - ASPIRATION_DELTA;
-            iter_beta  = prev_score + ASPIRATION_DELTA;
-        }
-
         if (recorder != nullptr) recorder->begin_iteration(d);
         int score =
             iteration(board, d, result.nodes, pv, killers, stop, tt,
-                      recorder, pv_stats, iter_alpha, iter_beta);
+                      recorder, pv_stats, alpha, beta);
 
         if (stop.abort) {
             result.nodes = nodes_before;
             break;
         }
-
-        // Aspiration miss — re-search with the full window.
-        // Fail-soft: the returned score may be outside the
-        // window, so we test against the window bounds.
-        if (use_aspiration
-            && (score <= iter_alpha || score >= iter_beta)) {
-            result.nodes = nodes_before;
-            score = iteration(board, d, result.nodes, pv, killers, stop, tt,
-                              recorder, pv_stats, alpha, beta);
-            if (stop.abort) {
-                result.nodes = nodes_before;
-                break;
-            }
-        }
-
-        prev_score = score;
-        have_prev = true;
 
         result.score = score;
         result.completed_depth = d;
