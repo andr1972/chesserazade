@@ -14,7 +14,11 @@
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QApplication>
+#include <QClipboard>
 #include <QListWidget>
+#include <QMenu>
+#include <QPoint>
 #include <QPushButton>
 #include <QSplitter>
 #include <QString>
@@ -51,6 +55,12 @@ GameView::GameView(QWidget* parent) : QWidget(parent) {
                 seek_to_ply(moves_->row(item));
                 emit solve_requested();
             });
+
+    // Right-click context menu: copy the clicked move in SAN
+    // or the whole game as UCI source-destination pairs.
+    moves_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(moves_, &QListWidget::customContextMenuRequested,
+            this, &GameView::on_moves_context_menu);
     splitter->addWidget(board_);
     splitter->addWidget(moves_);
     splitter->setStretchFactor(0, 3);
@@ -194,6 +204,47 @@ void GameView::seek_to_ply(int ply) {
 void GameView::on_move_clicked(int row) {
     if (row < 0) return;
     seek_to_ply(row);
+}
+
+void GameView::on_moves_context_menu(const QPoint& pos) {
+    QListWidgetItem* item = moves_->itemAt(pos);
+    // Row 0 is the synthetic "(start)" entry — there's no
+    // single move to copy, but the whole-game action is still
+    // valid; we offer both, single-move greyed out at row 0.
+    const int row = (item != nullptr) ? moves_->row(item) : -1;
+
+    QMenu menu(this);
+    QAction* copy_one = menu.addAction(
+        tr("Copy move (SAN)"));
+    QAction* copy_all = menu.addAction(
+        tr("Copy all moves (UCI)"));
+
+    if (row <= 0) copy_one->setEnabled(false);
+
+    QAction* picked = menu.exec(moves_->viewport()->mapToGlobal(pos));
+    if (picked == nullptr) return;
+
+    QClipboard* cb = QApplication::clipboard();
+
+    if (picked == copy_one) {
+        // Row labels look like "5. Bxb6" or "5… Bxc4+"; the SAN
+        // is the last whitespace-separated token. Copy that.
+        const QString label = item->text();
+        const qsizetype sp = label.lastIndexOf(QLatin1Char(' '));
+        const QString san = (sp >= 0) ? label.mid(sp + 1) : label;
+        cb->setText(san);
+        return;
+    }
+
+    if (picked == copy_all) {
+        QString out;
+        const auto& mvs = game_.moves();
+        for (std::size_t i = 0; i < mvs.size(); ++i) {
+            if (i > 0) out += QLatin1Char(' ');
+            out += QString::fromStdString(to_uci(mvs[i]));
+        }
+        cb->setText(out);
+    }
 }
 
 void GameView::keyPressEvent(QKeyEvent* e) {

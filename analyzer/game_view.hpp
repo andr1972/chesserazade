@@ -87,6 +87,7 @@ protected:
 private:
     void seek_to_ply(int ply);
     void on_move_clicked(int row);
+    void on_moves_context_menu(const QPoint& pos);
     void rebuild_move_list();
 
     BoardWidget* board_    = nullptr;
