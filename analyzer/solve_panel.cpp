@@ -576,20 +576,36 @@ void SolvePanel::apply_tree_search() {
     // token finds a matching child; stop on the first miss and
     // select whatever we got. A 9-move PV typed into a 3-ply
     // tree thus lands on the 3rd move, not on "nothing found".
+    // Whole-word matching — a token must equal the node's SAN
+    // or UCI, not merely appear inside it. Previously a
+    // substring match turned "e5" into a hit on "Be5", which
+    // was never what the user typed for.
+    //
+    // Case: insensitive by default, but if any sibling at a
+    // level matches case-exactly we prefer it. That way typing
+    // "b4" among ["b4", "Bb4"] still reaches the pawn push —
+    // a case-insensitive compare alone would stop at "Bb4"
+    // since Qt's insensitive compare maps both to "b4".
     int parent = 0; // sentinel
     int matched = 0;
     for (const QString& tok : tokens) {
-        int match = -1;
+        int ci_match = -1;
+        int exact_match = -1;
         for (int ch : tree_.at(parent).children) {
             const TreeNode& node = tree_.at(ch);
             const QString san = QString::fromStdString(node.san);
             const QString uci = QString::fromStdString(to_uci(node.move));
-            if (san.contains(tok, Qt::CaseInsensitive)
-                || uci.contains(tok, Qt::CaseInsensitive)) {
-                match = ch;
+            const bool ci =
+                (san.compare(tok, Qt::CaseInsensitive) == 0)
+                || (uci.compare(tok, Qt::CaseInsensitive) == 0);
+            if (!ci) continue;
+            if (ci_match < 0) ci_match = ch;
+            if (san == tok || uci == tok) {
+                exact_match = ch;
                 break;
             }
         }
+        const int match = (exact_match >= 0) ? exact_match : ci_match;
         if (match < 0) break;
         parent = match;
         ++matched;
