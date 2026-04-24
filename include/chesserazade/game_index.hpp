@@ -76,31 +76,33 @@ struct UnderPromotion {
 /// index build.
 ///
 /// `loss_cp` is the **net** material the mover lost over
-/// their move + opponent's reply (always positive; a trade
-/// of equal value nets to zero and does not register). This
-/// is what intuitively distinguishes "I sacrificed a rook
-/// for nothing" from "I sacrificed a rook for a bishop".
+/// their move + opponent's replies, with the detection window
+/// dynamically extended through chains of captures so that
+/// immediate recaptures net against the initial loss.
 ///
-/// `raw_loss_cp` is the **largest single-ply piece capture**
-/// within the same 2-ply detection window — i.e. what piece
-/// actually dropped off the board, regardless of any
-/// compensating capture on the adjacent ply. For Fischer's
-/// 17…Be6!! / 18.Bxb6 sequence: `loss_cp = 570` (queen-for-
-/// bishop netted), `raw_loss_cp = 900` (the queen). Useful
-/// when the user's mental model is "which piece was
-/// sacrificed" rather than "what was the net trade".
+/// `raw_piece` is the biggest single piece the mover lost
+/// *in* that window, identified directly from the move's
+/// `captured_piece` field rather than inferred from a cp
+/// bucket. For Fischer's 17…Be6!! / 18.Bxb6 line: `loss_cp`
+/// nets to rook-magnitude (queen-for-bishop) while
+/// `raw_piece` = Queen, since a queen physically dropped.
+/// `raw_loss_cp` is the cp value of that piece, stored for
+/// sorting convenience.
 ///
-/// `recovery_cp` is the most the mover won back within a
-/// 10-ply forward window; equal to `loss_cp` means "fully
-/// repaid", zero means "never regained anything". Negative
-/// values don't happen (clamped).
+/// `recovery_cp` tracks how much the mover recovered over a
+/// 20-ply forward window. Measured as **endpoint minus
+/// settle-point advantage**, not as a peak — so further
+/// material losses after an initial recovery *subtract*, and
+/// the final figure reflects net material swing through the
+/// window. Clamped at zero on the low side.
 ///
 /// `ply` is the sacrificing move (1-based).
 struct MaterialSac {
-    int ply = 0;
-    int loss_cp = 0;
-    int raw_loss_cp = 0;
-    int recovery_cp = 0;
+    int       ply = 0;
+    int       loss_cp = 0;
+    PieceType raw_piece = PieceType::None;
+    int       raw_loss_cp = 0;
+    int       recovery_cp = 0;
 };
 
 /// A single game's metadata. Extends `PgnGameHeader` with a
@@ -134,9 +136,9 @@ struct GameRecord {
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way. Current: 6 (added
-    /// `raw_loss_cp` to MaterialSac).
-    int schema = 6;
+    /// changes in a non-additive way. Current: 8 (MaterialSac
+    /// gained `raw_piece`; recovery metric changed).
+    int schema = 8;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares

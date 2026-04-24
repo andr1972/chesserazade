@@ -31,8 +31,7 @@ public:
         ColEnd,    ///< "#" for mate, "=" for stalemate, blank otherwise.
         ColUP,     ///< Under-promotion letters (e.g. "N", "NR") or blank.
         ColKF,     ///< Knight-fork count or blank.
-        ColSac,    ///< Largest-loss sacrifice summary or blank.
-        ColRaw,    ///< Largest single-piece drop regardless of recapture.
+        ColSac,    ///< Biggest piece drop (raw) + recovery %, or blank.
         ColEvent,
         ColumnCount,
     };

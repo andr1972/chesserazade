@@ -77,38 +77,31 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
             if (rec.knight_fork_plies.empty()) return QString{};
             return static_cast<int>(rec.knight_fork_plies.size());
         case ColSac: {
-            // Summarize by the biggest single sacrifice's net
-            // loss and the fraction recovered. E.g. "Q 60%"
-            // means "queen-value net loss, 60% won back within
-            // the window". No sacrifice → blank.
+            // Picks the sacrifice with the biggest *raw* single-
+            // piece drop and shows that piece's letter directly
+            // from its PieceType, plus how much of its value was
+            // won back within the 20-ply forward window (net,
+            // not peak — further losses subtract). "Q 100%" = a
+            // queen physically fell and an equivalent queen's
+            // worth was recovered by window end.
             if (rec.material_sacs.empty()) return QString{};
             const MaterialSac* best = &rec.material_sacs.front();
             for (const auto& s : rec.material_sacs) {
-                if (s.loss_cp > best->loss_cp) best = &s;
+                if (s.raw_loss_cp > best->raw_loss_cp) best = &s;
             }
-            const char* tag = "?";
-            if      (best->loss_cp >= 900) tag = "Q";
-            else if (best->loss_cp >= 500) tag = "R";
-            else if (best->loss_cp >= 300) tag = "m";
-            const int pct = (best->loss_cp > 0)
-                ? (100 * best->recovery_cp / best->loss_cp)
+            QChar letter;
+            switch (best->raw_piece) {
+                case PieceType::Queen:  letter = QLatin1Char('Q'); break;
+                case PieceType::Rook:   letter = QLatin1Char('R'); break;
+                case PieceType::Bishop: letter = QLatin1Char('B'); break;
+                case PieceType::Knight: letter = QLatin1Char('N'); break;
+                case PieceType::Pawn:   letter = QLatin1Char('P'); break;
+                default:                letter = QLatin1Char('?'); break;
+            }
+            const int pct = (best->raw_loss_cp > 0)
+                ? (100 * best->recovery_cp / best->raw_loss_cp)
                 : 0;
-            return QStringLiteral("%1 %2%").arg(tag).arg(pct);
-        }
-        case ColRaw: {
-            // Largest single-piece drop regardless of recapture.
-            // Useful when the "net" view hides the true piece
-            // sacrificed — Fischer's 17…Be6!! / 18.Bxb6 nets
-            // to rook-value but the queen physically fell.
-            if (rec.material_sacs.empty()) return QString{};
-            int raw = 0;
-            for (const auto& s : rec.material_sacs) {
-                if (s.raw_loss_cp > raw) raw = s.raw_loss_cp;
-            }
-            if      (raw >= 900) return QStringLiteral("Q");
-            else if (raw >= 500) return QStringLiteral("R");
-            else if (raw >= 300) return QStringLiteral("m");
-            return QString{};
+            return QStringLiteral("%1 %2%").arg(letter).arg(pct);
         }
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
@@ -131,7 +124,6 @@ QVariant GameListModel::headerData(int section,
         case ColUP:     return tr("UP");
         case ColKF:     return tr("KF");
         case ColSac:    return tr("Sac");
-        case ColRaw:    return tr("Raw");
         case ColEvent:  return tr("Event");
         default:        return {};
     }

@@ -93,81 +93,128 @@ struct Derived {
     return bal;
 }
 
-/// Threshold at which a two-ply material drop counts as a
-/// sacrifice (rather than a trade). 300 cp ≈ a minor piece
-/// unreturned.
-constexpr int SAC_THRESHOLD_CP = 300;
+/// Net-material-loss threshold (cp) for registering a
+/// sacrifice event. Measured AFTER the exchange sequence
+/// settles — see the dynamic window in `find_sacs`. 300 cp
+/// ≈ a minor piece: anything less tends to be ordinary
+/// trade noise, anything more is a real material swing.
+constexpr int NET_THRESHOLD_CP = 300;
 
-/// Forward window (plies) to check for recovery.
-constexpr int SAC_RECOVERY_WINDOW = 10;
+/// Upper bound on how far the detection window extends
+/// through a chain of captures, in plies. Exchanges lasting
+/// longer than this are truncated — rare in practice; 6 plies
+/// = 3 full moves covers even the deepest orthodox exchange
+/// tower (pile-up on one square) without pathological reach.
+constexpr int EXCHANGE_MAX_WINDOW = 6;
 
-/// Find sacrifice events given a per-ply white-perspective
-/// balance series. `balances[0]` is the starting position
-/// (= 0); `balances[k]` is the balance after move index k-1.
-/// A sacrifice for side S occurs when S's advantage drops
-/// by ≥ SAC_THRESHOLD_CP from "before S's move" to "after
-/// opponent's reply". Overlapping sacrifices for the same
-/// side are suppressed: once a sac is recorded at ply p, we
-/// skip forward past the recovery window before looking for
-/// the next one, so a single long combination counts once.
-std::vector<MaterialSac> find_sacs(const std::vector<int>& balances) {
+/// Forward window (plies) to check for recovery after the
+/// exchange settles. 20 plies = 10 full moves — long enough
+/// to cover multi-move brilliancies like Byrne–Fischer 1956
+/// where the queen sac repays over 15+ plies of combinative
+/// play. Longer windows risk conflating the sac with later
+/// unrelated material swings; 20 is the classical middle.
+constexpr int SAC_RECOVERY_WINDOW = 20;
+
+/// Find sacrifice events.
+///
+/// Two-ply "mover's move + opponent's reply" gives a wrong
+/// answer when a sacrifice unfolds across an exchange tower:
+/// Fischer's 17…Be6!! drops the queen only on ply 35, and a
+/// fixed 2-ply window starting from Fischer's move nets the
+/// immediate bishop-recapture, reporting rook-magnitude
+/// instead of queen. Fix: **dynamically extend** the window
+/// through any contiguous chain of captures, up to
+/// `EXCHANGE_MAX_WINDOW` plies, then measure the net once the
+/// exchange has stabilised. This matches user intuition:
+///     +500 −500        → net 0      → skipped (plain trade)
+///     +500 −500 +300   → net 300    → sacrifice
+///     +500 −500 +300 −300 → net 0   → skipped (full cycle)
+///
+/// Gate: net_loss ≥ NET_THRESHOLD_CP (300 cp). No separate
+/// raw-loss gate — raw is recorded for display but doesn't
+/// suppress events.
+///
+/// Events for different mover-plies can overlap; the UI picks
+/// the largest by raw_loss for the Sac column, and the
+/// filter-by-sacrifice checkbox just tests non-empty.
+std::vector<MaterialSac> find_sacs(const std::vector<int>& balances,
+                                   const std::vector<Move>& moves) {
     std::vector<MaterialSac> out;
     const int n_plies = static_cast<int>(balances.size()) - 1;
     if (n_plies <= 1) return out;
 
-    int skip_until = -1;
     for (int i = 0; i < n_plies; ++i) {
-        if (i < skip_until) continue;
-
-        // Mover: white on even i, black on odd i.
+        // Mover: white on even i (ply 1 = i==0), black on odd.
         const int mover_sign = (i % 2 == 0) ? +1 : -1;
-        const auto ui = static_cast<std::size_t>(i);
-        // Advantage before mover's move.
-        const int adv_before = mover_sign * balances[ui];
-        // Advantage after opponent's reply, or end-of-game.
-        const int after_idx = std::min(i + 2,
-                                        static_cast<int>(balances.size()) - 1);
-        const int adv_after =
-            mover_sign * balances[static_cast<std::size_t>(after_idx)];
-        const int loss = adv_before - adv_after;
-        if (loss < SAC_THRESHOLD_CP) continue;
 
-        // Recovery: look forward up to SAC_RECOVERY_WINDOW
-        // plies past the reply. Track the *peak* of mover's
-        // advantage reached — that's how close to recovered
-        // the balance got.
-        int max_adv = adv_after;
-        const int window_end = std::min(
-            after_idx + SAC_RECOVERY_WINDOW,
-            static_cast<int>(balances.size()) - 1);
-        for (int k = after_idx; k <= window_end; ++k) {
-            const int a =
-                mover_sign * balances[static_cast<std::size_t>(k)];
-            if (a > max_adv) max_adv = a;
+        // Dynamically extend the detection window through the
+        // exchange chain. Start with mover's move plus at least
+        // opponent's reply; keep advancing while the next ply
+        // captures something.
+        int end_k = std::min(i + 2,
+                              static_cast<int>(balances.size()) - 1);
+        const int cap_k = std::min(i + EXCHANGE_MAX_WINDOW,
+                                    static_cast<int>(balances.size()) - 1);
+        while (end_k < cap_k
+               && balances[static_cast<std::size_t>(end_k + 1)]
+                  != balances[static_cast<std::size_t>(end_k)]) {
+            ++end_k;
         }
-        const int recovery = std::max(0, max_adv - adv_after);
 
-        // Raw loss: the largest single-ply material drop
-        // against the mover within the detection window. Can
-        // exceed `loss` when the mover recaptures on the next
-        // ply — the net (loss) shrinks while raw stays the
-        // dropped piece's full value.
+        const int adv_before = mover_sign
+            * balances[static_cast<std::size_t>(i)];
+        const int adv_after = mover_sign
+            * balances[static_cast<std::size_t>(end_k)];
+        const int net_loss = adv_before - adv_after;
+        if (net_loss < NET_THRESHOLD_CP) continue;
+
+        // Raw loss: biggest single piece the mover lost in the
+        // window. Identify the piece directly from the move's
+        // `captured_piece` — bypasses the cp-bucket guessing of
+        // the previous implementation.
+        PieceType raw_piece = PieceType::None;
         int raw_loss = 0;
-        for (int j = i; j < after_idx; ++j) {
+        for (int j = i; j < end_k; ++j) {
             const int delta_white =
                 balances[static_cast<std::size_t>(j + 1)]
                 - balances[static_cast<std::size_t>(j)];
             const int against_mover = -mover_sign * delta_white;
-            if (against_mover > raw_loss) raw_loss = against_mover;
+            if (against_mover <= 0) continue; // not a loss for mover on this ply
+            // Ply j: move index j, captured piece is whatever
+            // the MOVER of ply j took — from the mover-of-the-
+            // detection perspective, that's their OWN piece
+            // that fell.
+            const PieceType cap =
+                moves[static_cast<std::size_t>(j)].captured_piece.type;
+            if (cap != PieceType::None) {
+                const int v = piece_value(cap);
+                if (v > raw_loss) {
+                    raw_loss = v;
+                    raw_piece = cap;
+                }
+            }
         }
+
+        // Recovery measured as NET balance swing from settle
+        // point to window end (not peak). Further material
+        // losses after a partial recovery naturally subtract
+        // from the reported figure, so recovery_cp = 100% of
+        // raw_loss_cp means "by the end of the window the
+        // mover's material was back to pre-sac level".
+        const int window_end = std::min(
+            end_k + SAC_RECOVERY_WINDOW,
+            static_cast<int>(balances.size()) - 1);
+        const int adv_final = mover_sign
+            * balances[static_cast<std::size_t>(window_end)];
+        const int recovery = std::max(0, adv_final - adv_after);
 
         MaterialSac s;
         s.ply = i + 1; // 1-based
-        s.loss_cp = loss;
+        s.loss_cp = net_loss;
+        s.raw_piece = raw_piece;
         s.raw_loss_cp = raw_loss;
         s.recovery_cp = recovery;
         out.push_back(s);
-        skip_until = after_idx + SAC_RECOVERY_WINDOW;
     }
     return out;
 }
@@ -201,20 +248,25 @@ std::vector<MaterialSac> find_sacs(const std::vector<int>& balances) {
 
 [[nodiscard]] char piece_letter(PieceType p) noexcept {
     switch (p) {
+        case PieceType::Pawn:   return 'P';
         case PieceType::Knight: return 'N';
         case PieceType::Bishop: return 'B';
         case PieceType::Rook:   return 'R';
         case PieceType::Queen:  return 'Q';
-        default:                return '?';
+        case PieceType::King:   return 'K';
+        case PieceType::None:   return '-';
     }
+    return '-';
 }
 
 [[nodiscard]] PieceType piece_from_letter(char c) noexcept {
     switch (c) {
+        case 'P': return PieceType::Pawn;
         case 'N': return PieceType::Knight;
         case 'B': return PieceType::Bishop;
         case 'R': return PieceType::Rook;
         case 'Q': return PieceType::Queen;
+        case 'K': return PieceType::King;
         default:  return PieceType::None;
     }
 }
@@ -274,7 +326,7 @@ Derived compute_derived(const PgnGame& pg) {
         balances.push_back(material_balance(board));
     }
     out.hash = h;
-    out.material_sacs = find_sacs(balances);
+    out.material_sacs = find_sacs(balances, pg.moves);
 
     const MoveList legal = MoveGenerator::generate_legal(board);
     if (legal.empty()) {
@@ -377,6 +429,7 @@ void write_record(std::ostream& os, const GameRecord& r) {
         if (i > 0) os << ", ";
         os << "{\"ply\": " << s.ply
            << ", \"loss_cp\": " << s.loss_cp
+           << ", \"raw_piece\": \"" << piece_letter(s.raw_piece) << "\""
            << ", \"raw_loss_cp\": " << s.raw_loss_cp
            << ", \"recovery_cp\": " << s.recovery_cp << "}";
     }
@@ -577,6 +630,12 @@ bool parse_record(Cursor& c, GameRecord& r) {
             if (!expect_key(c, "loss_cp") || !parse_int(c, v)) return false;
             s.loss_cp = static_cast<int>(v);
             if (!c.match(',')) return false;
+            if (!expect_key(c, "raw_piece")) return false;
+            std::string rp;
+            if (!parse_string(c, rp)) return false;
+            s.raw_piece = rp.empty() ? PieceType::None
+                                     : piece_from_letter(rp[0]);
+            if (!c.match(',')) return false;
             if (!expect_key(c, "raw_loss_cp")
                 || !parse_int(c, v)) return false;
             s.raw_loss_cp = static_cast<int>(v);
@@ -602,7 +661,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
-    idx.schema = 6;
+    idx.schema = 8;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -675,7 +734,7 @@ std::optional<GameIndex> load_index(const std::string& path) {
     // rather than migrate we return nullopt so the caller
     // rebuilds from the PGN — rebuild is cheap and keeps the
     // loader free of per-version fixup code.
-    if (idx.schema != 6) return std::nullopt;
+    if (idx.schema != 8) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;
