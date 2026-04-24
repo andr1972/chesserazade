@@ -84,7 +84,7 @@ TEST_CASE("Magic bitboards: parity with loop on random occupancies",
     }
 }
 
-TEST_CASE("Magic bitboards: perft parity at depth 4", "[magic][perft]") {
+TEST_CASE("Magic bitboards: perft parity at depth 4", "[magic][perft][.slow]") {
     init_magic_attacks();
 
     struct Position { const char* name; const char* fen; std::uint64_t expected; };

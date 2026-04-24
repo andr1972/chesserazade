@@ -65,7 +65,7 @@ TEST_CASE("initial position parses and round-trips", "[fen]") {
     REQUIRE(serialize_fen(b) == STARTING_POSITION_FEN);
 }
 
-TEST_CASE("perft position FENs round-trip byte-for-byte", "[fen][perft]") {
+TEST_CASE("perft position FENs round-trip byte-for-byte", "[fen][perft][.slow]") {
     for (std::string_view fen : PERFT_POSITIONS) {
         CAPTURE(fen);
         const auto b = parse_ok(fen);
