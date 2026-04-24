@@ -55,19 +55,17 @@ namespace {
 constexpr int SCHEMA_VERSION = 1;
 
 [[nodiscard]] QString app_data_dir() {
-    const QString base =
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    // Qt already appends the org/app name on most platforms, but
-    // on Linux AppDataLocation is `~/.local/share/<appname>` only
-    // if QCoreApplication::applicationName() has been set. The
-    // analyzer sets it in main(); still, defensive: if the
-    // resolved path does not end with a chesserazade segment,
-    // tack one on so bookmarks land in a predictable place.
-    if (!base.endsWith(QLatin1String("chesserazade"))
-        && !base.endsWith(QLatin1String("chesserazade/"))) {
-        return base + QLatin1String("/chesserazade");
-    }
-    return base;
+    // AppDataLocation already appends `<organization>/<app>` to
+    // the base path (→ `.../chesserazade/chesserazade-analyzer`)
+    // on Linux, which nests bookmarks one level deeper than we
+    // want. Use GenericDataLocation (`~/.local/share`) and tack
+    // on a single "chesserazade" segment so bookmarks sit at
+    // `~/.local/share/chesserazade/bookmarks.json` — the same
+    // directory any other chesserazade binary (CLI etc.) could
+    // read from without caring which analyzer built this build.
+    const QString base = QStandardPaths::writableLocation(
+        QStandardPaths::GenericDataLocation);
+    return base + QStringLiteral("/chesserazade");
 }
 
 [[nodiscard]] QJsonObject bookmark_to_json(const Bookmark& b) {

@@ -9,6 +9,7 @@
 
 #include <QMainWindow>
 
+class QAction;
 class QStackedWidget;
 
 namespace chesserazade::analyzer {
@@ -31,12 +32,25 @@ private:
     void on_back_to_list();
     void on_solve_requested();
     void on_back_to_game_view();
+    /// "Bookmarks → Add…" — capture the currently-displayed
+    /// position (GameView's current ply, or the snapshot taken
+    /// at solve-entry time when the Solve panel is on top),
+    /// show the AddBookmarkDialog, and persist.
+    void on_add_bookmark();
+    void update_bookmark_action_enabled();
 
     QStackedWidget* stack_    = nullptr;
     GameListView* game_list_  = nullptr;
     GameView*     game_view_  = nullptr;
     SolvePanel*   solve_panel_ = nullptr;
     QString loaded_pgn_path_;
+    QAction* add_bookmark_action_ = nullptr;
+    /// Ply the user was at in GameView when they clicked
+    /// "Solve from here". SolvePanel itself has no concept of
+    /// game-plies — it browses a search tree — so we freeze
+    /// this number at the moment of transition and reuse it for
+    /// bookmarks created while the Solve panel is on top.
+    int solve_source_ply_ = 0;
 };
 
 } // namespace chesserazade::analyzer

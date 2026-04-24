@@ -106,6 +106,20 @@ bool GameView::load_pgn(const QString& pgn_text,
         game_.play_move(m);
     }
 
+    // STR tags — kept so MainWindow can mint a bookmark that
+    // resolves back to this game across cache rebuilds. Missing
+    // tags fall back to empty; the resolver treats empty as
+    // "any" on both sides of the match.
+    auto tag = [&](std::string_view key) -> QString {
+        auto v = parsed->tag(key);
+        return v ? QString::fromStdString(*v) : QString{};
+    };
+    tag_white_ = tag("White");
+    tag_black_ = tag("Black");
+    tag_date_  = tag("Date");
+    tag_event_ = tag("Event");
+    tag_round_ = tag("Round");
+
     rebuild_move_list();
     seek_to_ply(static_cast<int>(game_.ply_count()));
     status_->setText(

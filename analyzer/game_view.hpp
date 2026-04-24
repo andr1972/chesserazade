@@ -50,6 +50,19 @@ public:
     /// "White — Black, Date" label describing the loaded game.
     [[nodiscard]] QString header_label() const;
 
+    /// Ply the user is currently looking at (0 = starting pos).
+    /// Read by MainWindow when the user asks to bookmark.
+    [[nodiscard]] int current_ply() const noexcept { return current_ply_; }
+
+    /// STR tags parsed out of the current PGN — surfaced for
+    /// bookmark creation so the saved row carries enough header
+    /// to re-resolve the game after cache rebuilds.
+    [[nodiscard]] const QString& tag_white() const noexcept { return tag_white_; }
+    [[nodiscard]] const QString& tag_black() const noexcept { return tag_black_; }
+    [[nodiscard]] const QString& tag_date()  const noexcept { return tag_date_;  }
+    [[nodiscard]] const QString& tag_event() const noexcept { return tag_event_; }
+    [[nodiscard]] const QString& tag_round() const noexcept { return tag_round_; }
+
 signals:
     /// User pressed Escape or clicked "Back to game list" —
     /// MainWindow switches the central widget accordingly.
@@ -75,6 +88,11 @@ private:
     Game game_;        // parsed PGN
     int current_ply_ = 0;   // 0 = starting position; i = after game_.moves()[i-1]
     QString header_label_;
+    QString tag_white_;
+    QString tag_black_;
+    QString tag_date_;
+    QString tag_event_;
+    QString tag_round_;
     Board8x8Mailbox display_board_ =
         *Board8x8Mailbox::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 };

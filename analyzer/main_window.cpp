@@ -1,5 +1,7 @@
 #include "main_window.hpp"
 
+#include "add_bookmark_dialog.hpp"
+#include "bookmarks.hpp"
 #include "fetch_dialog.hpp"
 #include "game_list_view.hpp"
 #include "game_view.hpp"
@@ -8,6 +10,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QFileInfo>
+#include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
@@ -40,6 +43,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setCentralWidget(stack_);
 
     build_menus();
+
+    connect(stack_, &QStackedWidget::currentChanged,
+            this, [this](int) { update_bookmark_action_enabled(); });
+    update_bookmark_action_enabled();
 }
 
 void MainWindow::build_menus() {
@@ -56,6 +63,12 @@ void MainWindow::build_menus() {
     quit_action->setShortcut(QKeySequence::Quit);
     connect(quit_action, &QAction::triggered,
             qApp, &QApplication::quit);
+
+    auto* bookmarks_menu = menuBar()->addMenu(tr("&Bookmarks"));
+    add_bookmark_action_ = bookmarks_menu->addAction(tr("&Add…"));
+    add_bookmark_action_->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+    connect(add_bookmark_action_, &QAction::triggered,
+            this, &MainWindow::on_add_bookmark);
 
     auto* help_menu = menuBar()->addMenu(tr("&Help"));
     auto* about_action = help_menu->addAction(tr("&About"));
@@ -100,10 +113,55 @@ void MainWindow::on_back_to_list() {
 }
 
 void MainWindow::on_solve_requested() {
+    // Freeze the source ply now — SolvePanel itself doesn't
+    // know about game-history plies, so a bookmark created
+    // while in the Solve panel pins the position the user
+    // opened it from, not wherever their tree-exploration
+    // selection happens to be.
+    solve_source_ply_ = game_view_->current_ply();
     solve_panel_->set_position(
         game_view_->current_board(),
         game_view_->header_label());
     stack_->setCurrentWidget(solve_panel_);
+}
+
+void MainWindow::update_bookmark_action_enabled() {
+    if (add_bookmark_action_ == nullptr) return;
+    QWidget* cur = stack_->currentWidget();
+    add_bookmark_action_->setEnabled(
+        cur == game_view_ || cur == solve_panel_);
+}
+
+void MainWindow::on_add_bookmark() {
+    QWidget* cur = stack_->currentWidget();
+    if (cur != game_view_ && cur != solve_panel_) return;
+
+    Bookmark bm;
+    bm.zip = loaded_pgn_path_.isEmpty()
+        ? QString{}
+        : QFileInfo(loaded_pgn_path_).completeBaseName()
+              + QStringLiteral(".zip");
+    bm.white  = game_view_->tag_white();
+    bm.black  = game_view_->tag_black();
+    bm.date   = game_view_->tag_date();
+    bm.event  = game_view_->tag_event();
+    bm.round  = game_view_->tag_round();
+    bm.ply = (cur == game_view_)
+        ? game_view_->current_ply()
+        : solve_source_ply_;
+
+    auto existing = load_bookmarks().value_or(std::vector<Bookmark>{});
+
+    AddBookmarkDialog dlg(bm, folders_in_use(existing), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    existing.push_back(dlg.result());
+    if (!save_bookmarks(existing)) {
+        QMessageBox::warning(this, tr("Bookmarks"),
+            tr("Could not write %1.").arg(bookmarks_file_path()));
+        return;
+    }
+    statusBar()->showMessage(tr("Bookmark saved."), 3000);
 }
 
 void MainWindow::on_back_to_game_view() {
