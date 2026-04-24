@@ -41,18 +41,39 @@ namespace chesserazade {
 /// the game) — never returned by a successful build.
 using GameHash = std::uint64_t;
 
+/// How a game terminated on the board. Derived by replaying
+/// the recorded moves and inspecting the final position's
+/// legal-move set; independent of the PGN `Result` tag, which
+/// only records who won / drew / adjourned, not *why*.
+enum class EndKind : std::uint8_t {
+    /// Replay failed, no moves, or the move parser gave up.
+    Unknown = 0,
+    /// No legal reply in the final position, and the side to
+    /// move is in check → checkmate.
+    Mate = 1,
+    /// No legal reply in the final position, and the side to
+    /// move is not in check → stalemate.
+    Stalemate = 2,
+    /// Legal replies still exist — the game ended by
+    /// resignation, draw agreement, timeout, adjudication, or
+    /// similar external cause.
+    Other = 3,
+};
+
 /// A single game's metadata. Extends `PgnGameHeader` with a
-/// content-stable hash.
+/// content-stable hash and the replay-derived end kind.
 struct GameRecord {
     PgnGameHeader header;
-    GameHash      hash = 0;
+    GameHash      hash     = 0;
+    EndKind       end_kind = EndKind::Unknown;
 };
 
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way.
-    int schema = 1;
+    /// changes in a non-additive way. Current: 2 (added
+    /// `end_kind` per record).
+    int schema = 2;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares

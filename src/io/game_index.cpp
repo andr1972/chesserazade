@@ -24,6 +24,7 @@
 #include <chesserazade/board.hpp>
 #include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
+#include <chesserazade/move_generator.hpp>
 #include <chesserazade/pgn.hpp>
 #include <chesserazade/san.hpp>
 
@@ -66,19 +67,25 @@ std::string strip_suffix(std::string s) {
     return s;
 }
 
-/// Compute the main-line hash for a single game. Returns 0 if
-/// the game has no moves (hashing an empty line collides
-/// with every other empty line — better to signal "no hash").
-GameHash hash_moves(const PgnGame& pg) {
-    if (pg.moves.empty()) return 0;
+struct Derived {
+    GameHash hash = 0;
+    EndKind  end_kind = EndKind::Unknown;
+};
 
-    Board8x8Mailbox board{};
+/// Compute the main-line hash AND the end kind for a game.
+/// Single replay pass: we need the running board for canonical
+/// SAN anyway, so deriving the terminal state from the final
+/// position costs only one extra legal-move generation.
+Derived compute_derived(const PgnGame& pg) {
+    Derived out;
+    if (pg.moves.empty()) return out;
+
     const std::string_view fen = pg.starting_fen.has_value()
         ? std::string_view{*pg.starting_fen}
         : STARTING_POSITION_FEN;
     auto b = Board8x8Mailbox::from_fen(fen);
-    if (!b) return 0;
-    board = *b;
+    if (!b) return out;
+    Board8x8Mailbox board = *b;
 
     std::uint64_t h = FNV64_OFFSET;
     bool first = true;
@@ -89,7 +96,36 @@ GameHash hash_moves(const PgnGame& pg) {
         first = false;
         board.make_move(m);
     }
-    return h;
+    out.hash = h;
+
+    const MoveList legal = MoveGenerator::generate_legal(board);
+    if (legal.empty()) {
+        if (MoveGenerator::is_in_check(board, board.side_to_move())) {
+            out.end_kind = EndKind::Mate;
+        } else {
+            out.end_kind = EndKind::Stalemate;
+        }
+    } else {
+        out.end_kind = EndKind::Other;
+    }
+    return out;
+}
+
+[[nodiscard]] std::string_view end_kind_name(EndKind k) noexcept {
+    switch (k) {
+        case EndKind::Mate:      return "mate";
+        case EndKind::Stalemate: return "stalemate";
+        case EndKind::Other:     return "other";
+        case EndKind::Unknown:   return "unknown";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] EndKind end_kind_from_name(std::string_view s) noexcept {
+    if (s == "mate")      return EndKind::Mate;
+    if (s == "stalemate") return EndKind::Stalemate;
+    if (s == "other")     return EndKind::Other;
+    return EndKind::Unknown;
 }
 
 /// Minimal JSON writer. PGN tag values can contain arbitrary
@@ -139,7 +175,10 @@ void write_record(std::ostream& os, const GameRecord& r) {
     os << "      \"offset\": "    << h.offset                  << ",\n";
     os << "      \"length\": "    << h.length                  << ",\n";
     os << "      \"hash\": \""    << std::hex << r.hash << std::dec
-       << "\"\n";
+       << "\",\n";
+    os << "      \"end_kind\": ";
+    write_json_string(os, end_kind_name(r.end_kind));
+    os << "\n";
     os << "    }";
 }
 
@@ -277,6 +316,11 @@ bool parse_record(Cursor& c, GameRecord& r) {
     h.length = static_cast<std::size_t>(i64);
     if (!expect_key(c, "hash")) return false;
     if (!parse_hash(c, r.hash)) return false;
+    if (!c.match(',')) return false;
+    if (!expect_key(c, "end_kind")) return false;
+    std::string ek;
+    if (!parse_string(c, ek)) return false;
+    r.end_kind = end_kind_from_name(ek);
     if (!c.match('}')) return false;
     return true;
 }
@@ -288,6 +332,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
+    idx.schema = 2;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -306,7 +351,9 @@ GameIndex build_index(std::string_view pgn_bytes,
             pgn_bytes.substr(r.header.offset, r.header.length);
         const auto parsed = parse_pgn(slice);
         if (parsed.has_value()) {
-            r.hash = hash_moves(*parsed);
+            const Derived d = compute_derived(*parsed);
+            r.hash = d.hash;
+            r.end_kind = d.end_kind;
         }
         idx.games.push_back(std::move(r));
 
@@ -350,9 +397,12 @@ std::optional<GameIndex> load_index(const std::string& path) {
     if (!expect_key(c, "schema") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;
     idx.schema = static_cast<int>(i64);
-    // Future schemas may be readable; for now reject anything
-    // newer than we wrote.
-    if (idx.schema > 1) return std::nullopt;
+    // Only accept the current schema. Older indexes lack
+    // fields we need (end_kind added in schema 2); rather
+    // than migrate we return nullopt so the caller rebuilds
+    // from the PGN — rebuild is cheap and keeps the loader
+    // free of per-version fixup code.
+    if (idx.schema != 2) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;

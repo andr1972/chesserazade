@@ -35,7 +35,8 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
 
     const auto row = static_cast<std::size_t>(idx.row());
     if (row >= games_->size()) return {};
-    const PgnGameHeader& g = (*games_)[row].header;
+    const GameRecord& rec = (*games_)[row];
+    const PgnGameHeader& g = rec.header;
 
     switch (idx.column()) {
         case ColDate:   return QString::fromStdString(g.date);
@@ -44,6 +45,14 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
         case ColResult: return QString::fromStdString(g.result);
         case ColEco:    return QString::fromStdString(g.eco);
         case ColPlies:  return g.ply_count;
+        case ColEnd:
+            switch (rec.end_kind) {
+                case EndKind::Mate:      return QStringLiteral("#");
+                case EndKind::Stalemate: return QStringLiteral("=");
+                case EndKind::Other:     return QString{};
+                case EndKind::Unknown:   return QString{};
+            }
+            return QString{};
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
     }
@@ -61,6 +70,7 @@ QVariant GameListModel::headerData(int section,
         case ColResult: return tr("Result");
         case ColEco:    return tr("ECO");
         case ColPlies:  return tr("Plies");
+        case ColEnd:    return tr("End");
         case ColEvent:  return tr("Event");
         default:        return {};
     }

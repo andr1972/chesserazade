@@ -6,6 +6,7 @@
 #include "game_list_model.hpp"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
@@ -51,6 +52,11 @@ public:
         year_ = s;
         invalidateFilter();
     }
+    void set_mate_only(bool on) {
+        if (on == mate_only_) return;
+        mate_only_ = on;
+        invalidateFilter();
+    }
 
 protected:
     [[nodiscard]] bool filterAcceptsRow(int row,
@@ -82,12 +88,19 @@ protected:
                 return false;
             }
         }
+        if (mate_only_) {
+            const QString ek = m->data(m->index(row,
+                                                GameListModel::ColEnd,
+                                                parent)).toString();
+            if (ek != QStringLiteral("#")) return false;
+        }
         return true;
     }
 
 private:
     QString name_;
     QString year_;
+    bool    mate_only_ = false;
 };
 
 GameListView::GameListView(QWidget* parent) : QWidget(parent) {
@@ -119,6 +132,19 @@ GameListView::GameListView(QWidget* parent) : QWidget(parent) {
     connect(year_filter_, &QComboBox::currentTextChanged,
             this, [this](const QString&) { on_year_filter_changed(); });
     filter_row->addWidget(year_filter_, /*stretch=*/1);
+
+    mate_filter_ = new QCheckBox(tr("mate only"), this);
+    mate_filter_->setToolTip(tr(
+        "Show only games that ended by checkmate — detected "
+        "by replaying the move list and checking the final "
+        "position (no legal reply while the side to move is "
+        "in check). Independent of the PGN Result tag; hides "
+        "resignations, agreed draws, timeouts and "
+        "adjudications."));
+    connect(mate_filter_, &QCheckBox::toggled,
+            this, [this](bool on) { proxy_->set_mate_only(on); });
+    filter_row->addWidget(mate_filter_);
+
     layout->addLayout(filter_row);
 
     model_ = new GameListModel(this);

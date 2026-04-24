@@ -28,6 +28,7 @@ public:
         ColResult,
         ColEco,    ///< Optional ECO code; blank when absent.
         ColPlies,  ///< Half-move count of the main line.
+        ColEnd,    ///< "#" for mate, "=" for stalemate, blank otherwise.
         ColEvent,
         ColumnCount,
     };

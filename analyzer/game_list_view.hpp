@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+class QCheckBox;
 class QComboBox;
 class QEvent;
 class QLabel;
@@ -73,6 +74,7 @@ private:
     GameFilterProxy* proxy_ = nullptr;
     QLineEdit*     name_filter_ = nullptr;
     QComboBox*     year_filter_ = nullptr;
+    QCheckBox*     mate_filter_ = nullptr;
     QLabel*        status_  = nullptr;
     QString        source_path_;
 };
