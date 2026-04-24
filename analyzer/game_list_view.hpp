@@ -75,6 +75,7 @@ private:
     QLineEdit*     name_filter_ = nullptr;
     QComboBox*     year_filter_ = nullptr;
     QCheckBox*     mate_filter_ = nullptr;
+    QCheckBox*     up_filter_   = nullptr;
     QLabel*        status_  = nullptr;
     QString        source_path_;
 };

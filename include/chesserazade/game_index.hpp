@@ -24,6 +24,7 @@
 #pragma once
 
 #include <chesserazade/pgn_index.hpp>
+#include <chesserazade/types.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -60,20 +61,36 @@ enum class EndKind : std::uint8_t {
     Other = 3,
 };
 
+/// A single non-queen promotion during the game. `ply` is
+/// 1-based (white's first move = 1, black's first move = 2)
+/// so it maps directly onto move numbers shown in the UI.
+/// `piece` is what the pawn became — Knight / Bishop / Rook
+/// (Queen is excluded by definition, which is what makes it
+/// "under"-promotion).
+struct UnderPromotion {
+    int       ply = 0;
+    PieceType piece = PieceType::None;
+};
+
 /// A single game's metadata. Extends `PgnGameHeader` with a
-/// content-stable hash and the replay-derived end kind.
+/// content-stable hash and replay-derived events.
 struct GameRecord {
     PgnGameHeader header;
     GameHash      hash     = 0;
     EndKind       end_kind = EndKind::Unknown;
+    /// All non-queen promotions in play order. Empty for most
+    /// games; classically interesting when present (knight
+    /// promotion for a fork, bishop / rook to dodge a
+    /// stalemate).
+    std::vector<UnderPromotion> underpromotions;
 };
 
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way. Current: 2 (added
-    /// `end_kind` per record).
-    int schema = 2;
+    /// changes in a non-additive way. Current: 3 (added
+    /// `underpromotions` per record).
+    int schema = 3;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares

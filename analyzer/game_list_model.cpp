@@ -53,6 +53,18 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
                 case EndKind::Unknown:   return QString{};
             }
             return QString{};
+        case ColUP: {
+            QString s;
+            for (const auto& up : rec.underpromotions) {
+                switch (up.piece) {
+                    case PieceType::Knight: s += QLatin1Char('N'); break;
+                    case PieceType::Bishop: s += QLatin1Char('B'); break;
+                    case PieceType::Rook:   s += QLatin1Char('R'); break;
+                    default: break;
+                }
+            }
+            return s;
+        }
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
     }
@@ -71,6 +83,7 @@ QVariant GameListModel::headerData(int section,
         case ColEco:    return tr("ECO");
         case ColPlies:  return tr("Plies");
         case ColEnd:    return tr("End");
+        case ColUP:     return tr("UP");
         case ColEvent:  return tr("Event");
         default:        return {};
     }

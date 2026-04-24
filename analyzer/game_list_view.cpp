@@ -57,6 +57,11 @@ public:
         mate_only_ = on;
         invalidateFilter();
     }
+    void set_up_only(bool on) {
+        if (on == up_only_) return;
+        up_only_ = on;
+        invalidateFilter();
+    }
 
 protected:
     [[nodiscard]] bool filterAcceptsRow(int row,
@@ -94,6 +99,12 @@ protected:
                                                 parent)).toString();
             if (ek != QStringLiteral("#")) return false;
         }
+        if (up_only_) {
+            const QString up = m->data(m->index(row,
+                                                GameListModel::ColUP,
+                                                parent)).toString();
+            if (up.isEmpty()) return false;
+        }
         return true;
     }
 
@@ -101,6 +112,7 @@ private:
     QString name_;
     QString year_;
     bool    mate_only_ = false;
+    bool    up_only_   = false;
 };
 
 GameListView::GameListView(QWidget* parent) : QWidget(parent) {
@@ -144,6 +156,16 @@ GameListView::GameListView(QWidget* parent) : QWidget(parent) {
     connect(mate_filter_, &QCheckBox::toggled,
             this, [this](bool on) { proxy_->set_mate_only(on); });
     filter_row->addWidget(mate_filter_);
+
+    up_filter_ = new QCheckBox(tr("underpromotion"), this);
+    up_filter_->setToolTip(tr(
+        "Show only games with at least one non-queen "
+        "promotion (knight / bishop / rook). Rare — classic "
+        "motifs include knight-promotion forks and "
+        "bishop/rook promotion to dodge stalemate."));
+    connect(up_filter_, &QCheckBox::toggled,
+            this, [this](bool on) { proxy_->set_up_only(on); });
+    filter_row->addWidget(up_filter_);
 
     layout->addLayout(filter_row);
 

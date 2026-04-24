@@ -29,6 +29,7 @@ public:
         ColEco,    ///< Optional ECO code; blank when absent.
         ColPlies,  ///< Half-move count of the main line.
         ColEnd,    ///< "#" for mate, "=" for stalemate, blank otherwise.
+        ColUP,     ///< Under-promotion letters (e.g. "N", "NR") or blank.
         ColEvent,
         ColumnCount,
     };

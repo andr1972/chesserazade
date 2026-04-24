@@ -70,7 +70,28 @@ std::string strip_suffix(std::string s) {
 struct Derived {
     GameHash hash = 0;
     EndKind  end_kind = EndKind::Unknown;
+    std::vector<UnderPromotion> underpromotions;
 };
+
+[[nodiscard]] char piece_letter(PieceType p) noexcept {
+    switch (p) {
+        case PieceType::Knight: return 'N';
+        case PieceType::Bishop: return 'B';
+        case PieceType::Rook:   return 'R';
+        case PieceType::Queen:  return 'Q';
+        default:                return '?';
+    }
+}
+
+[[nodiscard]] PieceType piece_from_letter(char c) noexcept {
+    switch (c) {
+        case 'N': return PieceType::Knight;
+        case 'B': return PieceType::Bishop;
+        case 'R': return PieceType::Rook;
+        case 'Q': return PieceType::Queen;
+        default:  return PieceType::None;
+    }
+}
 
 /// Compute the main-line hash AND the end kind for a game.
 /// Single replay pass: we need the running board for canonical
@@ -89,11 +110,24 @@ Derived compute_derived(const PgnGame& pg) {
 
     std::uint64_t h = FNV64_OFFSET;
     bool first = true;
+    int ply = 0;
     for (const auto& m : pg.moves) {
+        ++ply;
         std::string san = strip_suffix(to_san(board, m));
         if (!first) fnv_update(h, " ");
         fnv_update(h, san);
         first = false;
+
+        // Underpromotion: any promotion whose target piece is
+        // not a queen. En passant and regular captures are not
+        // promotions; PromotionCapture carries `promotion`
+        // just like plain Promotion.
+        if ((m.kind == MoveKind::Promotion
+             || m.kind == MoveKind::PromotionCapture)
+            && m.promotion != PieceType::Queen) {
+            out.underpromotions.push_back({ply, m.promotion});
+        }
+
         board.make_move(m);
     }
     out.hash = h;
@@ -178,7 +212,15 @@ void write_record(std::ostream& os, const GameRecord& r) {
        << "\",\n";
     os << "      \"end_kind\": ";
     write_json_string(os, end_kind_name(r.end_kind));
-    os << "\n";
+    os << ",\n";
+    os << "      \"underpromotions\": [";
+    for (std::size_t i = 0; i < r.underpromotions.size(); ++i) {
+        const auto& up = r.underpromotions[i];
+        if (i > 0) os << ", ";
+        os << "{\"ply\": " << up.ply
+           << ", \"piece\": \"" << piece_letter(up.piece) << "\"}";
+    }
+    os << "]\n";
     os << "    }";
 }
 
@@ -321,6 +363,31 @@ bool parse_record(Cursor& c, GameRecord& r) {
     std::string ek;
     if (!parse_string(c, ek)) return false;
     r.end_kind = end_kind_from_name(ek);
+    if (!c.match(',')) return false;
+    if (!expect_key(c, "underpromotions")) return false;
+    if (!c.match('[')) return false;
+    c.skip_ws();
+    if (c.peek() != ']') {
+        while (true) {
+            if (!c.match('{')) return false;
+            if (!expect_key(c, "ply")) return false;
+            long long p = 0;
+            if (!parse_int(c, p)) return false;
+            if (!c.match(',')) return false;
+            if (!expect_key(c, "piece")) return false;
+            std::string pc;
+            if (!parse_string(c, pc)) return false;
+            if (!c.match('}')) return false;
+            UnderPromotion up;
+            up.ply   = static_cast<int>(p);
+            up.piece = pc.empty() ? PieceType::None
+                                  : piece_from_letter(pc[0]);
+            r.underpromotions.push_back(up);
+            if (c.match(',')) continue;
+            break;
+        }
+    }
+    if (!c.match(']')) return false;
     if (!c.match('}')) return false;
     return true;
 }
@@ -332,7 +399,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
-    idx.schema = 2;
+    idx.schema = 3;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -351,9 +418,10 @@ GameIndex build_index(std::string_view pgn_bytes,
             pgn_bytes.substr(r.header.offset, r.header.length);
         const auto parsed = parse_pgn(slice);
         if (parsed.has_value()) {
-            const Derived d = compute_derived(*parsed);
+            Derived d = compute_derived(*parsed);
             r.hash = d.hash;
             r.end_kind = d.end_kind;
+            r.underpromotions = std::move(d.underpromotions);
         }
         idx.games.push_back(std::move(r));
 
@@ -398,11 +466,11 @@ std::optional<GameIndex> load_index(const std::string& path) {
         || !c.match(',')) return std::nullopt;
     idx.schema = static_cast<int>(i64);
     // Only accept the current schema. Older indexes lack
-    // fields we need (end_kind added in schema 2); rather
-    // than migrate we return nullopt so the caller rebuilds
-    // from the PGN — rebuild is cheap and keeps the loader
-    // free of per-version fixup code.
-    if (idx.schema != 2) return std::nullopt;
+    // fields we need (end_kind in v2, underpromotions in v3);
+    // rather than migrate we return nullopt so the caller
+    // rebuilds from the PGN — rebuild is cheap and keeps the
+    // loader free of per-version fixup code.
+    if (idx.schema != 3) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;
