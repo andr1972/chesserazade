@@ -334,6 +334,45 @@ void BoardBitboard::unmake_move(const Move& m) noexcept {
 }
 
 // ---------------------------------------------------------------------------
+// Null move — "pass" for null-move pruning.
+// ---------------------------------------------------------------------------
+//
+// No piece moves, so no bitboards, no eval_score_, no material
+// counters need touching. Only `ep_` (cleared — losing the EP
+// right is a consequence of not replying to the opponent's last
+// move) and `side_` flip, with matching Zobrist XORs. Snapshot
+// is the same small struct used by make_move.
+//
+void BoardBitboard::make_null_move() noexcept {
+    history_.push_back({ep_, castling_, halfmove_, zobrist_});
+
+    zobrist_ ^= Zobrist::en_passant(ep_);
+    zobrist_ ^= Zobrist::black_to_move();
+
+    ep_ = Square::None;
+    ++halfmove_;
+    if (side_ == Color::Black) ++fullmove_;
+    side_ = opposite(side_);
+
+    zobrist_ ^= Zobrist::en_passant(ep_); // no-op; kept for symmetry
+}
+
+void BoardBitboard::unmake_null_move() noexcept {
+    assert(!history_.empty()
+           && "unmake_null_move: no matching make_null_move");
+
+    if (side_ == Color::White) --fullmove_;
+    side_ = opposite(side_);
+
+    const StateSnapshot snap = history_.back();
+    history_.pop_back();
+    ep_ = snap.ep;
+    castling_ = snap.castling;
+    halfmove_ = snap.halfmove;
+    zobrist_ = snap.zobrist;
+}
+
+// ---------------------------------------------------------------------------
 // FEN factory
 // ---------------------------------------------------------------------------
 

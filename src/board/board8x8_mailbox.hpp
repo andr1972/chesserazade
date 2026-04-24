@@ -78,6 +78,9 @@ public:
     void set_side_to_move(Color c) noexcept { side_to_move_ = c; }
     void set_castling_rights(CastlingRights r) noexcept { castling_ = r; }
     void set_en_passant_square(Square s) noexcept { ep_square_ = s; }
+
+    void make_null_move() noexcept override;
+    void unmake_null_move() noexcept override;
     void set_halfmove_clock(int v) noexcept { halfmove_clock_ = v; }
     void set_fullmove_number(int v) noexcept { fullmove_number_ = v; }
 

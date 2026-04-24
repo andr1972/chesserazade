@@ -127,3 +127,51 @@ TEST_CASE("Zobrist: key stays in sync across a perft-style walk",
         REQUIRE(b.zobrist_key() == compute_zobrist_key(b));
     }
 }
+
+TEST_CASE("Null move: make + unmake restores the position",
+          "[zobrist][nullmove]") {
+    auto a = board_from(std::string{STARTING_POSITION_FEN});
+    auto b = a;
+    b.make_null_move();
+    REQUIRE(a != b);
+    REQUIRE(a.zobrist_key() != b.zobrist_key());
+    REQUIRE(b.side_to_move() == Color::Black);
+    b.unmake_null_move();
+    REQUIRE(a == b);
+    REQUIRE(a.zobrist_key() == b.zobrist_key());
+}
+
+TEST_CASE("Null move: two in a row round-trip to the original",
+          "[zobrist][nullmove]") {
+    auto a = board_from(std::string{STARTING_POSITION_FEN});
+    auto b = a;
+    b.make_null_move();
+    b.make_null_move();
+    REQUIRE(b.side_to_move() == Color::White);
+    REQUIRE(b.zobrist_key() == compute_zobrist_key(b));
+    // Fullmove counter advances on each null by black-move
+    // convention; the pre-null state's counter differs.
+    REQUIRE(b.fullmove_number() == a.fullmove_number() + 1);
+    b.unmake_null_move();
+    b.unmake_null_move();
+    REQUIRE(a == b);
+    REQUIRE(a.zobrist_key() == b.zobrist_key());
+}
+
+TEST_CASE("Null move: clears the en-passant square",
+          "[zobrist][nullmove]") {
+    // After 1. e4 the EP square is e3. A null move by Black
+    // drops that right — white on the next move cannot EP a
+    // pawn that is no longer "just pushed".
+    auto b = board_from(std::string{STARTING_POSITION_FEN});
+    const Move e4 = find_move(b, Square::E2, Square::E4);
+    b.make_move(e4);
+    REQUIRE(b.en_passant_square() != Square::None);
+    b.make_null_move();
+    REQUIRE(b.en_passant_square() == Square::None);
+    REQUIRE(b.zobrist_key() == compute_zobrist_key(b));
+    b.unmake_null_move();
+    REQUIRE(b.en_passant_square() != Square::None);
+    REQUIRE(b.zobrist_key() == compute_zobrist_key(b));
+}
+

@@ -60,6 +60,9 @@ public:
     void make_move(const Move& m) noexcept override;
     void unmake_move(const Move& m) noexcept override;
 
+    void make_null_move() noexcept override;
+    void unmake_null_move() noexcept override;
+
     void recompute_zobrist() noexcept;
     /// Re-derive `eval_score_` by summing every square's
     /// contribution from scratch. Call after any code path

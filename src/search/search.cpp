@@ -351,13 +351,35 @@ NegamaxResult quiesce(Board& board, int alpha, int beta,
 }
 
 // ---------------------------------------------------------------------------
+// Null-move pruning helpers
+// ---------------------------------------------------------------------------
+
+/// True when `side` has at least one piece that is not a king or
+/// pawn. In pure king+pawn endgames NMP is unsound — the "pass"
+/// can be strictly worse than any real move (zugzwang). A quick
+/// full-board scan through `piece_at` is fine here: NMP runs at
+/// most once per interior node and the scan is 64 reads.
+[[nodiscard]] bool has_non_pawn_material(const Board& b, Color side) {
+    for (std::size_t i = 0; i < NUM_SQUARES; ++i) {
+        const Piece p = b.piece_at(static_cast<Square>(i));
+        if (p.type == PieceType::None) continue;
+        if (p.color != side) continue;
+        if (p.type != PieceType::Pawn && p.type != PieceType::King) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
 // Main negamax
 // ---------------------------------------------------------------------------
 
 NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                       std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
                       Stop& stop, TranspositionTable* tt,
-                      TreeRecorder* rec, BranchStats& out_stats) {
+                      TreeRecorder* rec, BranchStats& out_stats,
+                      bool allow_null = true) {
     ++nodes;
     out_stats = {};
 
@@ -402,7 +424,11 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     }
 
     // --- Horizon: quiesce ---------------------------------------------
-    if (depth == 0) {
+    // `depth <= 0` rather than `== 0` because pruning reductions
+    // (NMP with R=3, LMR later) can push the caller's depth
+    // into the negatives. Treat every such case as horizon so
+    // the recursion terminates regardless of reducer size.
+    if (depth <= 0) {
         if (stop.disable_quiescence) {
             // Raw static eval — horizon effect visible. User
             // opt-in to see what "pure depth-N minimax" gives.
@@ -417,6 +443,63 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         // rook-takes-queen with quiesce-recapture would show
         // W:900, B:0 while the score is 0).
         return quiesce(board, alpha, beta, nodes, stop, out_stats);
+    }
+
+    // --- Null-move pruning --------------------------------------------
+    // "Pass" to the opponent with depth - R - 1 and a null window
+    // around beta. If the opponent can't beat beta even when given
+    // the move for free, the true value of this position is
+    // already ≥ beta; prune the whole subtree.
+    //
+    // Guards:
+    //   * `allow_null` — never two nulls in a row (zugzwang cascade).
+    //   * α-β must be on — NMP is a pruning technique, no pruning
+    //     mode means no NMP.
+    //   * Not at the root — we need real moves there.
+    //   * Depth ≥ 3 — below that the depth budget after R+1 is
+    //     thin and the savings are small.
+    //   * Not in check — "passing" while in check is illegal.
+    //   * Side to move has non-pawn material — in king+pawns
+    //     endgames any "move" can be strictly worse than passing
+    //     (zugzwang), so NMP is unsound there.
+    //   * Static eval ≥ beta — if we're already below beta, a
+    //     free move for the opponent certainly won't push us
+    //     above it; no point paying for the reduced-depth search.
+    //
+    // Reducer R = 3 (classical; deeper formulas belong in 2.x
+    // polish). The pruning branch is a shadow search — we pass
+    // `rec = nullptr` so it does not pollute the analyzer tree.
+    constexpr int NMP_R = 3;
+    if (allow_null
+        && !stop.disable_alpha_beta
+        && ply > 0
+        && depth >= 3
+        && !MoveGenerator::is_in_check(board, board.side_to_move())
+        && has_non_pawn_material(board, board.side_to_move())) {
+        const int static_eval = stop.use_incremental_eval
+            ? board.evaluate_incremental()
+            : evaluate(board);
+        if (static_eval >= beta) {
+            board.make_null_move();
+            BranchStats null_stats;
+            const NegamaxResult nr = negamax(
+                board, depth - NMP_R - 1, ply + 1,
+                -beta, -beta + 1,
+                nodes, pv, killers, stop, tt,
+                /*rec=*/nullptr, null_stats,
+                /*allow_null=*/false);
+            board.unmake_null_move();
+
+            if (stop.abort) return {0, false};
+
+            const int null_score = -nr.score;
+            if (null_score >= beta) {
+                // Fail-soft prune. `exact=false` because we
+                // didn't visit a single real child — the whole
+                // node is a bound, not a value.
+                return {null_score, false};
+            }
+        }
     }
 
     // --- Legality + terminal ------------------------------------------

@@ -275,4 +275,46 @@ void Board8x8Mailbox::unmake_move(const Move& m) noexcept {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Null move — "pass" for null-move pruning in search.
+// ---------------------------------------------------------------------------
+//
+// Only two fields actually change: `ep_square_` (cleared — the EP
+// right is a one-ply privilege of the side that did NOT pass) and
+// `side_to_move_` (flipped). Pieces, castling, clocks, eval_score
+// all stay put. We still push a full StateSnapshot so unmake_null
+// restores zobrist directly rather than re-XOR'ing — same idiom
+// as make_move / unmake_move.
+//
+void Board8x8Mailbox::make_null_move() noexcept {
+    history_.push_back({ep_square_, castling_, halfmove_clock_,
+                        zobrist_, eval_score_});
+
+    zobrist_ ^= Zobrist::en_passant(ep_square_);
+    zobrist_ ^= Zobrist::black_to_move();
+
+    ep_square_ = Square::None;
+    ++halfmove_clock_;
+    if (side_to_move_ == Color::Black) ++fullmove_number_;
+    side_to_move_ = opposite(side_to_move_);
+
+    zobrist_ ^= Zobrist::en_passant(ep_square_); // no-op (None = 0), kept for symmetry
+}
+
+void Board8x8Mailbox::unmake_null_move() noexcept {
+    assert(!history_.empty()
+           && "unmake_null_move: no matching make_null_move");
+
+    if (side_to_move_ == Color::White) --fullmove_number_;
+    side_to_move_ = opposite(side_to_move_);
+
+    const StateSnapshot snap = history_.back();
+    history_.pop_back();
+    ep_square_ = snap.ep_square;
+    castling_ = snap.castling;
+    halfmove_clock_ = snap.halfmove_clock;
+    zobrist_ = snap.zobrist;
+    eval_score_ = snap.eval_score;
+}
+
 } // namespace chesserazade

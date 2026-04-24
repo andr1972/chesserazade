@@ -115,6 +115,27 @@ public:
     /// preceding `make_move`, or if `m` does not match the last move.
     virtual void unmake_move(const Move& m) noexcept = 0;
 
+    /// "Pass" — hand the move to the opponent without moving any
+    /// piece. Flips `side_to_move`, clears `en_passant_square`
+    /// (giving up the EP right is correct: a null move means the
+    /// pawn that could have been captured just "stayed put", so
+    /// the next capturer no longer has the right), and updates
+    /// the Zobrist key accordingly. Castling rights and piece
+    /// placement are untouched. Pushes one entry on the history
+    /// stack; `unmake_null_move()` pops it.
+    ///
+    /// The caller must guarantee `!in_check` before calling this
+    /// — a "pass" while in check is illegal. The search uses it
+    /// for null-move pruning and enforces that guard on its
+    /// side. Behavior is undefined otherwise.
+    virtual void make_null_move() noexcept = 0;
+
+    /// Undo the matching `make_null_move()` — restores `ep_square`
+    /// and `zobrist_key` from the history entry and flips
+    /// `side_to_move` back. Like `unmake_move`, behavior is
+    /// undefined without a matching preceding call.
+    virtual void unmake_null_move() noexcept = 0;
+
 protected:
     Board() = default;
     Board(const Board&) = default;
