@@ -182,6 +182,18 @@ SolvePanel::SolvePanel(QWidget* parent)
         "time / node saving."));
     cap_row->addWidget(lmr_check_);
 
+    history_check_ = new QCheckBox(tr("history"), right);
+    history_check_->setChecked(true);
+    history_check_->setToolTip(tr(
+        "History heuristic — per-search [color][from][to] "
+        "table bumped by depth² when a quiet move causes a "
+        "β-cutoff. Quiet moves then sort by their history "
+        "score instead of a flat 0 bucket, so moves that "
+        "have already cut in sibling nodes get tried first. "
+        "Compounds with LMR: the reduction hits only "
+        "genuinely untested quiets."));
+    cap_row->addWidget(history_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -396,6 +408,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.use_incremental_eval = incr_eval_check_->isChecked();
     b.use_bitboard         = bitboard_check_->isChecked();
     b.enable_lmr           = lmr_check_->isChecked();
+    b.enable_history       = history_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();

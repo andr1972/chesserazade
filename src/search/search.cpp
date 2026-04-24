@@ -120,6 +120,7 @@ struct Stop {
     bool root_full_window   = false;
     bool use_incremental_eval = false;
     bool enable_lmr = false;
+    bool enable_history = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
@@ -210,6 +211,7 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
 [[nodiscard]] int score_move(const Move& m, const Move& tt_move,
                              const KillerTable& killers,
                              const HistoryTable& history,
+                             bool use_history,
                              Color stm,
                              std::size_t ply) noexcept {
     if (m == tt_move && tt_move.from != Square::None) {
@@ -227,6 +229,7 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
     // bucket so a very old, over-accumulated (from,to) can't
     // leapfrog categories. LMR keys on "score == 0" to detect
     // genuinely untested quiets, so we also floor at 0.
+    if (!use_history) return 0;
     const std::int32_t h = history.get(stm, m.from, m.to);
     if (h <= 0) return 0;
     return h < 49'999 ? static_cast<int>(h) : 49'999;
@@ -249,12 +252,14 @@ std::size_t score_and_sort(const MoveList& legal,
                            const Move& tt_move,
                            const KillerTable& killers,
                            const HistoryTable& history,
+                           bool use_history,
                            Color stm,
                            std::size_t ply) noexcept {
     const std::size_t n = legal.count;
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = legal.moves[i];
-        buf[i] = {m, score_move(m, tt_move, killers, history, stm, ply)};
+        buf[i] = {m, score_move(m, tt_move, killers, history,
+                                use_history, stm, ply)};
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
     return n;
@@ -566,6 +571,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     std::array<ScoredMove, MoveList::CAPACITY> buf;
     const std::size_t n =
         score_and_sort(legal, buf, tt_move, killers, history,
+                       stop.enable_history,
                        board.side_to_move(), p);
 
     const int original_alpha = alpha;
@@ -645,22 +651,24 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         // --- LMR: probe late quiet moves at reduced depth ---
         // A "late" move here means one ordered at index ≥ 3
-        // (after TT / captures / killers) AND scored as a plain
-        // quiet (buf[i].score == 0) — so captures, killers and
-        // promotions are automatically excluded by the bucket,
-        // not by re-testing move kind. The probe runs with the
-        // recorder detached, like null-move pruning: if it
-        // fails low (score ≤ alpha) we accept it as truth and
-        // the tree view shows this branch as a leaf; if it
-        // beats alpha we re-search at full depth with the
-        // recorder attached, so the tree reflects the
-        // confirmed subtree exactly once.
+        // (after TT / captures / killers) AND scoring below the
+        // promotion bucket (< 50'000) — which captures every
+        // quiet move whether or not history has bumped it,
+        // while still excluding captures (≥1'000'000), killers
+        // (800'000/900'000), promotions (≥50'000) and the TT
+        // move (10'000'000). The probe runs with the recorder
+        // detached, like null-move pruning: if it fails low
+        // (score ≤ alpha) we accept it as truth and the tree
+        // view shows this branch as a leaf; if it beats alpha
+        // we re-search at full depth with the recorder
+        // attached, so the tree reflects the confirmed subtree
+        // exactly once.
         const bool lmr_candidate =
                stop.enable_lmr
             && !stop.disable_alpha_beta
             && depth >= 3
             && i >= 3
-            && buf[i].score == 0;
+            && buf[i].score < 50'000;
         const int R = lmr_candidate ? 1 : 0;
         BranchStats child_stats;
         NegamaxResult child =
@@ -712,7 +720,9 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         if (!stop.disable_alpha_beta && score >= beta) {
             remember_killer(killers, p, m);
-            remember_history(history, mover, m, depth);
+            if (stop.enable_history) {
+                remember_history(history, mover, m, depth);
+            }
             if (tt != nullptr) {
                 tt->store(key, depth, to_tt_score(score, ply),
                           TtBound::Lower, m);
@@ -796,6 +806,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.root_full_window,
         limits.use_incremental_eval,
         limits.enable_lmr,
+        limits.enable_history,
         limits.cancel,
         limits.progress_nodes,
         false,

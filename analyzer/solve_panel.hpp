@@ -116,6 +116,7 @@ private:
     QCheckBox*    incr_eval_check_ = nullptr;
     QCheckBox*    bitboard_check_ = nullptr;
     QCheckBox*    lmr_check_      = nullptr;
+    QCheckBox*    history_check_  = nullptr;
     QCheckBox*    relative_score_check_ = nullptr;
 
     QPushButton*  run_btn_  = nullptr;

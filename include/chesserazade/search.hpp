@@ -111,6 +111,16 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Late_Move_Reductions
     bool enable_lmr = false;
 
+    /// History heuristic for quiet-move ordering. A per-search
+    /// `[color][from][to]` table is bumped by `depth^2` on a
+    /// quiet move's β-cutoff; at the next node the same
+    /// `(from, to)` pair sorts ahead of never-cut quiets.
+    /// Off means every quiet move scores 0 — LMR will then
+    /// reduce all late quiets uniformly, which is the 1.x
+    /// behaviour before history was added.
+    /// See https://www.chessprogramming.org/History_Heuristic
+    bool enable_history = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The
