@@ -97,9 +97,8 @@ private:
     QComboBox*    nodes_mult_ = nullptr;
     QSpinBox*     tree_cap_spin_ = nullptr;
     QCheckBox*    lazy_check_    = nullptr;
-    QCheckBox*    ab_check_      = nullptr;
+    QComboBox*    ab_mode_combo_ = nullptr;
     QCheckBox*    qs_check_      = nullptr;
-    QCheckBox*    rfw_check_     = nullptr;
     QCheckBox*    tt_check_      = nullptr;
     QCheckBox*    incr_eval_check_ = nullptr;
     QCheckBox*    bitboard_check_ = nullptr;

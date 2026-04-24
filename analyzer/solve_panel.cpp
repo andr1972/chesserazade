@@ -123,17 +123,26 @@ SolvePanel::SolvePanel(QWidget* parent)
             tree_model_, &SearchTreeModel::set_lazy_enabled);
     cap_row->addWidget(lazy_check_);
 
-    ab_check_ = new QCheckBox(tr("α-β"), right);
-    ab_check_->setChecked(true);
-    ab_check_->setToolTip(tr(
-        "Alpha-beta pruning. Normally on — the engine skips "
-        "branches it can prove are worse than an already-found "
-        "line. Turn off to see what the raw minimax tree looks "
-        "like; use tiny max-ply only (no cutoffs means the tree "
-        "explodes fast)."));
-    cap_row->addWidget(ab_check_);
+    ab_mode_combo_ = new QComboBox(right);
+    // Index 0/1/2 matter — `current_budget` reads them below.
+    ab_mode_combo_->addItem(tr("α-β everywhere"));
+    ab_mode_combo_->addItem(tr("root exact"));
+    ab_mode_combo_->addItem(tr("no α-β above quiescence"));
+    ab_mode_combo_->setCurrentIndex(0);
+    ab_mode_combo_->setToolTip(tr(
+        "α-β pruning mode.\n"
+        "  α-β everywhere — full pruning; scores on the top "
+        "of the tree get dragged toward α by earlier siblings "
+        "(shown as \"≤score\").\n"
+        "  root exact — every root move searched with its own "
+        "full window so top-level scores are all exact; 2–3× "
+        "more work at the root, deeper nodes prune normally.\n"
+        "  no α-β above quiescence — plain minimax down to the "
+        "horizon; only quiescence keeps pruning (without it "
+        "the capture tree never terminates). Use tiny max-ply."));
+    cap_row->addWidget(ab_mode_combo_);
 
-    qs_check_ = new QCheckBox(tr("quiesce"), right);
+    qs_check_ = new QCheckBox(tr("quiescence"), right);
     qs_check_->setChecked(true);
     qs_check_->setToolTip(tr(
         "Quiescence search — at the horizon keep following "
@@ -142,16 +151,6 @@ SolvePanel::SolvePanel(QWidget* parent)
         "(horizon effect visible: mid-trade positions score "
         "as if the trade never happened)."));
     cap_row->addWidget(qs_check_);
-
-    rfw_check_ = new QCheckBox(tr("root exact"), right);
-    rfw_check_->setChecked(false);
-    rfw_check_->setToolTip(tr(
-        "Search each root move with a full α-β window so "
-        "every score in the top of the tree is exact, not a "
-        "bound dragged toward α by earlier siblings. Deeper "
-        "nodes still prune normally. Costs 2–3× more work at "
-        "the root — useful for analysis, off for speed."));
-    cap_row->addWidget(rfw_check_);
 
     tt_check_ = new QCheckBox(tr("TT"), right);
     tt_check_->setChecked(true);
@@ -336,9 +335,10 @@ void SolvePanel::set_position(const Board8x8Mailbox& board,
 SolveBudget SolvePanel::current_budget() const {
     SolveBudget b;
     b.tree_cap = tree_cap_spin_->value();
-    b.disable_alpha_beta = !ab_check_->isChecked();
+    const int ab_mode = ab_mode_combo_->currentIndex();
+    b.disable_alpha_beta = (ab_mode == 2);
+    b.root_full_window   = (ab_mode == 1);
     b.disable_quiescence = !qs_check_->isChecked();
-    b.root_full_window   =  rfw_check_->isChecked();
     b.use_tt             =  tt_check_->isChecked();
     b.use_incremental_eval = incr_eval_check_->isChecked();
     b.use_bitboard         = bitboard_check_->isChecked();
@@ -679,9 +679,10 @@ void SolvePanel::on_expansion_requested(int node_idx) {
     // plies of new nesting are recorded per click.
     SearchLimits lim;
     lim.max_depth = node.remaining_depth;
-    lim.disable_alpha_beta = !ab_check_->isChecked();
+    const int ab_mode = ab_mode_combo_->currentIndex();
+    lim.disable_alpha_beta = (ab_mode == 2);
+    lim.root_full_window   = (ab_mode == 1);
     lim.disable_quiescence = !qs_check_->isChecked();
-    lim.root_full_window   =  rfw_check_->isChecked();
 
     SearchTree sub;
     SearchTreeRecorder sub_rec(sub, tree_cap_spin_->value());

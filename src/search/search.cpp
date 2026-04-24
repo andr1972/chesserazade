@@ -283,7 +283,12 @@ NegamaxResult quiesce(Board& board, int alpha, int beta,
     // before even looking at any capture reply, so from the
     // "visited all direct children" point of view zero of N
     // were visited.
-    if (!stop.disable_alpha_beta && stand_pat >= beta) {
+    // Quiescence always runs with α-β, independently of
+    // `disable_alpha_beta`. Without cutoffs, a capture / re-
+    // capture sequence with positive SEE would expand the
+    // tree without bound, so plain minimax here would not
+    // terminate in any useful time.
+    if (stand_pat >= beta) {
         return {stand_pat, false};
     }
     if (stand_pat > alpha) alpha = stand_pat;
@@ -336,7 +341,7 @@ NegamaxResult quiesce(Board& board, int alpha, int beta,
             best_stats = combined;
         }
         if (score > alpha) alpha = score;
-        if (!stop.disable_alpha_beta && score >= beta) {
+        if (score >= beta) { // see note above — quiescence α-β is forced on.
             out_stats = combined;
             return {score, visited == n};
         }

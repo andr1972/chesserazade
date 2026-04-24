@@ -62,13 +62,17 @@ struct SearchLimits {
     /// Checked on the same cadence as `time_budget`.
     std::uint64_t node_budget = 0;
 
-    /// Turn the α-β pruning off and run plain minimax. At
-    /// small depths this is the natural way to inspect the
-    /// full game tree without cutoffs hiding branches; at
-    /// realistic depths the tree explodes. TT bound returns
-    /// (Lower / Upper) are bypassed in this mode because
-    /// they would carry over α-β assumptions; Exact entries
-    /// remain valid.
+    /// Turn α-β pruning off inside the main negamax and run
+    /// plain minimax. At small depths this is the natural way
+    /// to inspect the full game tree without cutoffs hiding
+    /// branches; at realistic depths the tree explodes. TT
+    /// bound returns (Lower / Upper) are bypassed in this
+    /// mode because they would carry over α-β assumptions;
+    /// Exact entries remain valid. Note: quiescence is *not*
+    /// affected by this flag — a capture tree without α-β
+    /// expands without bound (any positive-SEE recapture
+    /// sequence keeps growing), so there is no useful
+    /// "plain-minimax quiescence" mode to expose.
     bool disable_alpha_beta = false;
 
     /// Skip quiescence search at the horizon and return the
