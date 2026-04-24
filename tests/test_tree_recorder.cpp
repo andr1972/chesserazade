@@ -123,8 +123,7 @@ TEST_CASE("TreeRecorder: ply_cap=1 suppresses ply-2 events",
     }
 }
 
-TEST_CASE("TreeRecorder: capture of a piece is tallied on the "
-          "capturing side", "[recorder]") {
+TEST_CASE("TreeRecorder: capture of a piece is tallied on the capturing side", "[recorder]") {
     // A position where white to move has one legal capture that
     // dominates: KQ vs K, white captures nothing at depth 1; we
     // craft a cleaner case. White rook takes black rook on an
@@ -157,9 +156,7 @@ TEST_CASE("TreeRecorder: capture of a piece is tallied on the "
     REQUIRE(saw);
 }
 
-TEST_CASE("TreeRecorder: a check-giving move increments the "
-          "check counter for the side that gave it",
-          "[recorder]") {
+TEST_CASE("TreeRecorder: check-giving move increments checker's counter", "[recorder]") {
     // White to move; Rxd8+ takes the black queen and opens a
     // check down the d-file (white rook on d8, black king e8,
     // nothing between). No white piece sits on the d-file to
@@ -205,8 +202,7 @@ TEST_CASE("TreeRecorder: cutoff flag fires on fail-high moves",
     REQUIRE(saw_cutoff);
 }
 
-TEST_CASE("TreeRecorder: nullptr recorder keeps legacy behaviour "
-          "(no crash, same best move)", "[recorder]") {
+TEST_CASE("TreeRecorder: nullptr recorder keeps legacy behaviour", "[recorder]") {
     auto b = *Board8x8Mailbox::from_fen(STARTING_POSITION_FEN);
     const auto r1 = Search::find_best(b, depth_only(3), nullptr, nullptr);
     const auto r2 = Search::find_best(b, depth_only(3), nullptr);
@@ -214,8 +210,7 @@ TEST_CASE("TreeRecorder: nullptr recorder keeps legacy behaviour "
     REQUIRE(r1.score == r2.score);
 }
 
-TEST_CASE("TreeRecorder: pv_stats captures are populated even "
-          "without a recorder", "[recorder]") {
+TEST_CASE("TreeRecorder: pv_stats captures are populated even without a recorder", "[recorder]") {
     // The capture-value path is free (comes straight from
     // Move::captured_piece) so it runs unconditionally. The
     // rook-takes-rook position proves it.
