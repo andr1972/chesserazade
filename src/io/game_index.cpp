@@ -147,9 +147,24 @@ std::vector<MaterialSac> find_sacs(const std::vector<int>& balances) {
         }
         const int recovery = std::max(0, max_adv - adv_after);
 
+        // Raw loss: the largest single-ply material drop
+        // against the mover within the detection window. Can
+        // exceed `loss` when the mover recaptures on the next
+        // ply — the net (loss) shrinks while raw stays the
+        // dropped piece's full value.
+        int raw_loss = 0;
+        for (int j = i; j < after_idx; ++j) {
+            const int delta_white =
+                balances[static_cast<std::size_t>(j + 1)]
+                - balances[static_cast<std::size_t>(j)];
+            const int against_mover = -mover_sign * delta_white;
+            if (against_mover > raw_loss) raw_loss = against_mover;
+        }
+
         MaterialSac s;
         s.ply = i + 1; // 1-based
         s.loss_cp = loss;
+        s.raw_loss_cp = raw_loss;
         s.recovery_cp = recovery;
         out.push_back(s);
         skip_until = after_idx + SAC_RECOVERY_WINDOW;
@@ -362,6 +377,7 @@ void write_record(std::ostream& os, const GameRecord& r) {
         if (i > 0) os << ", ";
         os << "{\"ply\": " << s.ply
            << ", \"loss_cp\": " << s.loss_cp
+           << ", \"raw_loss_cp\": " << s.raw_loss_cp
            << ", \"recovery_cp\": " << s.recovery_cp << "}";
     }
     os << "]\n";
@@ -561,6 +577,10 @@ bool parse_record(Cursor& c, GameRecord& r) {
             if (!expect_key(c, "loss_cp") || !parse_int(c, v)) return false;
             s.loss_cp = static_cast<int>(v);
             if (!c.match(',')) return false;
+            if (!expect_key(c, "raw_loss_cp")
+                || !parse_int(c, v)) return false;
+            s.raw_loss_cp = static_cast<int>(v);
+            if (!c.match(',')) return false;
             if (!expect_key(c, "recovery_cp")
                 || !parse_int(c, v)) return false;
             s.recovery_cp = static_cast<int>(v);
@@ -582,7 +602,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
-    idx.schema = 5;
+    idx.schema = 6;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -655,7 +675,7 @@ std::optional<GameIndex> load_index(const std::string& path) {
     // rather than migrate we return nullopt so the caller
     // rebuilds from the PGN — rebuild is cheap and keeps the
     // loader free of per-version fixup code.
-    if (idx.schema != 5) return std::nullopt;
+    if (idx.schema != 6) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;

@@ -5,6 +5,8 @@
 
 #include "game_list_model.hpp"
 
+#include <chesserazade/game_index.hpp>
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -72,6 +74,11 @@ public:
         sac_only_ = on;
         invalidateFilter();
     }
+    void set_sac_won_only(bool on) {
+        if (on == sac_won_only_) return;
+        sac_won_only_ = on;
+        invalidateFilter();
+    }
 
 protected:
     [[nodiscard]] bool filterAcceptsRow(int row,
@@ -127,16 +134,44 @@ protected:
                                                 parent)).toString();
             if (sv.isEmpty()) return false;
         }
+        if (sac_won_only_) {
+            // Drop into the source model for fields we don't
+            // surface as columns (ply parity → sacrificer's
+            // color, cross-checked against the Result tag).
+            const auto* glm = qobject_cast<const GameListModel*>(m);
+            if (glm == nullptr) return false;
+            const GameRecord* rec = glm->record_at(row);
+            if (rec == nullptr) return false;
+            if (rec->material_sacs.empty()) return false;
+            const std::string& res = rec->header.result;
+            // Map game result to the side that won.
+            // "1-0" → white, "0-1" → black, else → no winner.
+            const bool white_won = (res == "1-0");
+            const bool black_won = (res == "0-1");
+            if (!white_won && !black_won) return false;
+            bool any_match = false;
+            for (const auto& s : rec->material_sacs) {
+                // 1-based ply parity: odd = white moved, even = black.
+                const bool sacrificer_is_white = (s.ply % 2 == 1);
+                if ((sacrificer_is_white && white_won)
+                    || (!sacrificer_is_white && black_won)) {
+                    any_match = true;
+                    break;
+                }
+            }
+            if (!any_match) return false;
+        }
         return true;
     }
 
 private:
     QString name_;
     QString year_;
-    bool    mate_only_ = false;
-    bool    up_only_   = false;
-    bool    kf_only_   = false;
-    bool    sac_only_  = false;
+    bool    mate_only_   = false;
+    bool    up_only_     = false;
+    bool    kf_only_     = false;
+    bool    sac_only_    = false;
+    bool    sac_won_only_ = false;
 };
 
 GameListView::GameListView(QWidget* parent) : QWidget(parent) {
@@ -211,6 +246,17 @@ GameListView::GameListView(QWidget* parent) : QWidget(parent) {
     connect(sac_filter_, &QCheckBox::toggled,
             this, [this](bool on) { proxy_->set_sac_only(on); });
     filter_row->addWidget(sac_filter_);
+
+    sac_won_filter_ = new QCheckBox(tr("sac won"), this);
+    sac_won_filter_->setToolTip(tr(
+        "Show only games where the side that sacrificed also "
+        "won the game. A sacrifice that the sacrificer then "
+        "converted — the sharpest filter for classical "
+        "brilliancies. Drops unrecovered sacrifices in losses "
+        "(plain blunders) and draws."));
+    connect(sac_won_filter_, &QCheckBox::toggled,
+            this, [this](bool on) { proxy_->set_sac_won_only(on); });
+    filter_row->addWidget(sac_won_filter_);
 
     layout->addLayout(filter_row);
 

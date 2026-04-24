@@ -94,6 +94,7 @@ private:
     QCheckBox*     up_filter_   = nullptr;
     QCheckBox*     kf_filter_   = nullptr;
     QCheckBox*     sac_filter_  = nullptr;
+    QCheckBox*     sac_won_filter_ = nullptr;
     QLabel*        status_  = nullptr;
     QString        source_path_;
 };

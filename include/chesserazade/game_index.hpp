@@ -73,15 +73,33 @@ struct UnderPromotion {
 };
 
 /// Sharp material drop against the mover, detected during
-/// index build. `loss_cp` is net material the mover lost over
-/// their move + opponent's reply (always positive). `recovery_cp`
-/// is the most they won back within a 10-ply forward window;
-/// equal to `loss_cp` means "fully repaid", zero means "never
-/// regained anything", negative values don't happen (we clamp
-/// at zero). `ply` is the sacrificing move (1-based).
+/// index build.
+///
+/// `loss_cp` is the **net** material the mover lost over
+/// their move + opponent's reply (always positive; a trade
+/// of equal value nets to zero and does not register). This
+/// is what intuitively distinguishes "I sacrificed a rook
+/// for nothing" from "I sacrificed a rook for a bishop".
+///
+/// `raw_loss_cp` is the **largest single-ply piece capture**
+/// within the same 2-ply detection window — i.e. what piece
+/// actually dropped off the board, regardless of any
+/// compensating capture on the adjacent ply. For Fischer's
+/// 17…Be6!! / 18.Bxb6 sequence: `loss_cp = 570` (queen-for-
+/// bishop netted), `raw_loss_cp = 900` (the queen). Useful
+/// when the user's mental model is "which piece was
+/// sacrificed" rather than "what was the net trade".
+///
+/// `recovery_cp` is the most the mover won back within a
+/// 10-ply forward window; equal to `loss_cp` means "fully
+/// repaid", zero means "never regained anything". Negative
+/// values don't happen (clamped).
+///
+/// `ply` is the sacrificing move (1-based).
 struct MaterialSac {
     int ply = 0;
     int loss_cp = 0;
+    int raw_loss_cp = 0;
     int recovery_cp = 0;
 };
 
@@ -116,9 +134,9 @@ struct GameRecord {
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way. Current: 5 (added
-    /// `material_sacs` per record).
-    int schema = 5;
+    /// changes in a non-additive way. Current: 6 (added
+    /// `raw_loss_cp` to MaterialSac).
+    int schema = 6;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares

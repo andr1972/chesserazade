@@ -16,6 +16,14 @@ void GameListModel::set_games(const std::vector<GameRecord>* games) {
     endResetModel();
 }
 
+const GameRecord* GameListModel::record_at(int row) const noexcept {
+    if (games_ == nullptr) return nullptr;
+    if (row < 0) return nullptr;
+    const auto r = static_cast<std::size_t>(row);
+    if (r >= games_->size()) return nullptr;
+    return &(*games_)[r];
+}
+
 int GameListModel::rowCount(const QModelIndex& parent) const {
     if (parent.isValid()) return 0;
     return games_ == nullptr
@@ -69,9 +77,9 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
             if (rec.knight_fork_plies.empty()) return QString{};
             return static_cast<int>(rec.knight_fork_plies.size());
         case ColSac: {
-            // Summarize by the biggest single sacrifice's loss
-            // and the fraction recovered. E.g. "Q 60%" means
-            // "queen dropped, 60% of its cp won back within
+            // Summarize by the biggest single sacrifice's net
+            // loss and the fraction recovered. E.g. "Q 60%"
+            // means "queen-value net loss, 60% won back within
             // the window". No sacrifice → blank.
             if (rec.material_sacs.empty()) return QString{};
             const MaterialSac* best = &rec.material_sacs.front();
@@ -81,11 +89,26 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
             const char* tag = "?";
             if      (best->loss_cp >= 900) tag = "Q";
             else if (best->loss_cp >= 500) tag = "R";
-            else if (best->loss_cp >= 300) tag = "m";  // minor
+            else if (best->loss_cp >= 300) tag = "m";
             const int pct = (best->loss_cp > 0)
                 ? (100 * best->recovery_cp / best->loss_cp)
                 : 0;
             return QStringLiteral("%1 %2%").arg(tag).arg(pct);
+        }
+        case ColRaw: {
+            // Largest single-piece drop regardless of recapture.
+            // Useful when the "net" view hides the true piece
+            // sacrificed — Fischer's 17…Be6!! / 18.Bxb6 nets
+            // to rook-value but the queen physically fell.
+            if (rec.material_sacs.empty()) return QString{};
+            int raw = 0;
+            for (const auto& s : rec.material_sacs) {
+                if (s.raw_loss_cp > raw) raw = s.raw_loss_cp;
+            }
+            if      (raw >= 900) return QStringLiteral("Q");
+            else if (raw >= 500) return QStringLiteral("R");
+            else if (raw >= 300) return QStringLiteral("m");
+            return QString{};
         }
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
@@ -108,6 +131,7 @@ QVariant GameListModel::headerData(int section,
         case ColUP:     return tr("UP");
         case ColKF:     return tr("KF");
         case ColSac:    return tr("Sac");
+        case ColRaw:    return tr("Raw");
         case ColEvent:  return tr("Event");
         default:        return {};
     }

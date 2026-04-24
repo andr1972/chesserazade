@@ -32,6 +32,7 @@ public:
         ColUP,     ///< Under-promotion letters (e.g. "N", "NR") or blank.
         ColKF,     ///< Knight-fork count or blank.
         ColSac,    ///< Largest-loss sacrifice summary or blank.
+        ColRaw,    ///< Largest single-piece drop regardless of recapture.
         ColEvent,
         ColumnCount,
     };
@@ -41,6 +42,13 @@ public:
     /// Point the model at a new index. The vector must outlive
     /// the model; pass `nullptr` to clear.
     void set_games(const std::vector<GameRecord>* games);
+
+    /// Direct access to the underlying record. Used by filter
+    /// logic that needs fields not exposed as columns (e.g.
+    /// the "winning sacrifice" filter needs to cross-reference
+    /// sacrifice plies against the game result). Returns
+    /// nullptr for out-of-range rows.
+    [[nodiscard]] const GameRecord* record_at(int row) const noexcept;
 
     [[nodiscard]] int rowCount(const QModelIndex& parent
                                = QModelIndex{}) const override;
