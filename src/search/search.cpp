@@ -821,6 +821,52 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         result.score = evaluate(board);
     }
 
+    // Extend the PV through the TT when the in-search PV was
+    // truncated by a prune on the main line. NMP and TT probe-
+    // cuts both return without running the child move loop, so
+    // their `pv.length` stays zero and the PV copy in the parent
+    // ends one ply after the pruning node. The best move at
+    // those deeper positions is still in the TT — we just didn't
+    // walk through it during search. Replay the known PV on the
+    // board, then follow TT best-moves until a miss or a cycle,
+    // bounded by the completed depth.
+    if (tt != nullptr
+        && result.completed_depth > 0
+        && !result.principal_variation.empty()) {
+        std::size_t made = 0;
+        for (const Move& m : result.principal_variation) {
+            board.make_move(m);
+            ++made;
+        }
+        std::vector<ZobristKey> seen;
+        seen.reserve(static_cast<std::size_t>(result.completed_depth));
+        const std::size_t cap =
+            static_cast<std::size_t>(result.completed_depth);
+        while (result.principal_variation.size() < cap) {
+            const ZobristKey k = board.zobrist_key();
+            if (std::find(seen.begin(), seen.end(), k) != seen.end()) break;
+            seen.push_back(k);
+            const TtProbe probe = tt->probe(k);
+            if (!probe.hit) break;
+            const Move tt_move = probe.entry.move;
+            if (tt_move.from == Square::None) break;
+            const MoveList legal = MoveGenerator::generate_legal(board);
+            bool ok = false;
+            for (const Move& lm : legal) {
+                if (lm == tt_move) { ok = true; break; }
+            }
+            if (!ok) break;
+            board.make_move(tt_move);
+            result.principal_variation.push_back(tt_move);
+            ++made;
+        }
+        for (std::size_t i = 0; i < made; ++i) {
+            const Move& m =
+                result.principal_variation[made - 1 - i];
+            board.unmake_move(m);
+        }
+    }
+
     if (tt != nullptr) {
         result.tt_probes = tt->probes() - probes_before;
         result.tt_hits   = tt->hits()   - hits_before;
