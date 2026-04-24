@@ -261,6 +261,7 @@ bool GameListView::load(const QString& pgn_path) {
     source_path_ = pgn_path;
     pgn_bytes_.clear();
     games_.clear();
+    last_chosen_row_ = -1;
     model_->set_games(nullptr);
 
     QFile f(pgn_path);
@@ -408,6 +409,23 @@ void GameListView::refresh_year_combo() {
     year_filter_->blockSignals(false);
 }
 
+void GameListView::select_row(std::size_t source_row_) {
+    if (source_row_ >= games_.size()) return;
+    last_chosen_row_ = static_cast<int>(source_row_);
+    reselect_last();
+}
+
+void GameListView::reselect_last() {
+    if (last_chosen_row_ < 0) return;
+    if (static_cast<std::size_t>(last_chosen_row_) >= games_.size()) return;
+    const QModelIndex src = model_->index(last_chosen_row_, 0);
+    const QModelIndex view = proxy_->mapFromSource(src);
+    if (!view.isValid()) return; // filtered out
+    table_->selectRow(view.row());
+    table_->scrollTo(view, QAbstractItemView::PositionAtCenter);
+    table_->setFocus();
+}
+
 int GameListView::source_row(const QModelIndex& idx) const {
     if (proxy_ == nullptr) return idx.row();
     return proxy_->mapToSource(idx).row();
@@ -419,6 +437,7 @@ void GameListView::on_activated(const QModelIndex& idx) {
     if (row < 0) return;
     const auto r = static_cast<std::size_t>(row);
     if (r >= games_.size()) return;
+    last_chosen_row_ = row;
 
     const PgnGameHeader& g = games_[r].header;
     if (g.offset + g.length > pgn_bytes_.size()) return;

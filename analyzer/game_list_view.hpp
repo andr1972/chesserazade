@@ -43,6 +43,18 @@ public:
     /// carries the reason.
     bool load(const QString& pgn_path);
 
+    /// Select `source_row` (index into the raw `games_` vector,
+    /// not the filtered/sorted view) and scroll it into view.
+    /// A later `reselect_last` call restores this selection
+    /// after the user visits another widget and comes back.
+    /// No-op when the row is out of range or filtered out.
+    void select_row(std::size_t source_row);
+
+    /// Re-apply the last `select_row` under the current sort
+    /// and filter state. Used by "Return to list" to land the
+    /// user back on the game they came from.
+    void reselect_last();
+
 signals:
     /// A game was activated (double-click / Enter). `pgn_text`
     /// is a copy of that one game's bytes; `header_label` is
@@ -68,6 +80,10 @@ private:
 
     std::string pgn_bytes_;
     std::vector<GameRecord> games_;
+    /// Index of the most recently activated game (list click
+    /// or bookmark open). -1 = none. Kept across widget
+    /// switches so "Return to list" can re-highlight it.
+    int last_chosen_row_ = -1;
 
     QTableView*    table_   = nullptr;
     GameListModel* model_   = nullptr;

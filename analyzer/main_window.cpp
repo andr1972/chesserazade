@@ -167,6 +167,9 @@ void MainWindow::on_return_to_list() {
     // pop back.
     stack_->setCurrentWidget(game_list_);
     statusBar()->clearMessage();
+    // Re-highlight the game the user came from so they can
+    // eyeball context without searching the list.
+    if (game_list_ != nullptr) game_list_->reselect_last();
 }
 
 void MainWindow::on_add_bookmark() {
@@ -254,9 +257,14 @@ void MainWindow::on_browse_bookmarks() {
 
     // Also refresh the game-list so "back to list" from the
     // game view lands on the archive the bookmark came from,
-    // not whatever was previously loaded.
+    // not whatever was previously loaded. Pre-select the
+    // bookmarked row so "Return to list" puts the user back
+    // on exactly the game they opened from the bookmark.
     loaded_pgn_path_ = *pgn_path;
-    if (game_list_ != nullptr) game_list_->load(*pgn_path);
+    if (game_list_ != nullptr) {
+        game_list_->load(*pgn_path);
+        game_list_->select_row(*match);
+    }
 
     if (!game_view_->load_pgn(pgn_text, label)) {
         QMessageBox::warning(this, tr("Bookmark"),
