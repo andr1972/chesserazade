@@ -50,6 +50,7 @@ struct SolveBudget {
     bool enable_history     = true;   ///< History heuristic ordering.
     bool enable_aspiration  = true;   ///< Aspiration windows at root.
     bool enable_pvs         = true;   ///< PVS + LMP in non-PV-nodes.
+    bool enable_check_ext   = true;   ///< Extend depth on check-giving moves.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called

@@ -123,6 +123,7 @@ struct Stop {
     bool enable_history = false;
     bool enable_aspiration = false;
     bool enable_pvs = false;
+    bool enable_check_ext = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
@@ -641,17 +642,21 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         board.make_move(m);
 
         bool gives_check = false;
-        if (rec != nullptr) {
-            // Did this move give check? Probe the post-move
-            // board: the side *to* move is now the opponent;
-            // we ask whether they are in check.
+        // Probe post-move "is the opponent in check?" whenever
+        // either the recorder needs it (for the Checks columns)
+        // or check extensions need it (to bump search depth on
+        // checking moves).
+        if (rec != nullptr || stop.enable_check_ext) {
             const Color them = board.side_to_move();
             if (MoveGenerator::is_in_check(board, them)) {
                 gives_check = true;
-                if (mover == Color::White) delta.checks_white = 1;
-                else                       delta.checks_black = 1;
+                if (rec != nullptr) {
+                    if (mover == Color::White) delta.checks_white = 1;
+                    else                       delta.checks_black = 1;
+                }
             }
         }
+        const int ext = (stop.enable_check_ext && gives_check) ? 1 : 0;
 
         // Snapshot the α the child will actually see. `alpha`
         // may have improved earlier in this loop; that current
@@ -720,7 +725,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 
         BranchStats child_stats;
         NegamaxResult child =
-            negamax(board, depth - 1 - R, child_ply,
+            negamax(board, depth - 1 - R + ext, child_ply,
                     probe_alpha, probe_beta,
                     nodes, pv, killers, history, stop, tt,
                     detach_rec_for_probe ? nullptr : rec,
@@ -728,7 +733,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         int score = -child.score;
         if (detach_rec_for_probe && !stop.abort && score > alpha) {
             child_stats = {};
-            child = negamax(board, depth - 1, child_ply,
+            child = negamax(board, depth - 1 + ext, child_ply,
                             recurse_alpha, recurse_beta,
                             nodes, pv, killers, history, stop, tt,
                             rec, child_stats);
@@ -858,6 +863,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_history,
         limits.enable_aspiration,
         limits.enable_pvs,
+        limits.enable_check_ext,
         limits.cancel,
         limits.progress_nodes,
         false,

@@ -145,6 +145,17 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Principal_Variation_Search
     bool enable_pvs = false;
 
+    /// Check extensions. A move that puts the opponent in
+    /// check recurses at `depth` instead of `depth - 1`, so
+    /// check lines are searched one ply deeper than the
+    /// formal depth would suggest. Makes forced-mate
+    /// sequences that run through a string of checks
+    /// resolvable at a smaller nominal depth, and fixes the
+    /// horizon effect where quiescence (captures only) stops
+    /// short of a waiting checking tactic.
+    /// See https://www.chessprogramming.org/Check_Extensions
+    bool enable_check_ext = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The

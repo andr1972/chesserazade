@@ -223,6 +223,21 @@ SolvePanel::SolvePanel(QWidget* parent)
         "act on, and PVS is what creates them."));
     cap_row->addWidget(pvs_check_);
 
+    check_ext_check_ = new QCheckBox(tr("check ext"), right);
+    check_ext_check_->setChecked(true);
+    check_ext_check_->setToolTip(tr(
+        "Check extensions — a move that gives check recurses "
+        "at the same depth instead of depth - 1, so checking "
+        "sequences are searched one ply deeper than the "
+        "nominal depth. Forced mates through a string of "
+        "checks resolve at a smaller formal depth, and the "
+        "quiescence horizon (captures only) is no longer "
+        "blind to a waiting checking tactic. Does not speed "
+        "up at the same depth — each iteration does more "
+        "work — but the score and best move at a given "
+        "depth are tactically stronger."));
+    cap_row->addWidget(check_ext_check_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -440,6 +455,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.enable_history       = history_check_->isChecked();
     b.enable_aspiration    = asp_check_->isChecked();
     b.enable_pvs           = pvs_check_->isChecked();
+    b.enable_check_ext     = check_ext_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();
