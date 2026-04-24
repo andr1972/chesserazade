@@ -84,7 +84,7 @@ SolvePanel::SolvePanel(QWidget* parent)
 
     depth_spin_ = new QSpinBox(budget_box);
     depth_spin_->setRange(1, Search::MAX_DEPTH);
-    depth_spin_->setValue(7);
+    depth_spin_->setValue(11);
     add_row(rb_depth_, tr("Max ply"), depth_spin_);
 
     time_spin_ = new QSpinBox(budget_box);
@@ -169,6 +169,18 @@ SolvePanel::SolvePanel(QWidget* parent)
         "typically 2× because eval, TT and ordering share the "
         "cost."));
     cap_row->addWidget(bitboard_check_);
+
+    lmr_check_ = new QCheckBox(tr("LMR"), right);
+    lmr_check_->setChecked(true);
+    lmr_check_->setToolTip(tr(
+        "Late Move Reductions — quiet moves ordered past the "
+        "first few (after TT move, captures, killers) are "
+        "probed at depth-2 instead of depth-1. If the probe "
+        "still beats the current α, the move is re-searched "
+        "at full depth. Most late quiet moves fail the probe, "
+        "saving a ply of work. Turn off to measure the "
+        "time / node saving."));
+    cap_row->addWidget(lmr_check_);
 
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
@@ -383,6 +395,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.use_tt             =  tt_check_->isChecked();
     b.use_incremental_eval = incr_eval_check_->isChecked();
     b.use_bitboard         = bitboard_check_->isChecked();
+    b.enable_lmr           = lmr_check_->isChecked();
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();

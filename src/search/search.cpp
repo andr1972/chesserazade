@@ -94,6 +94,7 @@ struct Stop {
     bool disable_quiescence = false;
     bool root_full_window   = false;
     bool use_incremental_eval = false;
+    bool enable_lmr = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     bool abort = false;
@@ -594,13 +595,40 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         // nodes and quiescence + sub-cap nodes too.
         const std::uint64_t nodes_before = nodes;
 
+        // --- LMR: probe late quiet moves at reduced depth ---
+        // A "late" move here means one ordered at index ≥ 3
+        // (after TT / captures / killers) AND scored as a plain
+        // quiet (buf[i].score == 0) — so captures, killers and
+        // promotions are automatically excluded by the bucket,
+        // not by re-testing move kind. The probe runs with the
+        // recorder detached, like null-move pruning: if it
+        // fails low (score ≤ alpha) we accept it as truth and
+        // the tree view shows this branch as a leaf; if it
+        // beats alpha we re-search at full depth with the
+        // recorder attached, so the tree reflects the
+        // confirmed subtree exactly once.
+        const bool lmr_candidate =
+               stop.enable_lmr
+            && !stop.disable_alpha_beta
+            && depth >= 3
+            && i >= 3
+            && buf[i].score == 0;
+        const int R = lmr_candidate ? 1 : 0;
         BranchStats child_stats;
-        const NegamaxResult child =
-            negamax(board, depth - 1, child_ply,
+        NegamaxResult child =
+            negamax(board, depth - 1 - R, child_ply,
                     recurse_alpha, recurse_beta,
                     nodes, pv, killers, stop, tt,
-                    rec, child_stats);
-        const int score = -child.score;
+                    (R > 0 ? nullptr : rec), child_stats);
+        int score = -child.score;
+        if (R > 0 && !stop.abort && score > alpha) {
+            child_stats = {};
+            child = negamax(board, depth - 1, child_ply,
+                            recurse_alpha, recurse_beta,
+                            nodes, pv, killers, stop, tt,
+                            rec, child_stats);
+            score = -child.score;
+        }
         board.unmake_move(m);
 
         const BranchStats combined = combine(delta, child_stats);
@@ -717,6 +745,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.disable_quiescence,
         limits.root_full_window,
         limits.use_incremental_eval,
+        limits.enable_lmr,
         limits.cancel,
         limits.progress_nodes,
         false,

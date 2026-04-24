@@ -98,6 +98,19 @@ struct SearchLimits {
     /// equivalent; purely a speed toggle for measurement.
     bool use_incremental_eval = false;
 
+    /// Late Move Reductions. Quiet moves past the first few in
+    /// the move-ordered list are searched at a reduced depth
+    /// (depth - 1 - R). If the reduced search beats `alpha`,
+    /// the move is re-searched at full depth to confirm. The
+    /// assumption — validated by MVV-LVA + killer ordering —
+    /// is that most "late" quiet moves are worse than the
+    /// already-found best, so a cheap shallow verification is
+    /// enough to prove it. The reduced probe runs with the
+    /// recorder detached (identically to null-move pruning),
+    /// so the tree view only sees the confirmed re-search.
+    /// See https://www.chessprogramming.org/Late_Move_Reductions
+    bool enable_lmr = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The

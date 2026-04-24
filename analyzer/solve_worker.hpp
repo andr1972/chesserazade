@@ -46,6 +46,7 @@ struct SolveBudget {
     bool use_tt             = true;   ///< Consult the TT.
     bool use_incremental_eval = false; ///< O(1) cached eval.
     bool use_bitboard       = false;  ///< Search on BoardBitboard.
+    bool enable_lmr         = true;   ///< Late Move Reductions.
 };
 
 /// Lives on a worker thread once `moveToThread` has been called
