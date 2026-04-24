@@ -39,6 +39,15 @@ GameView::GameView(QWidget* parent) : QWidget(parent) {
     moves_->setSelectionMode(QAbstractItemView::SingleSelection);
     connect(moves_, &QListWidget::currentRowChanged,
             this, &GameView::on_move_clicked);
+    // Double-click on a ply is a shortcut for "click the move +
+    // press Solve from here" — the common flow when the user
+    // already knows the position they want to analyze.
+    connect(moves_, &QListWidget::itemDoubleClicked,
+            this, [this](QListWidgetItem* item) {
+                if (item == nullptr) return;
+                seek_to_ply(moves_->row(item));
+                emit solve_requested();
+            });
     splitter->addWidget(board_);
     splitter->addWidget(moves_);
     splitter->setStretchFactor(0, 3);
