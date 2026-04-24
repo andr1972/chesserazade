@@ -485,7 +485,8 @@ void GameListView::on_activated(const QModelIndex& idx) {
     if (r >= games_.size()) return;
     last_chosen_row_ = row;
 
-    const PgnGameHeader& g = games_[r].header;
+    const GameRecord& rec = games_[r];
+    const PgnGameHeader& g = rec.header;
     if (g.offset + g.length > pgn_bytes_.size()) return;
 
     const std::string_view slice(
@@ -497,7 +498,38 @@ void GameListView::on_activated(const QModelIndex& idx) {
         .arg(QString::fromStdString(g.black))
         .arg(QString::fromStdString(g.date));
 
-    emit game_chosen(pgn_text, label);
+    // Column-aware jump: the cell the user activated decides
+    // where we land in the move list. -1 = default (viewer
+    // lands at end of game).
+    int target_ply = -1;
+    const int proxy_col = idx.column();
+    switch (proxy_col) {
+        case GameListModel::ColSac: {
+            // Sacrificing move = ply of the biggest-raw-loss sac.
+            if (!rec.material_sacs.empty()) {
+                const MaterialSac* best = &rec.material_sacs.front();
+                for (const auto& s : rec.material_sacs) {
+                    if (s.raw_loss_cp > best->raw_loss_cp) best = &s;
+                }
+                target_ply = best->ply;
+            }
+            break;
+        }
+        case GameListModel::ColKF:
+            if (!rec.knight_fork_plies.empty()) {
+                target_ply = rec.knight_fork_plies.front();
+            }
+            break;
+        case GameListModel::ColUP:
+            if (!rec.underpromotions.empty()) {
+                target_ply = rec.underpromotions.front().ply;
+            }
+            break;
+        default:
+            break; // leave -1
+    }
+
+    emit game_chosen(pgn_text, label, target_ply);
 }
 
 } // namespace chesserazade::analyzer

@@ -59,8 +59,15 @@ signals:
     /// A game was activated (double-click / Enter). `pgn_text`
     /// is a copy of that one game's bytes; `header_label` is
     /// a short "White — Black, Date" string for the tab title.
+    /// `target_ply` is 1-based and selects a specific move to
+    /// jump to — the column the user activated decides which:
+    /// clicking the Sac cell jumps to the sacrificing move,
+    /// KF to the first knight fork, UP to the first under-
+    /// promotion, anywhere else -1 meaning "no preference,
+    /// let the viewer default to end-of-game".
     void game_chosen(const QString& pgn_text,
-                     const QString& header_label);
+                     const QString& header_label,
+                     int target_ply);
 
 protected:
     /// Swallow Escape on either filter field so it clears that

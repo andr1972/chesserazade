@@ -31,7 +31,8 @@ private:
     void show_about();
     void open_fetch_dialog();
     void on_game_chosen(const QString& pgn_text,
-                        const QString& header_label);
+                        const QString& header_label,
+                        int target_ply);
     void on_back_to_list();
     void on_solve_requested();
     void on_back_to_game_view();

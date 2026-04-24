@@ -111,22 +111,85 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
 QVariant GameListModel::headerData(int section,
                                    Qt::Orientation orientation,
                                    int role) const {
-    if (role != Qt::DisplayRole) return {};
-    if (orientation == Qt::Vertical) return section + 1;
-    switch (section) {
-        case ColDate:   return tr("Date");
-        case ColWhite:  return tr("White");
-        case ColBlack:  return tr("Black");
-        case ColResult: return tr("Result");
-        case ColEco:    return tr("ECO");
-        case ColPlies:  return tr("Plies");
-        case ColEnd:    return tr("End");
-        case ColUP:     return tr("UP");
-        case ColKF:     return tr("KF");
-        case ColSac:    return tr("Sac");
-        case ColEvent:  return tr("Event");
-        default:        return {};
+    if (orientation == Qt::Vertical) {
+        return (role == Qt::DisplayRole)
+            ? QVariant{section + 1}
+            : QVariant{};
     }
+    if (role == Qt::DisplayRole) {
+        switch (section) {
+            case ColDate:   return tr("Date");
+            case ColWhite:  return tr("White");
+            case ColBlack:  return tr("Black");
+            case ColResult: return tr("Result");
+            case ColEco:    return tr("ECO");
+            case ColPlies:  return tr("Plies");
+            case ColEnd:    return tr("End");
+            case ColUP:     return tr("UP");
+            case ColKF:     return tr("KF");
+            case ColSac:    return tr("Sac");
+            case ColEvent:  return tr("Event");
+            default:        return {};
+        }
+    }
+    if (role == Qt::ToolTipRole) {
+        switch (section) {
+            case ColDate:   return tr("Date from the PGN tag, "
+                                      "YYYY.MM.DD (parts may be "
+                                      "question-marks).");
+            case ColWhite:  return tr("Player of the white pieces.");
+            case ColBlack:  return tr("Player of the black pieces.");
+            case ColResult: return tr("Game result from the PGN tag:\n"
+                                      "  1-0 — white won\n"
+                                      "  0-1 — black won\n"
+                                      "  1/2-1/2 — draw\n"
+                                      "  * — unfinished or unknown");
+            case ColEco:    return tr("ECO opening code (e.g. B20, C42). "
+                                      "Blank when the PGN does not carry it.");
+            case ColPlies:  return tr("Half-move count of the main line. "
+                                      "Variations and comments are excluded.");
+            case ColEnd:    return tr(
+                "Detected board state at the final move:\n"
+                "  # — checkmate (no legal reply, side to move in check)\n"
+                "  = — stalemate (no legal reply, not in check)\n"
+                "  blank — game ended off the board (resignation, "
+                "timeout, draw agreement, adjudication)\n\n"
+                "Click a row in this column to jump to the last move.");
+            case ColUP:     return tr(
+                "Under-promotions (non-queen). Piece letters in order "
+                "of occurrence: N = knight, B = bishop, R = rook. "
+                "Rare in master games; classic motifs include knight "
+                "promotion for a fork or bishop/rook to dodge "
+                "stalemate.\n\n"
+                "Click this column to jump to the first under-"
+                "promotion.");
+            case ColKF:     return tr(
+                "Count of knight forks — knight moves (or promotions "
+                "to knight) that give check AND simultaneously attack "
+                "an opposing queen or rook. Classic \"family check\" / "
+                "royal fork motif.\n\n"
+                "Click this column to jump to the first knight fork.");
+            case ColSac:    return tr(
+                "Biggest piece sacrificed, with recovery % over a "
+                "20-ply forward window.\n\n"
+                "Letter = piece that physically dropped "
+                "(P/N/B/R/Q).\n"
+                "% = how much of that piece's cp value was recovered "
+                "by the end of the 20-ply window (endpoint minus "
+                "settle point, so later losses subtract).\n\n"
+                "Detection: the 2-ply exchange window is extended "
+                "through any chain of consecutive captures (up to "
+                "6 plies) so a multi-capture tower nets correctly. "
+                "Trigger threshold: 300 cp net loss. Plain trades "
+                "(R-for-R, even-value swaps) net to zero and are "
+                "skipped.\n\n"
+                "Click this column to jump to the sacrificing move.");
+            case ColEvent:  return tr("Event / tournament name from "
+                                      "the PGN tag.");
+            default:        return {};
+        }
+    }
+    return {};
 }
 
 } // namespace chesserazade::analyzer

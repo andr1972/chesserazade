@@ -122,8 +122,14 @@ void MainWindow::open_fetch_dialog() {
 }
 
 void MainWindow::on_game_chosen(const QString& pgn_text,
-                                const QString& header_label) {
+                                const QString& header_label,
+                                int target_ply) {
     if (game_view_->load_pgn(pgn_text, header_label)) {
+        // Column-specific jump takes precedence over the
+        // viewer's default landing (end of game). `target_ply`
+        // is 1-based and > 0 only when the list cell carried
+        // a meaningful event (Sac / KF / UP).
+        if (target_ply > 0) game_view_->go_to_ply(target_ply);
         stack_->setCurrentWidget(game_view_);
         statusBar()->showMessage(tr("Viewing: %1").arg(header_label));
     } else {
