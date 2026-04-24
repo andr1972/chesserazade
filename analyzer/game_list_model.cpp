@@ -39,6 +39,8 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
         case ColWhite:  return QString::fromStdString(g.white);
         case ColBlack:  return QString::fromStdString(g.black);
         case ColResult: return QString::fromStdString(g.result);
+        case ColEco:    return QString::fromStdString(g.eco);
+        case ColPlies:  return g.ply_count;
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
     }
@@ -54,6 +56,8 @@ QVariant GameListModel::headerData(int section,
         case ColWhite:  return tr("White");
         case ColBlack:  return tr("Black");
         case ColResult: return tr("Result");
+        case ColEco:    return tr("ECO");
+        case ColPlies:  return tr("Plies");
         case ColEvent:  return tr("Event");
         default:        return {};
     }

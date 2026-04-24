@@ -77,6 +77,60 @@ TEST_CASE("PGN index: length covers through the termination token",
     REQUIRE(body.substr(body.size() - 7) == "1/2-1/2");
 }
 
+TEST_CASE("PGN index: ply_count on ONE_GAME is 6 "
+          "(3 full moves, half-ply each)", "[pgn_index]") {
+    // 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 1/2-1/2  → six SAN tokens.
+    const auto games = index_games(ONE_GAME);
+    REQUIRE(games.size() == 1);
+    REQUIRE(games[0].ply_count == 6);
+}
+
+TEST_CASE("PGN index: ECO tag is captured when present",
+          "[pgn_index]") {
+    constexpr std::string_view src =
+        "[Event \"E\"]\n"
+        "[White \"W\"]\n"
+        "[Black \"B\"]\n"
+        "[Result \"1-0\"]\n"
+        "[ECO \"C42\"]\n"
+        "\n"
+        "1. e4 e5 1-0\n";
+    const auto games = index_games(src);
+    REQUIRE(games.size() == 1);
+    REQUIRE(games[0].eco == "C42");
+    REQUIRE(games[0].ply_count == 2);
+}
+
+TEST_CASE("PGN index: variations and comments are excluded from ply_count",
+          "[pgn_index]") {
+    constexpr std::string_view src =
+        "[Event \"E\"]\n"
+        "[White \"W\"]\n"
+        "[Black \"B\"]\n"
+        "[Result \"1-0\"]\n"
+        "\n"
+        "1. e4 {best by test} e5 2. Nf3 (2. Bc4 Nf6) Nc6 1-0\n";
+    // Main line: e4 e5 Nf3 Nc6 → 4 plies. The variation
+    // "Bc4 Nf6" and the `{best by test}` comment are skipped.
+    const auto games = index_games(src);
+    REQUIRE(games.size() == 1);
+    REQUIRE(games[0].ply_count == 4);
+}
+
+TEST_CASE("PGN index: NAGs and move numbers are not counted as plies",
+          "[pgn_index]") {
+    constexpr std::string_view src =
+        "[Event \"E\"]\n"
+        "[White \"W\"]\n"
+        "[Black \"B\"]\n"
+        "[Result \"1-0\"]\n"
+        "\n"
+        "1. e4 $1 e5 $14 2. Nf3 $2 Nc6 1-0\n";
+    const auto games = index_games(src);
+    REQUIRE(games.size() == 1);
+    REQUIRE(games[0].ply_count == 4);
+}
+
 TEST_CASE("PGN index: two games are detected and ordered", "[pgn_index]") {
     const auto games = index_games(TWO_GAMES);
     REQUIRE(games.size() == 2);

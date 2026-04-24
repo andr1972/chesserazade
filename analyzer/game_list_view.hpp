@@ -17,14 +17,17 @@
 #include <string>
 #include <vector>
 
+class QComboBox;
+class QEvent;
 class QLabel;
+class QLineEdit;
 class QModelIndex;
-class QSortFilterProxyModel;
 class QTableView;
 
 namespace chesserazade::analyzer {
 
 class GameListModel;
+class GameFilterProxy;
 
 class GameListView final : public QWidget {
     Q_OBJECT
@@ -43,18 +46,32 @@ signals:
     void game_chosen(const QString& pgn_text,
                      const QString& header_label);
 
+protected:
+    /// Swallow Escape on either filter field so it clears that
+    /// field instead of propagating to the main window.
+    bool eventFilter(QObject* obj, QEvent* e) override;
+
 private:
     void on_activated(const QModelIndex& idx);
+    void on_name_filter_changed();
+    void on_year_filter_changed();
+    /// Rebuild the year combo to show only years that still
+    /// have at least one game under the current name filter.
+    /// The currently-typed year text is preserved; if it no
+    /// longer matches anything, the combo goes blank.
+    void refresh_year_combo();
     [[nodiscard]] int source_row(const QModelIndex& idx) const;
 
     std::string pgn_bytes_;
     std::vector<PgnGameHeader> games_;
 
-    QTableView* table_   = nullptr;
-    GameListModel* model_ = nullptr;
-    QSortFilterProxyModel* proxy_ = nullptr;
-    QLabel* status_      = nullptr;
-    QString source_path_;
+    QTableView*    table_   = nullptr;
+    GameListModel* model_   = nullptr;
+    GameFilterProxy* proxy_ = nullptr;
+    QLineEdit*     name_filter_ = nullptr;
+    QComboBox*     year_filter_ = nullptr;
+    QLabel*        status_  = nullptr;
+    QString        source_path_;
 };
 
 } // namespace chesserazade::analyzer

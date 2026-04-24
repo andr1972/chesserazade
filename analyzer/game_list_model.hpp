@@ -23,6 +23,8 @@ public:
         ColWhite,
         ColBlack,
         ColResult,
+        ColEco,    ///< Optional ECO code; blank when absent.
+        ColPlies,  ///< Half-move count of the main line.
         ColEvent,
         ColumnCount,
     };

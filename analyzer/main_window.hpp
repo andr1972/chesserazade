@@ -42,6 +42,12 @@ private:
     /// resolve the saved game via `resolve_game`, switch the
     /// view to GameView seeked to the saved ply.
     void on_browse_bookmarks();
+    /// "Game → Return to list" — drop back to the GameListView
+    /// without touching its model, so the user's filters and
+    /// sort column survive the round-trip. Disabled on the
+    /// game list itself; enabled in the board view and the
+    /// Solve panel.
+    void on_return_to_list();
     void update_bookmark_action_enabled();
 
     QStackedWidget* stack_    = nullptr;
@@ -50,6 +56,7 @@ private:
     SolvePanel*   solve_panel_ = nullptr;
     QString loaded_pgn_path_;
     QAction* add_bookmark_action_ = nullptr;
+    QAction* return_to_list_action_ = nullptr;
     /// Ply the user was at in GameView when they clicked
     /// "Solve from here". SolvePanel itself has no concept of
     /// game-plies — it browses a search tree — so we freeze

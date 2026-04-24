@@ -97,6 +97,21 @@ void apply_tag(PgnGameHeader& h,
     else if (key == "White")  h.white  = value;
     else if (key == "Black")  h.black  = value;
     else if (key == "Result") h.result = value;
+    else if (key == "ECO")    h.eco    = value;
+}
+
+[[nodiscard]] constexpr bool is_san_head(char c) noexcept {
+    // A SAN token starts with a piece letter (N B R Q K),
+    // a pawn file (a-h), or the castling 'O'. Everything else
+    // at the start of a word is either a move number, NAG,
+    // result token, or a non-move artefact.
+    return (c >= 'a' && c <= 'h')
+        || c == 'N' || c == 'B' || c == 'R'
+        || c == 'Q' || c == 'K' || c == 'O';
+}
+
+[[nodiscard]] constexpr bool is_ws(char c) noexcept {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
 /// True if `sv` starting at `i` is a PGN termination token
@@ -127,22 +142,69 @@ void apply_tag(PgnGameHeader& h,
 /// not consume) either a new `[Event ` at column 0 or EOF.
 /// When a termination token is encountered it is consumed and
 /// `found_termination` is set.
+///
+/// Side effect: `plies` is incremented once per SAN token in
+/// the main line — comments `{ ... }`, variations `( ... )`,
+/// NAGs `$N`, move numbers `17.` / `17...`, and termination
+/// tokens are excluded. The counter stays cheap (single pass,
+/// no SAN validation) because for the list-view we only need
+/// the rough half-move count, not a canonical SAN parse.
 void scan_moves(std::string_view sv, std::size_t& i,
-                bool& found_termination) {
+                bool& found_termination,
+                int& plies) {
     found_termination = false;
+    int variation_depth = 0;
     while (i < sv.size()) {
-        // New game marker at column 0 ends the current game.
-        const bool at_col0 = (i == 0) || sv[i - 1] == '\n';
-        if (at_col0 && starts_with_at(sv, i, "[Event ")) {
-            return;
+        const char c = sv[i];
+
+        // New-game marker at column 0 ends the current game
+        // (only interesting outside a variation; variations
+        // never cross game boundaries in practice).
+        if (variation_depth == 0) {
+            const bool at_col0 = (i == 0) || sv[i - 1] == '\n';
+            if (at_col0 && starts_with_at(sv, i, "[Event ")) {
+                return;
+            }
+            std::size_t tok_len = 0;
+            if (match_termination(sv, i, tok_len)) {
+                i += tok_len;
+                found_termination = true;
+                return;
+            }
         }
-        std::size_t tok_len = 0;
-        if (match_termination(sv, i, tok_len)) {
-            i += tok_len;
-            found_termination = true;
-            return;
+
+        if (c == '{') {
+            // Block comment — skip until matching '}'. PGN
+            // comments do not nest.
+            ++i;
+            while (i < sv.size() && sv[i] != '}') ++i;
+            if (i < sv.size()) ++i;
+            continue;
         }
-        ++i;
+        if (c == ';') {
+            // Rest-of-line comment.
+            to_eol(sv, i);
+            continue;
+        }
+        if (c == '(') { ++variation_depth; ++i; continue; }
+        if (c == ')') {
+            if (variation_depth > 0) --variation_depth;
+            ++i;
+            continue;
+        }
+        if (is_ws(c)) { ++i; continue; }
+
+        // Start of a token. Consume to next whitespace /
+        // bracket / quote; but only count it if we are in the
+        // main line and it starts with a SAN head.
+        const bool count = (variation_depth == 0) && is_san_head(c);
+        if (count) ++plies;
+        while (i < sv.size()) {
+            const char t = sv[i];
+            if (is_ws(t) || t == '(' || t == ')'
+                || t == '{' || t == '}' || t == ';') break;
+            ++i;
+        }
     }
 }
 
@@ -183,7 +245,7 @@ std::vector<PgnGameHeader> index_games(std::string_view pgn) {
         // Move section. Ends at termination or at the next
         // `[Event ` at column 0.
         bool terminated = false;
-        scan_moves(pgn, i, terminated);
+        scan_moves(pgn, i, terminated, h.ply_count);
         h.length = i - h.offset;
         out.push_back(std::move(h));
 

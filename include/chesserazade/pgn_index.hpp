@@ -38,6 +38,15 @@ struct PgnGameHeader {
     std::string white;
     std::string black;
     std::string result;
+    /// Optional ECO code ("B20", "C42", …) — empty when the
+    /// source PGN does not carry `[ECO "..."]`.
+    std::string eco;
+    /// Number of half-moves in the main line. Variations and
+    /// comments are excluded. Zero when the game has no move
+    /// text (some "result only" PGN exports). Counted by a
+    /// single-pass tokenizer inside `index_games`, so it is
+    /// still cheaper than full SAN parsing.
+    int ply_count = 0;
     std::size_t offset = 0;
     std::size_t length = 0;
 };

@@ -70,6 +70,14 @@ void MainWindow::build_menus() {
     connect(quit_action, &QAction::triggered,
             qApp, &QApplication::quit);
 
+    auto* game_menu = menuBar()->addMenu(tr("&Game"));
+    return_to_list_action_ =
+        game_menu->addAction(tr("&Return to list"));
+    return_to_list_action_->setShortcut(
+        QKeySequence(QStringLiteral("Ctrl+L")));
+    connect(return_to_list_action_, &QAction::triggered,
+            this, &MainWindow::on_return_to_list);
+
     auto* bookmarks_menu = menuBar()->addMenu(tr("&Bookmarks"));
     add_bookmark_action_ = bookmarks_menu->addAction(tr("&Add…"));
     add_bookmark_action_->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
@@ -139,10 +147,23 @@ void MainWindow::on_solve_requested() {
 }
 
 void MainWindow::update_bookmark_action_enabled() {
-    if (add_bookmark_action_ == nullptr) return;
     QWidget* cur = stack_->currentWidget();
-    add_bookmark_action_->setEnabled(
-        cur == game_view_ || cur == solve_panel_);
+    if (add_bookmark_action_ != nullptr) {
+        add_bookmark_action_->setEnabled(
+            cur == game_view_ || cur == solve_panel_);
+    }
+    if (return_to_list_action_ != nullptr) {
+        return_to_list_action_->setEnabled(cur != game_list_);
+    }
+}
+
+void MainWindow::on_return_to_list() {
+    if (stack_->currentWidget() == game_list_) return;
+    // The list's model, filter text, and sort column are all
+    // held on the view and untouched by this switch — we just
+    // pop back.
+    stack_->setCurrentWidget(game_list_);
+    statusBar()->clearMessage();
 }
 
 void MainWindow::on_add_bookmark() {
