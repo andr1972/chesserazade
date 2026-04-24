@@ -21,6 +21,7 @@
 
 #include "board/board8x8_mailbox.hpp"
 
+#include <chesserazade/bitboard.hpp>
 #include <chesserazade/board.hpp>
 #include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
@@ -71,7 +72,35 @@ struct Derived {
     GameHash hash = 0;
     EndKind  end_kind = EndKind::Unknown;
     std::vector<UnderPromotion> underpromotions;
+    std::vector<int> knight_fork_plies;
 };
+
+/// True iff a knight of `mover` sitting on `sq` in `board`
+/// both checks the opposing king and attacks at least one
+/// opposing queen or rook on a separate square. Called
+/// *after* `make_move`, so `board.side_to_move()` is the
+/// opponent and the knight is the piece the opponent is
+/// threatened by.
+[[nodiscard]] bool detect_knight_fork(const Board& board,
+                                      Color mover,
+                                      Square knight_sq) noexcept {
+    const Color them = (mover == Color::White) ? Color::Black
+                                               : Color::White;
+    // 1. Must give check.
+    if (!MoveGenerator::is_in_check(board, them)) return false;
+
+    // 2. Among the knight's attacked squares, find at least one
+    // opposing Q or R.
+    Bitboard attacked = Attacks::knight(knight_sq);
+    while (attacked) {
+        const Square s = pop_lsb(attacked);
+        const Piece p = board.piece_at(s);
+        if (p.type == PieceType::Queen || p.type == PieceType::Rook) {
+            if (p.color == them) return true;
+        }
+    }
+    return false;
+}
 
 [[nodiscard]] char piece_letter(PieceType p) noexcept {
     switch (p) {
@@ -128,7 +157,18 @@ Derived compute_derived(const PgnGame& pg) {
             out.underpromotions.push_back({ply, m.promotion});
         }
 
+        const Color mover = board.side_to_move();
         board.make_move(m);
+
+        // Knight fork: the piece now sitting on `m.to` is a
+        // knight (either a knight move or a promotion to a
+        // knight) and it checks + attacks Q/R.
+        const Piece landed = board.piece_at(m.to);
+        if (landed.type == PieceType::Knight
+            && landed.color == mover
+            && detect_knight_fork(board, mover, m.to)) {
+            out.knight_fork_plies.push_back(ply);
+        }
     }
     out.hash = h;
 
@@ -219,6 +259,12 @@ void write_record(std::ostream& os, const GameRecord& r) {
         if (i > 0) os << ", ";
         os << "{\"ply\": " << up.ply
            << ", \"piece\": \"" << piece_letter(up.piece) << "\"}";
+    }
+    os << "],\n";
+    os << "      \"knight_fork_plies\": [";
+    for (std::size_t i = 0; i < r.knight_fork_plies.size(); ++i) {
+        if (i > 0) os << ", ";
+        os << r.knight_fork_plies[i];
     }
     os << "]\n";
     os << "    }";
@@ -388,6 +434,20 @@ bool parse_record(Cursor& c, GameRecord& r) {
         }
     }
     if (!c.match(']')) return false;
+    if (!c.match(',')) return false;
+    if (!expect_key(c, "knight_fork_plies")) return false;
+    if (!c.match('[')) return false;
+    c.skip_ws();
+    if (c.peek() != ']') {
+        while (true) {
+            long long p = 0;
+            if (!parse_int(c, p)) return false;
+            r.knight_fork_plies.push_back(static_cast<int>(p));
+            if (c.match(',')) continue;
+            break;
+        }
+    }
+    if (!c.match(']')) return false;
     if (!c.match('}')) return false;
     return true;
 }
@@ -399,7 +459,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
-    idx.schema = 3;
+    idx.schema = 4;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -422,6 +482,7 @@ GameIndex build_index(std::string_view pgn_bytes,
             r.hash = d.hash;
             r.end_kind = d.end_kind;
             r.underpromotions = std::move(d.underpromotions);
+            r.knight_fork_plies = std::move(d.knight_fork_plies);
         }
         idx.games.push_back(std::move(r));
 
@@ -470,7 +531,7 @@ std::optional<GameIndex> load_index(const std::string& path) {
     // rather than migrate we return nullopt so the caller
     // rebuilds from the PGN — rebuild is cheap and keeps the
     // loader free of per-version fixup code.
-    if (idx.schema != 3) return std::nullopt;
+    if (idx.schema != 4) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;

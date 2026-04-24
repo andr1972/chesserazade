@@ -65,6 +65,9 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
             }
             return s;
         }
+        case ColKF:
+            if (rec.knight_fork_plies.empty()) return QString{};
+            return static_cast<int>(rec.knight_fork_plies.size());
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
     }
@@ -84,6 +87,7 @@ QVariant GameListModel::headerData(int section,
         case ColPlies:  return tr("Plies");
         case ColEnd:    return tr("End");
         case ColUP:     return tr("UP");
+        case ColKF:     return tr("KF");
         case ColEvent:  return tr("Event");
         default:        return {};
     }

@@ -83,14 +83,21 @@ struct GameRecord {
     /// promotion for a fork, bishop / rook to dodge a
     /// stalemate).
     std::vector<UnderPromotion> underpromotions;
+
+    /// Plies on which a knight move delivered check *and*
+    /// simultaneously attacked an opponent queen or rook — the
+    /// classic "family check" / royal fork motif. 1-based
+    /// plies. Empty for most games; a filter hit is usually
+    /// worth looking at.
+    std::vector<int> knight_fork_plies;
 };
 
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way. Current: 3 (added
-    /// `underpromotions` per record).
-    int schema = 3;
+    /// changes in a non-additive way. Current: 4 (added
+    /// `knight_fork_plies` per record).
+    int schema = 4;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares

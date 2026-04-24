@@ -30,6 +30,7 @@ public:
         ColPlies,  ///< Half-move count of the main line.
         ColEnd,    ///< "#" for mate, "=" for stalemate, blank otherwise.
         ColUP,     ///< Under-promotion letters (e.g. "N", "NR") or blank.
+        ColKF,     ///< Knight-fork count or blank.
         ColEvent,
         ColumnCount,
     };

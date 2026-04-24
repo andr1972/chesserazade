@@ -62,6 +62,11 @@ public:
         up_only_ = on;
         invalidateFilter();
     }
+    void set_kf_only(bool on) {
+        if (on == kf_only_) return;
+        kf_only_ = on;
+        invalidateFilter();
+    }
 
 protected:
     [[nodiscard]] bool filterAcceptsRow(int row,
@@ -105,6 +110,12 @@ protected:
                                                 parent)).toString();
             if (up.isEmpty()) return false;
         }
+        if (kf_only_) {
+            const QVariant v = m->data(m->index(row,
+                                                GameListModel::ColKF,
+                                                parent));
+            if (!v.isValid() || v.toString().isEmpty()) return false;
+        }
         return true;
     }
 
@@ -113,6 +124,7 @@ private:
     QString year_;
     bool    mate_only_ = false;
     bool    up_only_   = false;
+    bool    kf_only_   = false;
 };
 
 GameListView::GameListView(QWidget* parent) : QWidget(parent) {
@@ -166,6 +178,16 @@ GameListView::GameListView(QWidget* parent) : QWidget(parent) {
     connect(up_filter_, &QCheckBox::toggled,
             this, [this](bool on) { proxy_->set_up_only(on); });
     filter_row->addWidget(up_filter_);
+
+    kf_filter_ = new QCheckBox(tr("knight fork"), this);
+    kf_filter_->setToolTip(tr(
+        "Show only games with at least one knight fork — a "
+        "knight move that gives check AND simultaneously "
+        "attacks an opponent queen or rook. The classic "
+        "royal-fork / family-check motif."));
+    connect(kf_filter_, &QCheckBox::toggled,
+            this, [this](bool on) { proxy_->set_kf_only(on); });
+    filter_row->addWidget(kf_filter_);
 
     layout->addLayout(filter_row);
 
