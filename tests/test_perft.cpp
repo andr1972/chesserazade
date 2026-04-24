@@ -59,10 +59,27 @@ Board8x8Mailbox board_from(std::string_view fen) {
 
 } // namespace
 
+// Each position below ships as two TEST_CASEs:
+//   * a "quick" variant that checks shallow depths and stays in
+//     the default run — catches obvious regressions in under a
+//     second total,
+//   * a full-depth variant under the hidden [.slow] tag that the
+//     user opts into via `./chesserazade_tests "[perft]"` for
+//     the real 60-second correctness run.
+// The per-position max quick depth is picked so each stays
+// sub-second on a modern laptop.
+
 // ---------------------------------------------------------------------------
 // Position 1 — Initial position
 // Ref: https://www.chessprogramming.org/Perft_Results#Initial_Position
 // ---------------------------------------------------------------------------
+TEST_CASE("perft initial position (quick)", "[perft][pos1][quick]") {
+    auto b = board_from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    REQUIRE(perft(b, 1) == 20ULL);
+    REQUIRE(perft(b, 2) == 400ULL);
+    REQUIRE(perft(b, 3) == 8902ULL);
+    REQUIRE(perft(b, 4) == 197281ULL);
+}
 TEST_CASE("perft initial position", "[perft][.slow][pos1]") {
     auto b = board_from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     REQUIRE(perft(b, 1) == 20ULL);
@@ -77,6 +94,13 @@ TEST_CASE("perft initial position", "[perft][.slow][pos1]") {
 // Position 2 — Kiwipete (many special moves)
 // Ref: https://www.chessprogramming.org/Perft_Results#Position_2
 // ---------------------------------------------------------------------------
+TEST_CASE("perft Kiwipete (quick)", "[perft][pos2][quick]") {
+    auto b = board_from(
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    REQUIRE(perft(b, 1) == 48ULL);
+    REQUIRE(perft(b, 2) == 2039ULL);
+    REQUIRE(perft(b, 3) == 97862ULL);
+}
 TEST_CASE("perft Kiwipete", "[perft][.slow][pos2]") {
     auto b = board_from(
         "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
@@ -91,6 +115,13 @@ TEST_CASE("perft Kiwipete", "[perft][.slow][pos2]") {
 // Position 3 — Endgame with en-passant and promotion
 // Ref: https://www.chessprogramming.org/Perft_Results#Position_3
 // ---------------------------------------------------------------------------
+TEST_CASE("perft position 3 (quick)", "[perft][pos3][quick]") {
+    auto b = board_from("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1");
+    REQUIRE(perft(b, 1) == 14ULL);
+    REQUIRE(perft(b, 2) == 191ULL);
+    REQUIRE(perft(b, 3) == 2812ULL);
+    REQUIRE(perft(b, 4) == 43238ULL);
+}
 TEST_CASE("perft position 3", "[perft][.slow][pos3]") {
     auto b = board_from("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1");
     REQUIRE(perft(b, 1) == 14ULL);
@@ -104,6 +135,14 @@ TEST_CASE("perft position 3", "[perft][.slow][pos3]") {
 // Position 4 — Mirror of Position 3, black to move
 // Ref: https://www.chessprogramming.org/Perft_Results#Position_4_and_5
 // ---------------------------------------------------------------------------
+TEST_CASE("perft position 4 (quick)", "[perft][pos4][quick]") {
+    auto b = board_from(
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
+    REQUIRE(perft(b, 1) == 6ULL);
+    REQUIRE(perft(b, 2) == 264ULL);
+    REQUIRE(perft(b, 3) == 9467ULL);
+    REQUIRE(perft(b, 4) == 422333ULL);
+}
 TEST_CASE("perft position 4", "[perft][.slow][pos4]") {
     auto b = board_from(
         "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
@@ -118,6 +157,13 @@ TEST_CASE("perft position 4", "[perft][.slow][pos4]") {
 // Position 5 — Complex middle game
 // Ref: https://www.chessprogramming.org/Perft_Results#Position_5
 // ---------------------------------------------------------------------------
+TEST_CASE("perft position 5 (quick)", "[perft][pos5][quick]") {
+    auto b = board_from(
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8");
+    REQUIRE(perft(b, 1) == 44ULL);
+    REQUIRE(perft(b, 2) == 1486ULL);
+    REQUIRE(perft(b, 3) == 62379ULL);
+}
 TEST_CASE("perft position 5", "[perft][.slow][pos5]") {
     auto b = board_from(
         "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8");
@@ -132,6 +178,13 @@ TEST_CASE("perft position 5", "[perft][.slow][pos5]") {
 // Position 6 — Symmetric position
 // Ref: https://www.chessprogramming.org/Perft_Results#Position_6
 // ---------------------------------------------------------------------------
+TEST_CASE("perft position 6 (quick)", "[perft][pos6][quick]") {
+    auto b = board_from(
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10");
+    REQUIRE(perft(b, 1) == 46ULL);
+    REQUIRE(perft(b, 2) == 2079ULL);
+    REQUIRE(perft(b, 3) == 89890ULL);
+}
 TEST_CASE("perft position 6", "[perft][.slow][pos6]") {
     auto b = board_from(
         "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10");

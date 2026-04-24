@@ -89,7 +89,7 @@ TEST_CASE("UCI: go movetime stays within budget (loose)", "[uci]") {
     REQUIRE_THAT(out, ContainsSubstring("info depth 1"));
 }
 
-TEST_CASE("UCI: go with wtime/btime derives a movetime", "[uci]") {
+TEST_CASE("UCI: go with wtime/btime derives a movetime", "[uci][.slow]") {
     UciSession s;
     drive(s, "position startpos");
     // 60 s / 30 = 2000 ms + inc/2 = 500 → ~2500 ms budget.
@@ -101,7 +101,7 @@ TEST_CASE("UCI: go with wtime/btime derives a movetime", "[uci]") {
     REQUIRE_THAT(out, ContainsSubstring("bestmove "));
 }
 
-TEST_CASE("UCI: setoption Hash re-sizes the TT", "[uci]") {
+TEST_CASE("UCI: setoption Hash re-sizes the TT", "[uci][.slow]") {
     UciSession s;
     REQUIRE(s.hash_mb == 16);
     drive(s, "setoption name Hash value 32");
