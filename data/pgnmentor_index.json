@@ -1,36 +1,1257 @@
 {
     "source": "https://www.pgnmentor.com/files.html#players",
-    "snapshot_date": "2026-04-22",
-    "note": "Curated starting snapshot. Refresh manually from pgnmentor.com to expand. Each entry's file is appended to https://www.pgnmentor.com/players/ to form the download URL.",
+    "snapshot_date": "2026-04-24",
+    "note": "Auto-regenerated from tools/refresh_pgnmentor_index.py. Each entry's file is appended to https://www.pgnmentor.com/players/ to form the download URL.",
     "players": [
-        {"name": "Alekhine, Alexander",       "file": "Alekhine.zip"},
-        {"name": "Anand, Viswanathan",        "file": "Anand.zip"},
-        {"name": "Aronian, Levon",            "file": "Aronian.zip"},
-        {"name": "Botvinnik, Mikhail",        "file": "Botvinnik.zip"},
-        {"name": "Capablanca, Jose Raul",     "file": "Capablanca.zip"},
-        {"name": "Carlsen, Magnus",           "file": "Carlsen.zip"},
-        {"name": "Caruana, Fabiano",          "file": "Caruana.zip"},
-        {"name": "Ding, Liren",               "file": "Ding.zip"},
-        {"name": "Euwe, Max",                 "file": "Euwe.zip"},
-        {"name": "Firouzja, Alireza",        "file": "Firouzja.zip"},
-        {"name": "Fischer, Robert",           "file": "Fischer.zip"},
-        {"name": "Giri, Anish",               "file": "Giri.zip"},
-        {"name": "Karpov, Anatoly",           "file": "Karpov.zip"},
-        {"name": "Kasparov, Garry",           "file": "Kasparov.zip"},
-        {"name": "Korchnoi, Viktor",          "file": "Korchnoi.zip"},
-        {"name": "Kramnik, Vladimir",         "file": "Kramnik.zip"},
-        {"name": "Lasker, Emanuel",           "file": "Lasker.zip"},
-        {"name": "Morphy, Paul",              "file": "Morphy.zip"},
-        {"name": "Nakamura, Hikaru",          "file": "Nakamura.zip"},
-        {"name": "Nepomniachtchi, Ian",       "file": "Nepomniachtchi.zip"},
-        {"name": "Petrosian, Tigran",         "file": "Petrosian.zip"},
-        {"name": "Rubinstein, Akiba",         "file": "Rubinstein.zip"},
-        {"name": "Smyslov, Vassily",          "file": "Smyslov.zip"},
-        {"name": "So, Wesley",                "file": "So.zip"},
-        {"name": "Spassky, Boris",            "file": "Spassky.zip"},
-        {"name": "Steinitz, Wilhelm",         "file": "Steinitz.zip"},
-        {"name": "Tal, Mikhail",              "file": "Tal.zip"},
-        {"name": "Topalov, Veselin",          "file": "Topalov.zip"},
-        {"name": "Vachier-Lagrave, Maxime",   "file": "Vachier-Lagrave.zip"}
+        {
+            "name": "Abdusattorov, Nodirbek",
+            "file": "Abdusattorov.zip",
+            "games": 2554
+        },
+        {
+            "name": "Adams, Michael",
+            "file": "Adams.zip",
+            "games": 3605
+        },
+        {
+            "name": "Akobian, Varuzhan",
+            "file": "Akobian.zip",
+            "games": 1911
+        },
+        {
+            "name": "Akopian, Vladimir",
+            "file": "Akopian.zip",
+            "games": 1996
+        },
+        {
+            "name": "Alburt, Lev",
+            "file": "Alburt.zip",
+            "games": 776
+        },
+        {
+            "name": "Alekhine, Alexander",
+            "file": "Alekhine.zip",
+            "games": 1661
+        },
+        {
+            "name": "Alekseev, Evgeny",
+            "file": "Alekseev.zip",
+            "games": 3094
+        },
+        {
+            "name": "Almasi, Zoltan",
+            "file": "Almasi.zip",
+            "games": 2041
+        },
+        {
+            "name": "Anand, Viswanathan",
+            "file": "Anand.zip",
+            "games": 4204
+        },
+        {
+            "name": "Anderssen, Adolf",
+            "file": "Anderssen.zip",
+            "games": 681
+        },
+        {
+            "name": "Andersson, Ulf",
+            "file": "Andersson.zip",
+            "games": 2764
+        },
+        {
+            "name": "Andreikin, Dmitry",
+            "file": "Andreikin.zip",
+            "games": 6357
+        },
+        {
+            "name": "Aronian, Levon",
+            "file": "Aronian.zip",
+            "games": 5107
+        },
+        {
+            "name": "Ashley, Maurice",
+            "file": "Ashley.zip",
+            "games": 414
+        },
+        {
+            "name": "Averbakh, Yuri",
+            "file": "Averbakh.zip",
+            "games": 885
+        },
+        {
+            "name": "Azmaiparashvili, Zurab",
+            "file": "Azmaiparashvili.zip",
+            "games": 1324
+        },
+        {
+            "name": "Bacrot, Etienne",
+            "file": "Bacrot.zip",
+            "games": 4784
+        },
+        {
+            "name": "Bareev, Evgeny",
+            "file": "Bareev.zip",
+            "games": 2023
+        },
+        {
+            "name": "Becerra Rivero, Julio",
+            "file": "BecerraRivero.zip",
+            "games": 1203
+        },
+        {
+            "name": "Beliavsky, Alexander",
+            "file": "Beliavsky.zip",
+            "games": 3314
+        },
+        {
+            "name": "Benjamin, Joel",
+            "file": "Benjamin.zip",
+            "games": 1819
+        },
+        {
+            "name": "Benko, Pal",
+            "file": "Benko.zip",
+            "games": 1376
+        },
+        {
+            "name": "Berliner, Hans",
+            "file": "Berliner.zip",
+            "games": 64
+        },
+        {
+            "name": "Bernstein, Ossip",
+            "file": "Bernstein.zip",
+            "games": 261
+        },
+        {
+            "name": "Bird, Henry",
+            "file": "Bird.zip",
+            "games": 353
+        },
+        {
+            "name": "Bisguier, Arthur",
+            "file": "Bisguier.zip",
+            "games": 1186
+        },
+        {
+            "name": "Blackburne, Joseph",
+            "file": "Blackburne.zip",
+            "games": 738
+        },
+        {
+            "name": "Blatny, Pavel",
+            "file": "Blatny.zip",
+            "games": 1924
+        },
+        {
+            "name": "Bogoljubow, Efim",
+            "file": "Bogoljubow.zip",
+            "games": 973
+        },
+        {
+            "name": "Boleslavsky, Isaac",
+            "file": "Boleslavsky.zip",
+            "games": 651
+        },
+        {
+            "name": "Bologan, Viktor",
+            "file": "Bologan.zip",
+            "games": 3320
+        },
+        {
+            "name": "Botvinnik, Mikhail",
+            "file": "Botvinnik.zip",
+            "games": 891
+        },
+        {
+            "name": "Breyer, Gyula",
+            "file": "Breyer.zip",
+            "games": 176
+        },
+        {
+            "name": "Bronstein, David",
+            "file": "Bronstein.zip",
+            "games": 1930
+        },
+        {
+            "name": "Browne, Walter",
+            "file": "Browne.zip",
+            "games": 1621
+        },
+        {
+            "name": "Bruzon, Lazaro",
+            "file": "Bruzon.zip",
+            "games": 690
+        },
+        {
+            "name": "Byrne, Robert",
+            "file": "Byrne.zip",
+            "games": 1013
+        },
+        {
+            "name": "Capablanca, Jos&eacute; Ra&uacute;l",
+            "file": "Capablanca.zip",
+            "games": 597
+        },
+        {
+            "name": "Carlsen, Magnus",
+            "file": "Carlsen.zip",
+            "games": 6615
+        },
+        {
+            "name": "Caruana, Fabiano",
+            "file": "Caruana.zip",
+            "games": 5341
+        },
+        {
+            "name": "Chao, Li",
+            "file": "Li.zip",
+            "games": 1342
+        },
+        {
+            "name": "Chen, Zhu",
+            "file": "Zhu.zip",
+            "games": 1205
+        },
+        {
+            "name": "Chiburdanidze, Maia",
+            "file": "Chiburdanidze.zip",
+            "games": 1346
+        },
+        {
+            "name": "Chigorin, Mikhail",
+            "file": "Chigorin.zip",
+            "games": 688
+        },
+        {
+            "name": "Christiansen, Larry",
+            "file": "Christiansen.zip",
+            "games": 1646
+        },
+        {
+            "name": "de LaBourdonnais, Louis",
+            "file": "DeLaBourdonnais.zip",
+            "games": 101
+        },
+        {
+            "name": "DeFirmian, Nick",
+            "file": "DeFirmian.zip",
+            "games": 1712
+        },
+        {
+            "name": "Denker, Arnold",
+            "file": "Denker.zip",
+            "games": 404
+        },
+        {
+            "name": "Dominguez Perez, Leinier",
+            "file": "DominguezPerez.zip",
+            "games": 2692
+        },
+        {
+            "name": "Dreev, Alexey",
+            "file": "Dreev.zip",
+            "games": 4331
+        },
+        {
+            "name": "Duda, Jan-Krzysztof",
+            "file": "Duda.zip",
+            "games": 3937
+        },
+        {
+            "name": "Dzindzichashvili, Roman",
+            "file": "Dzindzichashvili.zip",
+            "games": 780
+        },
+        {
+            "name": "Ehlvest, Jaan",
+            "file": "Ehlvest.zip",
+            "games": 3441
+        },
+        {
+            "name": "Eljanov, Pavel",
+            "file": "Eljanov.zip",
+            "games": 3274
+        },
+        {
+            "name": "Erigaisi, Arjun",
+            "file": "Erigaisi.zip",
+            "games": 3385
+        },
+        {
+            "name": "Euwe, Max",
+            "file": "Euwe.zip",
+            "games": 1122
+        },
+        {
+            "name": "Evans, Larry",
+            "file": "Evans.zip",
+            "games": 685
+        },
+        {
+            "name": "Fedorowicz, John",
+            "file": "Fedorowicz.zip",
+            "games": 1448
+        },
+        {
+            "name": "Fine, Reuben",
+            "file": "Fine.zip",
+            "games": 305
+        },
+        {
+            "name": "Finegold, Benjamin",
+            "file": "Finegold.zip",
+            "games": 1138
+        },
+        {
+            "name": "Firouzja, Alireza",
+            "file": "Firouzja.zip",
+            "games": 4204
+        },
+        {
+            "name": "Fischer, Robert James",
+            "file": "Fischer.zip",
+            "games": 827
+        },
+        {
+            "name": "Fishbein, Alexander",
+            "file": "Fishbein.zip",
+            "games": 1253
+        },
+        {
+            "name": "Flohr, Salo",
+            "file": "Flohr.zip",
+            "games": 986
+        },
+        {
+            "name": "Gaprindashvili, Nona",
+            "file": "Gaprindashvili.zip",
+            "games": 1237
+        },
+        {
+            "name": "Gashimov, Vugar",
+            "file": "Gashimov.zip",
+            "games": 953
+        },
+        {
+            "name": "Gelfand, Boris",
+            "file": "Gelfand.zip",
+            "games": 3983
+        },
+        {
+            "name": "Geller, Efim",
+            "file": "Geller.zip",
+            "games": 2198
+        },
+        {
+            "name": "Georgiev, Kiril",
+            "file": "Georgiev.zip",
+            "games": 3148
+        },
+        {
+            "name": "Giri, Anish",
+            "file": "Giri.zip",
+            "games": 4035
+        },
+        {
+            "name": "Gligoric, Svetozar",
+            "file": "Gligoric.zip",
+            "games": 2898
+        },
+        {
+            "name": "Goldin, Alexander",
+            "file": "Goldin.zip",
+            "games": 1114
+        },
+        {
+            "name": "Granda Zuniga, Julio",
+            "file": "GrandaZuniga.zip",
+            "games": 1917
+        },
+        {
+            "name": "Grischuk, Alexander",
+            "file": "Grischuk.zip",
+            "games": 5918
+        },
+        {
+            "name": "Gukesh, Dommaraju",
+            "file": "Gukesh.zip",
+            "games": 2053
+        },
+        {
+            "name": "Gulko, Boris",
+            "file": "Gulko.zip",
+            "games": 1876
+        },
+        {
+            "name": "Gunsberg, Isidor",
+            "file": "Gunsberg.zip",
+            "games": 319
+        },
+        {
+            "name": "Gurevich, Dmitry",
+            "file": "GurevichD.zip",
+            "games": 3924
+        },
+        {
+            "name": "Gurevich, Mikhail",
+            "file": "GurevichM.zip",
+            "games": 2525
+        },
+        {
+            "name": "Hao, Wang",
+            "file": "WangH.zip",
+            "games": 2031
+        },
+        {
+            "name": "Harikrishna, Pentala",
+            "file": "Harikrishna.zip",
+            "games": 2873
+        },
+        {
+            "name": "Hort, Vlastimil",
+            "file": "Hort.zip",
+            "games": 3152
+        },
+        {
+            "name": "Horwitz, Bernhard",
+            "file": "Horwitz.zip",
+            "games": 113
+        },
+        {
+            "name": "Hua, Ni",
+            "file": "Ni.zip",
+            "games": 1582
+        },
+        {
+            "name": "Huebner, Robert",
+            "file": "Huebner.zip",
+            "games": 2157
+        },
+        {
+            "name": "Humpy, Koneru",
+            "file": "Koneru.zip",
+            "games": 2037
+        },
+        {
+            "name": "Ibragimov, Ildar",
+            "file": "Ibragimov.zip",
+            "games": 1457
+        },
+        {
+            "name": "Illescas Cordoba, Miguel",
+            "file": "IllescasCordoba.zip",
+            "games": 1444
+        },
+        {
+            "name": "Inarkiev, Ernesto",
+            "file": "Inarkiev.zip",
+            "games": 2193
+        },
+        {
+            "name": "Ivanchuk, Vassily",
+            "file": "Ivanchuk.zip",
+            "games": 4950
+        },
+        {
+            "name": "Ivanov, Alexander",
+            "file": "IvanovA.zip",
+            "games": 1288
+        },
+        {
+            "name": "Ivanov, Igor",
+            "file": "IvanovI.zip",
+            "games": 784
+        },
+        {
+            "name": "Ivkov, Borislav",
+            "file": "Ivkov.zip",
+            "games": 2505
+        },
+        {
+            "name": "Jakovenko, Dmitry",
+            "file": "Jakovenko.zip",
+            "games": 1943
+        },
+        {
+            "name": "Janowski, David",
+            "file": "Janowski.zip",
+            "games": 769
+        },
+        {
+            "name": "Jiangchuan, Ye",
+            "file": "Ye.zip",
+            "games": 662
+        },
+        {
+            "name": "Jobava, Baadur",
+            "file": "Jobava.zip",
+            "games": 4440
+        },
+        {
+            "name": "Jun, Xie",
+            "file": "Xie.zip",
+            "games": 701
+        },
+        {
+            "name": "Jussupow, Artur",
+            "file": "Jussupow.zip",
+            "games": 2098
+        },
+        {
+            "name": "Kaidanov, Gregory",
+            "file": "Kaidanov.zip",
+            "games": 1510
+        },
+        {
+            "name": "Kamsky, Gata",
+            "file": "Kamsky.zip",
+            "games": 7035
+        },
+        {
+            "name": "Karjakin, Sergey",
+            "file": "Karjakin.zip",
+            "games": 3536
+        },
+        {
+            "name": "Karpov, Anatoly",
+            "file": "Karpov.zip",
+            "games": 3529
+        },
+        {
+            "name": "Kasimdzhanov, Rustam",
+            "file": "Kasimdzhanov.zip",
+            "games": 1785
+        },
+        {
+            "name": "Kasparov, Garry",
+            "file": "Kasparov.zip",
+            "games": 2128
+        },
+        {
+            "name": "Kavalek, Lubomir",
+            "file": "Kavalek.zip",
+            "games": 1328
+        },
+        {
+            "name": "Keres, Paul",
+            "file": "Keres.zip",
+            "games": 1571
+        },
+        {
+            "name": "Keymer, Vincent",
+            "file": "Keymer.zip",
+            "games": 2600
+        },
+        {
+            "name": "Khalifman, Alexander",
+            "file": "Khalifman.zip",
+            "games": 2348
+        },
+        {
+            "name": "Kholmov, Ratmir",
+            "file": "Kholmov.zip",
+            "games": 1900
+        },
+        {
+            "name": "Korchnoi, Viktor",
+            "file": "Korchnoi.zip",
+            "games": 4569
+        },
+        {
+            "name": "Korobov, Anton",
+            "file": "Korobov.zip",
+            "games": 3494
+        },
+        {
+            "name": "Kosteniuk, Alexandra",
+            "file": "Kosteniuk.zip",
+            "games": 5513
+        },
+        {
+            "name": "Kotov, Alexander",
+            "file": "Kotov.zip",
+            "games": 641
+        },
+        {
+            "name": "Kramnik, Vladimir",
+            "file": "Kramnik.zip",
+            "games": 4324
+        },
+        {
+            "name": "Krasenkow, Michal",
+            "file": "Krasenkow.zip",
+            "games": 3052
+        },
+        {
+            "name": "Krush, Irina",
+            "file": "Krush.zip",
+            "games": 2334
+        },
+        {
+            "name": "Kudrin, Sergey",
+            "file": "Kudrin.zip",
+            "games": 1244
+        },
+        {
+            "name": "Lahno, Kateryna",
+            "file": "Lahno.zip",
+            "games": 919
+        },
+        {
+            "name": "Larsen, Bent",
+            "file": "Larsen.zip",
+            "games": 2383
+        },
+        {
+            "name": "Lasker, Emanuel",
+            "file": "Lasker.zip",
+            "games": 900
+        },
+        {
+            "name": "Lautier, Joel",
+            "file": "Lautier.zip",
+            "games": 1809
+        },
+        {
+            "name": "Leko, Peter",
+            "file": "Leko.zip",
+            "games": 2681
+        },
+        {
+            "name": "Levenfish, Grigory",
+            "file": "Levenfish.zip",
+            "games": 354
+        },
+        {
+            "name": "Liem, Le Quang",
+            "file": "Le.zip",
+            "games": 2111
+        },
+        {
+            "name": "Lilienthal, Andre",
+            "file": "Lilienthal.zip",
+            "games": 649
+        },
+        {
+            "name": "Liren, Ding",
+            "file": "Ding.zip",
+            "games": 2116
+        },
+        {
+            "name": "Ljubojevic, Ljubomir",
+            "file": "Ljubojevic.zip",
+            "games": 1944
+        },
+        {
+            "name": "Lputian, Smbat",
+            "file": "Lputian.zip",
+            "games": 1552
+        },
+        {
+            "name": "MacKenzie, George",
+            "file": "MacKenzie.zip",
+            "games": 198
+        },
+        {
+            "name": "Malakhov, Vladimir",
+            "file": "Malakhov.zip",
+            "games": 2282
+        },
+        {
+            "name": "Mamedyarov, Shakhriyar",
+            "file": "Mamedyarov.zip",
+            "games": 4854
+        },
+        {
+            "name": "Maroczy, Geza",
+            "file": "Maroczy.zip",
+            "games": 756
+        },
+        {
+            "name": "Marshall, Frank",
+            "file": "Marshall.zip",
+            "games": 1027
+        },
+        {
+            "name": "McDonnell, Alexander",
+            "file": "McDonnell.zip",
+            "games": 106
+        },
+        {
+            "name": "McShane, Luke",
+            "file": "McShane.zip",
+            "games": 1734
+        },
+        {
+            "name": "Mecking, Henrique",
+            "file": "Mecking.zip",
+            "games": 626
+        },
+        {
+            "name": "Mikenas, Vladas",
+            "file": "Mikenas.zip",
+            "games": 497
+        },
+        {
+            "name": "Miles, Anthony",
+            "file": "Miles.zip",
+            "games": 2614
+        },
+        {
+            "name": "Milov, Vadim",
+            "file": "Milov.zip",
+            "games": 1398
+        },
+        {
+            "name": "Morozevich, Alexander",
+            "file": "Morozevich.zip",
+            "games": 2753
+        },
+        {
+            "name": "Morphy, Paul",
+            "file": "Morphy.zip",
+            "games": 211
+        },
+        {
+            "name": "Motylev, Alexander",
+            "file": "Motylev.zip",
+            "games": 2588
+        },
+        {
+            "name": "Movsesian, Sergei",
+            "file": "Movsesian.zip",
+            "games": 3311
+        },
+        {
+            "name": "Muzychuk, Mariya",
+            "file": "Muzychuk.zip",
+            "games": 1721
+        },
+        {
+            "name": "Najdorf, Miguel",
+            "file": "Najdorf.zip",
+            "games": 1604
+        },
+        {
+            "name": "Najer, Evgeny",
+            "file": "Najer.zip",
+            "games": 2529
+        },
+        {
+            "name": "Nakamura, Hikaru",
+            "file": "Nakamura.zip",
+            "games": 8727
+        },
+        {
+            "name": "Navara, David",
+            "file": "Navara.zip",
+            "games": 3871
+        },
+        {
+            "name": "Negi, Parimarjan",
+            "file": "Negi.zip",
+            "games": 1053
+        },
+        {
+            "name": "Nepomniachtchi, Ian",
+            "file": "Nepomniachtchi.zip",
+            "games": 4388
+        },
+        {
+            "name": "Nielsen, Peter",
+            "file": "Nielsen.zip",
+            "games": 2128
+        },
+        {
+            "name": "Nikolic, Predrag",
+            "file": "Nikolic.zip",
+            "games": 2607
+        },
+        {
+            "name": "Nimzowitsch, Aron",
+            "file": "Nimzowitsch.zip",
+            "games": 512
+        },
+        {
+            "name": "Nisipeanu, Liviu-Dieter",
+            "file": "Nisipeanu.zip",
+            "games": 2319
+        },
+        {
+            "name": "Novikov, Igor",
+            "file": "Novikov.zip",
+            "games": 1416
+        },
+        {
+            "name": "Nunn, John",
+            "file": "Nunn.zip",
+            "games": 1802
+        },
+        {
+            "name": "Olafsson, Fridrik",
+            "file": "Olafsson.zip",
+            "games": 916
+        },
+        {
+            "name": "Oll, Lembit",
+            "file": "Oll.zip",
+            "games": 1034
+        },
+        {
+            "name": "Onischuk, Alexander",
+            "file": "Onischuk.zip",
+            "games": 1637
+        },
+        {
+            "name": "Pachman, Ludek",
+            "file": "Pachman.zip",
+            "games": 1462
+        },
+        {
+            "name": "Paehtz, Elisabeth",
+            "file": "Paehtz.zip",
+            "games": 3218
+        },
+        {
+            "name": "Panno, Oscar",
+            "file": "Panno.zip",
+            "games": 1873
+        },
+        {
+            "name": "Paulsen, Louis",
+            "file": "Paulsen.zip",
+            "games": 322
+        },
+        {
+            "name": "Petrosian, Tigran",
+            "file": "Petrosian.zip",
+            "games": 1893
+        },
+        {
+            "name": "Philidor, Francois",
+            "file": "Philidor.zip",
+            "games": 6
+        },
+        {
+            "name": "Pillsbury, Harry",
+            "file": "Pillsbury.zip",
+            "games": 388
+        },
+        {
+            "name": "Pilnik, Herman",
+            "file": "Pilnik.zip",
+            "games": 899
+        },
+        {
+            "name": "Polgar, Judit",
+            "file": "PolgarJ.zip",
+            "games": 1825
+        },
+        {
+            "name": "Polgar, Sofia",
+            "file": "PolgarS.zip",
+            "games": 856
+        },
+        {
+            "name": "Polgar, Zsuzsa",
+            "file": "PolgarZ.zip",
+            "games": 909
+        },
+        {
+            "name": "Polugaevsky, Lev",
+            "file": "Polugaevsky.zip",
+            "games": 1890
+        },
+        {
+            "name": "Ponomariov, Ruslan",
+            "file": "Ponomariov.zip",
+            "games": 2517
+        },
+        {
+            "name": "Portisch, Lajos",
+            "file": "Portisch.zip",
+            "games": 3030
+        },
+        {
+            "name": "Praggnanandhaa, Rameshbabu",
+            "file": "Praggnanandhaa.zip",
+            "games": 2443
+        },
+        {
+            "name": "Psakhis, Lev",
+            "file": "Psakhis.zip",
+            "games": 1963
+        },
+        {
+            "name": "Quinteros, Miguel",
+            "file": "Quinteros.zip",
+            "games": 1136
+        },
+        {
+            "name": "Radjabov, Teimour",
+            "file": "Radjabov.zip",
+            "games": 2619
+        },
+        {
+            "name": "Rapport, Richard",
+            "file": "Rapport.zip",
+            "games": 2040
+        },
+        {
+            "name": "Reshevsky, Samuel",
+            "file": "Reshevsky.zip",
+            "games": 1267
+        },
+        {
+            "name": "Reti, Richard",
+            "file": "Reti.zip",
+            "games": 646
+        },
+        {
+            "name": "Ribli, Zoltan",
+            "file": "Ribli.zip",
+            "games": 2252
+        },
+        {
+            "name": "Rohde, Michael",
+            "file": "Rohde.zip",
+            "games": 445
+        },
+        {
+            "name": "Rubinstein, Akiba",
+            "file": "Rubinstein.zip",
+            "games": 797
+        },
+        {
+            "name": "Rublevsky, Sergei",
+            "file": "Rublevsky.zip",
+            "games": 1853
+        },
+        {
+            "name": "Saemisch, Friedrich",
+            "file": "Saemisch.zip",
+            "games": 551
+        },
+        {
+            "name": "Sakaev, Konstantin",
+            "file": "Sakaev.zip",
+            "games": 1795
+        },
+        {
+            "name": "Salov, Valery",
+            "file": "Salov.zip",
+            "games": 766
+        },
+        {
+            "name": "Sasikiran, Krishnan",
+            "file": "Sasikiran.zip",
+            "games": 2169
+        },
+        {
+            "name": "Schlechter, Carl",
+            "file": "Schlechter.zip",
+            "games": 739
+        },
+        {
+            "name": "Seirawan, Yasser",
+            "file": "Seirawan.zip",
+            "games": 1519
+        },
+        {
+            "name": "Serper, Gregory",
+            "file": "Serper.zip",
+            "games": 848
+        },
+        {
+            "name": "Shabalov, Alexander",
+            "file": "Shabalov.zip",
+            "games": 2709
+        },
+        {
+            "name": "Shamkovich, Leonid",
+            "file": "Shamkovich.zip",
+            "games": 977
+        },
+        {
+            "name": "Shirov, Alexei",
+            "file": "Shirov.zip",
+            "games": 5644
+        },
+        {
+            "name": "Short, Nigel",
+            "file": "Short.zip",
+            "games": 3228
+        },
+        {
+            "name": "Shulman, Yury",
+            "file": "Shulman.zip",
+            "games": 1191
+        },
+        {
+            "name": "Smirin, Ilia",
+            "file": "Smirin.zip",
+            "games": 2792
+        },
+        {
+            "name": "Smyslov, Vasily",
+            "file": "Smyslov.zip",
+            "games": 2627
+        },
+        {
+            "name": "So, Wesley",
+            "file": "So.zip",
+            "games": 4440
+        },
+        {
+            "name": "Sokolov, Ivan",
+            "file": "Sokolov.zip",
+            "games": 3181
+        },
+        {
+            "name": "Soltis, Andrew",
+            "file": "Soltis.zip",
+            "games": 370
+        },
+        {
+            "name": "Spassky, Boris",
+            "file": "Spassky.zip",
+            "games": 2231
+        },
+        {
+            "name": "Speelman, Jonathan",
+            "file": "Speelman.zip",
+            "games": 2358
+        },
+        {
+            "name": "Spielmann, Rudolf",
+            "file": "Spielmann.zip",
+            "games": 1057
+        },
+        {
+            "name": "Stahlberg, Gideon",
+            "file": "Stahlberg.zip",
+            "games": 964
+        },
+        {
+            "name": "Staunton, Howard",
+            "file": "Staunton.zip",
+            "games": 284
+        },
+        {
+            "name": "Stefanova, Antoaneta",
+            "file": "Stefanova.zip",
+            "games": 3521
+        },
+        {
+            "name": "Stein, Leonid",
+            "file": "Stein.zip",
+            "games": 699
+        },
+        {
+            "name": "Steinitz, William",
+            "file": "Steinitz.zip",
+            "games": 590
+        },
+        {
+            "name": "Suetin, Alexey",
+            "file": "Suetin.zip",
+            "games": 1284
+        },
+        {
+            "name": "Sultan Khan, Mir",
+            "file": "SultanKhan.zip",
+            "games": 157
+        },
+        {
+            "name": "Sutovsky, Emil",
+            "file": "Sutovsky.zip",
+            "games": 1397
+        },
+        {
+            "name": "Svidler, Peter",
+            "file": "Svidler.zip",
+            "games": 4378
+        },
+        {
+            "name": "Szabo, Laszlo",
+            "file": "Szabo.zip",
+            "games": 1777
+        },
+        {
+            "name": "Taimanov, Mark",
+            "file": "Taimanov.zip",
+            "games": 2117
+        },
+        {
+            "name": "Tal, Mikhail",
+            "file": "Tal.zip",
+            "games": 2431
+        },
+        {
+            "name": "Tarrasch, Siegbert",
+            "file": "Tarrasch.zip",
+            "games": 704
+        },
+        {
+            "name": "Tartakower, Savielly",
+            "file": "Tartakower.zip",
+            "games": 1290
+        },
+        {
+            "name": "Teichmann, Richard",
+            "file": "Teichmann.zip",
+            "games": 536
+        },
+        {
+            "name": "Timman, Jan",
+            "file": "Timman.zip",
+            "games": 3622
+        },
+        {
+            "name": "Tiviakov, Sergei",
+            "file": "Tiviakov.zip",
+            "games": 3100
+        },
+        {
+            "name": "Tkachiev, Vladislav",
+            "file": "Tkachiev.zip",
+            "games": 1598
+        },
+        {
+            "name": "Tomashevsky, Evgeny",
+            "file": "Tomashevsky.zip",
+            "games": 2021
+        },
+        {
+            "name": "Topalov, Veselin",
+            "file": "Topalov.zip",
+            "games": 2614
+        },
+        {
+            "name": "Torre Repetto, Carlos",
+            "file": "TorreRepetto.zip",
+            "games": 175
+        },
+        {
+            "name": "Uhlmann, Wolfgang",
+            "file": "Uhlmann.zip",
+            "games": 2537
+        },
+        {
+            "name": "Unzicker, Wolfgang",
+            "file": "Unzicker.zip",
+            "games": 1265
+        },
+        {
+            "name": "Ushenina, Anna",
+            "file": "Ushenina.zip",
+            "games": 2086
+        },
+        {
+            "name": "Vachier-Lagrave, Maxime",
+            "file": "VachierLagrave.zip",
+            "games": 5106
+        },
+        {
+            "name": "Vaganian, Rafael",
+            "file": "Vaganian.zip",
+            "games": 2660
+        },
+        {
+            "name": "Vallejo Pons, Francisco",
+            "file": "VallejoPons.zip",
+            "games": 2856
+        },
+        {
+            "name": "Van Wely, Loek",
+            "file": "VanWely.zip",
+            "games": 4077
+        },
+        {
+            "name": "Vitiugov, Nikita",
+            "file": "Vitiugov.zip",
+            "games": 2204
+        },
+        {
+            "name": "Volokitin, Andrei",
+            "file": "Volokitin.zip",
+            "games": 1878
+        },
+        {
+            "name": "Waitzkin, Joshua",
+            "file": "Waitzkin.zip",
+            "games": 385
+        },
+        {
+            "name": "Winawer, Simon",
+            "file": "Winawer.zip",
+            "games": 241
+        },
+        {
+            "name": "Wojtaszek, Radoslaw",
+            "file": "Wojtaszek.zip",
+            "games": 2744
+        },
+        {
+            "name": "Wojtkiewicz, Aleksander",
+            "file": "Wojtkiewicz.zip",
+            "games": 1564
+        },
+        {
+            "name": "Wolff, Patrick",
+            "file": "Wolff.zip",
+            "games": 640
+        },
+        {
+            "name": "Xiangzhi, Bu",
+            "file": "Bu.zip",
+            "games": 2037
+        },
+        {
+            "name": "Yangyi, Yu",
+            "file": "Yu.zip",
+            "games": 2425
+        },
+        {
+            "name": "Yermolinsky, Alex",
+            "file": "Yermolinsky.zip",
+            "games": 1613
+        },
+        {
+            "name": "Yi, Wei",
+            "file": "Wei.zip",
+            "games": 1806
+        },
+        {
+            "name": "Yifan, Hou",
+            "file": "Hou.zip",
+            "games": 2357
+        },
+        {
+            "name": "Yudasin, Leonid",
+            "file": "Yudasin.zip",
+            "games": 1627
+        },
+        {
+            "name": "Yue, Wang",
+            "file": "Wang.zip",
+            "games": 1703
+        },
+        {
+            "name": "Yuhua, Xu",
+            "file": "Xu.zip",
+            "games": 491
+        },
+        {
+            "name": "Zukertort, Johannes",
+            "file": "Zukertort.zip",
+            "games": 265
+        },
+        {
+            "name": "Zvjaginsev, Vadim",
+            "file": "Zvjaginsev.zip",
+            "games": 2610
+        }
     ]
 }
