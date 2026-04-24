@@ -209,15 +209,14 @@ void GameView::on_move_clicked(int row) {
 void GameView::on_moves_context_menu(const QPoint& pos) {
     QListWidgetItem* item = moves_->itemAt(pos);
     // Row 0 is the synthetic "(start)" entry — there's no
-    // single move to copy, but the whole-game action is still
-    // valid; we offer both, single-move greyed out at row 0.
+    // single move to copy, but the whole-game actions are
+    // still valid; the single-move action greys out at row 0.
     const int row = (item != nullptr) ? moves_->row(item) : -1;
 
     QMenu menu(this);
-    QAction* copy_one = menu.addAction(
-        tr("Copy move (SAN)"));
-    QAction* copy_all = menu.addAction(
-        tr("Copy all moves (UCI)"));
+    QAction* copy_one = menu.addAction(tr("Copy move"));
+    QAction* copy_pgn = menu.addAction(tr("Copy all moves (PGN)"));
+    QAction* copy_uci = menu.addAction(tr("Copy all moves (UCI)"));
 
     if (row <= 0) copy_one->setEnabled(false);
 
@@ -227,16 +226,54 @@ void GameView::on_moves_context_menu(const QPoint& pos) {
     QClipboard* cb = QApplication::clipboard();
 
     if (picked == copy_one) {
-        // Row labels look like "5. Bxb6" or "5… Bxc4+"; the SAN
-        // is the last whitespace-separated token. Copy that.
-        const QString label = item->text();
-        const qsizetype sp = label.lastIndexOf(QLatin1Char(' '));
-        const QString san = (sp >= 0) ? label.mid(sp + 1) : label;
-        cb->setText(san);
+        // Single-move format with move number:
+        //   white moves get "N.SAN"  (e.g. "4.Kf1")
+        //   black moves get "N...SAN" (e.g. "4...Bc5")
+        // Row index = ply (row 1 is ply 1 = white's first move).
+        const int ply = row;
+        const auto& mvs = game_.moves();
+        if (ply <= 0 || ply > static_cast<int>(mvs.size())) return;
+        Board8x8Mailbox b{static_cast<const Board8x8Mailbox&>(
+            game_.starting_position())};
+        for (int j = 0; j + 1 < ply; ++j) {
+            b.make_move(mvs[static_cast<std::size_t>(j)]);
+        }
+        const Move& m = mvs[static_cast<std::size_t>(ply - 1)];
+        const QString san = QString::fromStdString(to_san(b, m));
+        const int fullmove = (ply + 1) / 2;
+        const bool white = (ply % 2 == 1);
+        const QString out = white
+            ? QStringLiteral("%1.%2").arg(fullmove).arg(san)
+            : QStringLiteral("%1...%2").arg(fullmove).arg(san);
+        cb->setText(out);
         return;
     }
 
-    if (picked == copy_all) {
+    if (picked == copy_pgn) {
+        // Standard PGN move text: "1.e4 e5 2.Nf3 Nc6 …".
+        // Move numbers appear before each white half-move; black
+        // half-moves are bare SAN. No tags, no result, no
+        // wrapping — just the move list, ready to paste into a
+        // PGN body or a chat message.
+        QString out;
+        const auto& mvs = game_.moves();
+        Board8x8Mailbox b{static_cast<const Board8x8Mailbox&>(
+            game_.starting_position())};
+        for (std::size_t i = 0; i < mvs.size(); ++i) {
+            if (i % 2 == 0) {
+                if (!out.isEmpty()) out += QLatin1Char(' ');
+                out += QStringLiteral("%1.").arg(i / 2 + 1);
+            } else {
+                out += QLatin1Char(' ');
+            }
+            out += QString::fromStdString(to_san(b, mvs[i]));
+            b.make_move(mvs[i]);
+        }
+        cb->setText(out);
+        return;
+    }
+
+    if (picked == copy_uci) {
         QString out;
         const auto& mvs = game_.moves();
         for (std::size_t i = 0; i < mvs.size(); ++i) {
