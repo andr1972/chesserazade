@@ -81,7 +81,7 @@ SolvePanel::SolvePanel(QWidget* parent)
 
     depth_spin_ = new QSpinBox(budget_box);
     depth_spin_->setRange(1, Search::MAX_DEPTH);
-    depth_spin_->setValue(6);
+    depth_spin_->setValue(7);
     add_row(rb_depth_, tr("Max ply"), depth_spin_);
 
     time_spin_ = new QSpinBox(budget_box);
@@ -99,7 +99,7 @@ SolvePanel::SolvePanel(QWidget* parent)
     nodes_mult_->setCurrentIndex(0);
     add_row(rb_nodes_, tr("Nodes"), nodes_spin_, nodes_mult_);
 
-    rb_time_->setChecked(true);
+    rb_depth_->setChecked(true);
     rlay->addWidget(budget_box);
 
     auto* cap_row = new QHBoxLayout;
@@ -166,7 +166,7 @@ SolvePanel::SolvePanel(QWidget* parent)
     cap_row->addWidget(tt_check_);
 
     incr_eval_check_ = new QCheckBox(tr("incr eval"), right);
-    incr_eval_check_->setChecked(false);
+    incr_eval_check_->setChecked(true);
     incr_eval_check_->setToolTip(tr(
         "Use the board's O(1) incrementally-maintained eval "
         "(material + PST running sum) instead of the full "
@@ -175,7 +175,7 @@ SolvePanel::SolvePanel(QWidget* parent)
     cap_row->addWidget(incr_eval_check_);
 
     bitboard_check_ = new QCheckBox(tr("bitboard"), right);
-    bitboard_check_->setChecked(false);
+    bitboard_check_->setChecked(true);
     bitboard_check_->setToolTip(tr(
         "Run the search on BoardBitboard (magic / PEXT slider "
         "attacks, popcount-based move generation) instead of "
