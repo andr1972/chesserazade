@@ -96,10 +96,17 @@ struct Derived {
 /// Threshold below which a small group's signed sum is
 /// considered "noise" (knight-for-bishop nets to ±10,
 /// pawn-for-pawn to 0). Such small groups are dropped from
-/// the sign sequence before episodes are partitioned.
-/// Strict less-than: a single unrecaptured pawn (sum = ±100)
-/// passes and contributes to the next large group.
+/// the chain before series are formed. Strict less-than:
+/// a single unrecaptured pawn (sum = ±100) passes.
 constexpr int SMALL_GROUP_DROP_BELOW = 100;
+
+/// Maximum number of *consecutive* quiet (= neither capture
+/// nor check) plies allowed in the gap between two small
+/// groups for them to remain in the same series. A check
+/// resets the quiet counter — a king-chase with checks and
+/// occasional captures stays one series even if it spans
+/// many plies.
+constexpr int SERIES_MAX_CONSECUTIVE_QUIET = 2;
 
 /// Find sacrifice events.
 ///
@@ -171,130 +178,162 @@ find_small_groups(const std::vector<int>& balances,
     return out;
 }
 
-// Sign label for a small group. 0 marks groups whose sum is
-// below the noise threshold — they're dropped from the
-// sequence before episode partitioning.
-[[nodiscard]] int sign_of(const SmallGroup& g) noexcept {
-    if (g.sum_cp >= SMALL_GROUP_DROP_BELOW)  return +1;
-    if (g.sum_cp <= -SMALL_GROUP_DROP_BELOW) return -1;
-    return 0;
+// True iff the small group's |sum| meets the noise floor.
+[[nodiscard]] bool small_group_is_significant(const SmallGroup& g) noexcept {
+    return g.sum_cp >= SMALL_GROUP_DROP_BELOW
+        || g.sum_cp <= -SMALL_GROUP_DROP_BELOW;
 }
 
-// Partition a stream of (already-sign-filtered, non-zero)
-// small-group indices into "episodes" for one perspective.
-// `leading_sign` selects the perspective:
-//   +1 → white's view, episodes shaped (+...+−...−)
-//   −1 → black's view, episodes shaped (−...−+...+)
-// Each returned vector is the contiguous list of small-group
-// indices belonging to one episode. Episodes that never see
-// the trailing sign (e.g. a final hanging `+` for white) are
-// kept as "open" — net is just the lead-side sum.
-[[nodiscard]] std::vector<std::vector<int>>
-partition_episodes(const std::vector<SmallGroup>& groups,
-                   const std::vector<int>& nonzero_indices,
-                   int leading_sign) {
-    std::vector<std::vector<int>> episodes;
-    enum class Phase { Pre, Lead, Trail };
-    Phase phase = Phase::Pre;
-    std::vector<int> current;
-    for (const int gi : nonzero_indices) {
-        const int s = sign_of(groups[static_cast<std::size_t>(gi)]);
-        switch (phase) {
-            case Phase::Pre:
-                if (s == leading_sign) {
-                    current.push_back(gi);
-                    phase = Phase::Lead;
-                }
-                // else skip leading opposite-sign small groups
-                break;
-            case Phase::Lead:
-                if (s == leading_sign) {
-                    current.push_back(gi);
-                } else {
-                    current.push_back(gi);
-                    phase = Phase::Trail;
-                }
-                break;
-            case Phase::Trail:
-                if (s == leading_sign) {
-                    // Start of new episode.
-                    episodes.push_back(std::move(current));
-                    current.clear();
-                    current.push_back(gi);
-                    phase = Phase::Lead;
-                } else {
-                    current.push_back(gi);
-                }
-                break;
-        }
-    }
-    if (!current.empty()) episodes.push_back(std::move(current));
-    return episodes;
-}
+// Per-ply classification used by series detection. Captures
+// derived from balance deltas; checks supplied by the caller
+// (already computed during replay for the knight-fork pass).
+struct PlyKind {
+    bool was_capture = false;
+    bool was_check   = false;
+};
 
-std::vector<MaterialSac> find_sacs(const std::vector<int>& balances,
-                                   const std::vector<Move>& moves) {
+// Walk small groups in chronological order and merge them
+// into "series" using the connection rule:
+//   max consecutive QUIET (= neither capture nor check) plies
+//   between two small groups must be ≤ SERIES_MAX_CONSECUTIVE_QUIET
+// — checks reset the quiet counter, so a king-chase with
+// occasional captures stays in one series.
+//
+// Pawn-only series (every constituent small group has
+// max piece ≤ pawn) are filtered out as banal.
+std::vector<MaterialSac>
+find_sacs_with_kinds(const std::vector<int>& balances,
+                     const std::vector<Move>& moves,
+                     const std::vector<PlyKind>& kinds) {
     std::vector<MaterialSac> out;
     if (moves.empty()) return out;
 
     const auto small_groups = find_small_groups(balances, moves);
 
-    // Index list of small groups whose sign != 0.
-    std::vector<int> nonzero;
-    nonzero.reserve(small_groups.size());
+    // Drop noise-level small groups up front.
+    std::vector<int> sig;
+    sig.reserve(small_groups.size());
     for (std::size_t i = 0; i < small_groups.size(); ++i) {
-        if (sign_of(small_groups[i]) != 0) {
-            nonzero.push_back(static_cast<int>(i));
+        if (small_group_is_significant(small_groups[i])) {
+            sig.push_back(static_cast<int>(i));
         }
     }
-    if (nonzero.empty()) return out;
+    if (sig.empty()) return out;
 
-    // Partition for both perspectives and emit episodes.
-    for (const int leading : {+1, -1}) {
-        const auto episodes =
-            partition_episodes(small_groups, nonzero, leading);
-        for (const auto& ep : episodes) {
-            if (ep.empty()) continue;
-            // Filter: drop episodes whose every small group has
-            // max piece ≤ pawn — banal pawn-only exchanges.
-            bool any_above_pawn = false;
-            for (const int gi : ep) {
-                const auto& g = small_groups[static_cast<std::size_t>(gi)];
-                if (g.max_piece_cp > piece_value(PieceType::Pawn)) {
-                    any_above_pawn = true;
-                    break;
-                }
-            }
-            if (!any_above_pawn) continue;
-
-            // Episode metrics.
-            int net_white = 0;
-            PieceType raw_piece = PieceType::None;
-            int raw_piece_cp = 0;
-            for (const int gi : ep) {
-                const auto& g = small_groups[static_cast<std::size_t>(gi)];
-                net_white += g.sum_cp;
-                if (g.max_piece_cp > raw_piece_cp) {
-                    raw_piece_cp = g.max_piece_cp;
-                    raw_piece = g.max_piece;
-                }
-            }
-            // Owner-perspective net: positive = owner gained,
-            // negative = owner sacrificed-without-recovery.
-            const int net_owner = (leading == +1) ? net_white : -net_white;
-
-            MaterialSac s;
-            s.ply = small_groups[static_cast<std::size_t>(ep.front())]
-                        .start_ply;
-            s.owner = (leading == +1) ? Color::White : Color::Black;
-            s.net_cp = net_owner;
-            s.raw_piece = raw_piece;
-            s.raw_piece_cp = raw_piece_cp;
-            out.push_back(s);
+    auto end_ply_of = [&](int gi) {
+        // 1-based index of the first ply *after* a small group.
+        // small_groups capture a run of consecutive captures;
+        // walk forward from start_ply (1-based) through plies
+        // that are still part of the run.
+        int p = small_groups[static_cast<std::size_t>(gi)].start_ply;
+        const int n = static_cast<int>(moves.size());
+        while (p <= n
+               && kinds[static_cast<std::size_t>(p - 1)].was_capture) {
+            ++p;
         }
+        return p; // 1-based, first non-capture ply after the run
+    };
+
+    auto can_connect = [&](int gi_left, int gi_right) {
+        // Examine plies strictly between the end of left
+        // group and the start of right group. The right
+        // group's start_ply is 1-based; if it's the very
+        // next ply, the gap is empty.
+        const int gap_start = end_ply_of(gi_left); // 1-based
+        const int gap_end = small_groups[static_cast<std::size_t>(gi_right)]
+                                .start_ply; // 1-based (exclusive)
+        int run = 0;
+        for (int p = gap_start; p < gap_end; ++p) {
+            const PlyKind& k = kinds[static_cast<std::size_t>(p - 1)];
+            if (k.was_check || k.was_capture) {
+                run = 0; // checks (and stray captures inside
+                         // small groups can't appear here, but
+                         // be defensive) reset the streak.
+            } else {
+                ++run;
+                if (run > SERIES_MAX_CONSECUTIVE_QUIET) return false;
+            }
+        }
+        return true;
+    };
+
+    // Walk and form series.
+    std::vector<std::vector<int>> series;
+    std::vector<int> current;
+    current.push_back(sig.front());
+    for (std::size_t k = 1; k < sig.size(); ++k) {
+        if (can_connect(current.back(), sig[k])) {
+            current.push_back(sig[k]);
+        } else {
+            series.push_back(std::move(current));
+            current.clear();
+            current.push_back(sig[k]);
+        }
+    }
+    if (!current.empty()) series.push_back(std::move(current));
+
+    // Build records, dropping pawn-only series.
+    for (const auto& ser : series) {
+        bool any_above_pawn = false;
+        for (const int gi : ser) {
+            const auto& g = small_groups[static_cast<std::size_t>(gi)];
+            if (g.max_piece_cp > piece_value(PieceType::Pawn)) {
+                any_above_pawn = true;
+                break;
+            }
+        }
+        if (!any_above_pawn) continue;
+
+        int net = 0;
+        int peak = 0;
+        const SmallGroup* peak_group = nullptr;
+        for (const int gi : ser) {
+            const auto& g = small_groups[static_cast<std::size_t>(gi)];
+            net += g.sum_cp;
+            if (peak_group == nullptr
+                || std::abs(g.sum_cp) > std::abs(peak)) {
+                peak = g.sum_cp;
+                peak_group = &g;
+            }
+        }
+        if (peak_group == nullptr) continue;
+
+        // Find the ply *within* the peak small group where the
+        // raw piece (the biggest piece in that group) was
+        // captured. That is what "Click on Sac" jumps to — the
+        // user wants to see the moment of the queen drop, not
+        // the first move of the whole series (which often is a
+        // small earlier exchange).
+        int peak_piece_ply = peak_group->start_ply;
+        const int peak_run_end = [&]() {
+            int p = peak_group->start_ply;
+            const int total = static_cast<int>(moves.size());
+            while (p <= total
+                   && kinds[static_cast<std::size_t>(p - 1)].was_capture) {
+                ++p;
+            }
+            return p;
+        }();
+        for (int p = peak_group->start_ply; p < peak_run_end; ++p) {
+            const PieceType cap =
+                moves[static_cast<std::size_t>(p - 1)].captured_piece.type;
+            if (cap == peak_group->max_piece) {
+                peak_piece_ply = p;
+                break;
+            }
+        }
+
+        MaterialSac s;
+        s.ply = peak_piece_ply;
+        s.net_cp = net;
+        s.peak_cp = peak;
+        s.raw_piece = peak_group->max_piece;
+        s.raw_piece_cp = peak_group->max_piece_cp;
+        out.push_back(s);
     }
     return out;
 }
+
 
 /// True iff a knight of `mover` sitting on `sq` in `board`
 /// both checks the opposing king and attacks at least one
@@ -367,6 +406,10 @@ Derived compute_derived(const PgnGame& pg) {
     balances.reserve(pg.moves.size() + 1);
     balances.push_back(material_balance(board));
 
+    // Per-ply kinds (capture / check) for series detection.
+    std::vector<PlyKind> kinds;
+    kinds.reserve(pg.moves.size());
+
     std::uint64_t h = FNV64_OFFSET;
     bool first = true;
     int ply = 0;
@@ -387,8 +430,16 @@ Derived compute_derived(const PgnGame& pg) {
             out.underpromotions.push_back({ply, m.promotion});
         }
 
+        const int balance_before = balances.back();
         const Color mover = board.side_to_move();
         board.make_move(m);
+
+        // Did this move give check? Probe always — it's cheap
+        // and we need it for series formation as well as the
+        // knight-fork detector.
+        const Color them = (mover == Color::White) ? Color::Black
+                                                    : Color::White;
+        const bool gives_check = MoveGenerator::is_in_check(board, them);
 
         // Knight fork: the piece now sitting on `m.to` is a
         // knight (either a knight move or a promotion to a
@@ -396,14 +447,24 @@ Derived compute_derived(const PgnGame& pg) {
         const Piece landed = board.piece_at(m.to);
         if (landed.type == PieceType::Knight
             && landed.color == mover
-            && detect_knight_fork(board, mover, m.to)) {
-            out.knight_fork_plies.push_back(ply);
+            && gives_check) {
+            // Re-test attack on Q/R (gives_check alone is just
+            // half the fork condition).
+            if (detect_knight_fork(board, mover, m.to)) {
+                out.knight_fork_plies.push_back(ply);
+            }
         }
 
-        balances.push_back(material_balance(board));
+        const int balance_after = material_balance(board);
+        balances.push_back(balance_after);
+
+        PlyKind pk;
+        pk.was_capture = (balance_after != balance_before);
+        pk.was_check = gives_check;
+        kinds.push_back(pk);
     }
     out.hash = h;
-    out.material_sacs = find_sacs(balances, pg.moves);
+    out.material_sacs = find_sacs_with_kinds(balances, pg.moves, kinds);
 
     const MoveList legal = MoveGenerator::generate_legal(board);
     if (legal.empty()) {
@@ -505,9 +566,8 @@ void write_record(std::ostream& os, const GameRecord& r) {
         const auto& s = r.material_sacs[i];
         if (i > 0) os << ", ";
         os << "{\"ply\": " << s.ply
-           << ", \"owner\": \""
-           << (s.owner == Color::White ? "white" : "black") << "\""
            << ", \"net_cp\": " << s.net_cp
+           << ", \"peak_cp\": " << s.peak_cp
            << ", \"raw_piece\": \"" << piece_letter(s.raw_piece) << "\""
            << ", \"raw_piece_cp\": " << s.raw_piece_cp << "}";
     }
@@ -705,13 +765,11 @@ bool parse_record(Cursor& c, GameRecord& r) {
             if (!expect_key(c, "ply") || !parse_int(c, v)) return false;
             s.ply = static_cast<int>(v);
             if (!c.match(',')) return false;
-            if (!expect_key(c, "owner")) return false;
-            std::string ow;
-            if (!parse_string(c, ow)) return false;
-            s.owner = (ow == "black") ? Color::Black : Color::White;
-            if (!c.match(',')) return false;
             if (!expect_key(c, "net_cp") || !parse_int(c, v)) return false;
             s.net_cp = static_cast<int>(v);
+            if (!c.match(',')) return false;
+            if (!expect_key(c, "peak_cp") || !parse_int(c, v)) return false;
+            s.peak_cp = static_cast<int>(v);
             if (!c.match(',')) return false;
             if (!expect_key(c, "raw_piece")) return false;
             std::string rp;

@@ -77,15 +77,16 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
             if (rec.knight_fork_plies.empty()) return QString{};
             return static_cast<int>(rec.knight_fork_plies.size());
         case ColSac: {
-            // Episode-based view. Pick the episode with the
-            // biggest |net_cp| from across both perspectives;
-            // show net (with sign + owner color) and the
-            // biggest piece that fell in that episode.
-            // Format: "W +570 R" or "B -900 Q".
+            // Series view. Pick the series with the biggest
+            // |peak_cp| (most dramatic single-exchange) and
+            // show: piece letter + signed peak + signed net.
+            // Format: "Q +570 -560" — queen physically dropped,
+            // peak small group went +570 cp white's way, whole
+            // series netted -560 (black ahead overall).
             if (rec.material_sacs.empty()) return QString{};
             const MaterialSac* best = &rec.material_sacs.front();
             for (const auto& s : rec.material_sacs) {
-                if (std::abs(s.net_cp) > std::abs(best->net_cp)) {
+                if (std::abs(s.peak_cp) > std::abs(best->peak_cp)) {
                     best = &s;
                 }
             }
@@ -98,13 +99,15 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
                 case PieceType::Pawn:   letter = QLatin1Char('P'); break;
                 default:                letter = QLatin1Char('?'); break;
             }
-            const QChar owner =
-                (best->owner == Color::White) ? QLatin1Char('W')
-                                              : QLatin1Char('B');
-            const QString sign = best->net_cp >= 0
-                ? QStringLiteral("+") : QString{};
-            return QStringLiteral("%1 %2%3 %4")
-                .arg(owner).arg(sign).arg(best->net_cp).arg(letter);
+            const auto signed_str = [](int v) {
+                return v >= 0
+                    ? QStringLiteral("+%1").arg(v)
+                    : QStringLiteral("%1").arg(v);
+            };
+            return QStringLiteral("%1 %2 %3")
+                .arg(letter)
+                .arg(signed_str(best->peak_cp))
+                .arg(signed_str(best->net_cp));
         }
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
@@ -173,24 +176,27 @@ QVariant GameListModel::headerData(int section,
                 "royal fork motif.\n\n"
                 "Click this column to jump to the first knight fork.");
             case ColSac:    return tr(
-                "Biggest material exchange episode.\n\n"
-                "Format: \"<owner> <signed cp> <piece>\"\n"
-                "  owner   — W (white) or B (black), the side "
-                "from whose perspective the episode is read.\n"
-                "  cp      — net material change for the owner "
-                "across the episode (+ owner gained, − owner "
-                "sacrificed without full recovery).\n"
-                "  piece   — biggest piece that physically fell "
-                "anywhere in the episode (P/N/B/R/Q).\n\n"
-                "Episodes are formed by clustering consecutive "
-                "captures into \"small groups\", then partitioning "
-                "the chronological sign sequence per side: white "
-                "sees runs +…+−…−, black sees −…−+…+. Pawn-only "
-                "small groups are kept as recovery noise; episodes "
-                "consisting entirely of pawn-only small groups are "
-                "filtered out.\n\n"
-                "Click this column to jump to the episode's "
-                "starting ply.");
+                "Biggest tactical series.\n\n"
+                "Format: \"<piece> <signed peak> <signed net>\"\n"
+                "  piece — letter of the biggest piece that "
+                "fell in the peak small group (Q/R/B/N/P).\n"
+                "  peak  — signed cp of the most dramatic "
+                "single small group, white-perspective.\n"
+                "  net   — signed cp of the whole series "
+                "summed, white-perspective.\n\n"
+                "Sign convention: positive = white captured "
+                "net, negative = black captured net. Example: "
+                "\"Q +570 -560\" means a queen physically "
+                "fell, the peak exchange was +570 cp white's "
+                "way (queen for bishop), but the whole series "
+                "summed to -560 (black came out ahead).\n\n"
+                "Series form by joining consecutive captures "
+                "(\"small groups\") whose gaps contain at most "
+                "two consecutive quiet plies; checks count as "
+                "loud and don't break the series. Pawn-only "
+                "series are filtered out.\n\n"
+                "Click this column to jump to the move where "
+                "the peak piece dropped.");
             case ColEvent:  return tr("Event / tournament name from "
                                       "the PGN tag.");
             default:        return {};

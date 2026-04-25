@@ -135,9 +135,12 @@ protected:
             if (sv.isEmpty()) return false;
         }
         if (sac_won_only_) {
-            // Drop into the source model for fields we don't
-            // surface as columns. Identify the biggest-net
-            // episode and check whether its owner won the game.
+            // "Sac won": the side that gave up material in the
+            // biggest peak small group went on to win the game.
+            // Sign of peak_cp tells us who captured net in that
+            // peak (so the OPPONENT was the sacrificer):
+            //   peak_cp > 0 → white captured net → black sac'd → check black won
+            //   peak_cp < 0 → black captured net → white sac'd → check white won
             const auto* glm = qobject_cast<const GameListModel*>(m);
             if (glm == nullptr) return false;
             const GameRecord* rec = glm->record_at(row);
@@ -149,13 +152,13 @@ protected:
             if (!white_won && !black_won) return false;
             const MaterialSac* best = &rec->material_sacs.front();
             for (const auto& s : rec->material_sacs) {
-                if (std::abs(s.net_cp) > std::abs(best->net_cp)) {
+                if (std::abs(s.peak_cp) > std::abs(best->peak_cp)) {
                     best = &s;
                 }
             }
-            const bool owner_white = (best->owner == Color::White);
-            if (!((owner_white && white_won)
-                  || (!owner_white && black_won))) {
+            const bool sacrificer_is_black = (best->peak_cp > 0);
+            if (!((sacrificer_is_black && black_won)
+                  || (!sacrificer_is_black && white_won))) {
                 return false;
             }
         }
@@ -503,12 +506,13 @@ void GameListView::on_activated(const QModelIndex& idx) {
     const int proxy_col = idx.column();
     switch (proxy_col) {
         case GameListModel::ColSac: {
-            // Sacrificing move = ply of the biggest |net_cp|
-            // episode (matches what the column displays).
+            // Sacrificing move = ply where the peak series'
+            // biggest piece was captured (stored in `ply` since
+            // the schema-10 rewrite).
             if (!rec.material_sacs.empty()) {
                 const MaterialSac* best = &rec.material_sacs.front();
                 for (const auto& s : rec.material_sacs) {
-                    if (std::abs(s.net_cp) > std::abs(best->net_cp)) {
+                    if (std::abs(s.peak_cp) > std::abs(best->peak_cp)) {
                         best = &s;
                     }
                 }

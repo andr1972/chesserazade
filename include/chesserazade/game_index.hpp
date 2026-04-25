@@ -72,46 +72,54 @@ struct UnderPromotion {
     PieceType piece = PieceType::None;
 };
 
-/// One material-exchange episode detected during index build.
+/// One tactical "series" of material exchanges detected
+/// during index build.
 ///
-/// **How episodes are formed.** Plies that capture material
-/// are clustered into "small groups" — sequences of
-/// consecutive captures. Each small group gets a signed sum
-/// (from white's perspective: `+` = white captured net, `-` =
-/// black captured net); small groups whose `|sum| < 100` are
-/// dropped as plain trades (knight-for-bishop nets to ±10,
-/// pawn-for-pawn to 0).
-///
-/// The remaining small groups, in chronological order, are
-/// partitioned per perspective into **large groups** — the
-/// "episodes" stored here. From white's perspective, an
-/// episode is a run `+...+−...−`: white captures first, then
-/// black recovers. From black's perspective, the symmetric
-/// `−...−+...+`. The same capture stream produces two
-/// partitions, one per side; both are scanned, and the
-/// per-game "biggest" episode is whichever has the largest
-/// `|net_cp|` across both partitions.
+/// **How series are formed.**
+///   1. Plies that capture material are clustered into
+///      *small groups* — runs of consecutive captures
+///      separated by at least one non-capture ply.
+///   2. Each small group gets a signed white-perspective sum.
+///      Small groups with `|sum| < 100` are dropped as noise
+///      (knight-for-bishop nets to ±10, pawn-for-pawn to 0).
+///   3. Surviving small groups are joined into a *series*
+///      whenever the gap between them contains at most two
+///      consecutive *quiet* (= neither capture nor check)
+///      plies. Checks count as "loud" and reset the quiet
+///      counter — so a king-chase that includes captures and
+///      checks but no long pause stays in one series. A gap
+///      with three or more consecutive quiet plies breaks
+///      the series.
+///   4. Series whose every small group has max piece ≤ pawn
+///      are filtered out — pawn-only exchanges are not
+///      interesting enough to surface.
 ///
 /// **Fields.**
-///   * `ply` — first ply of the episode's first small group
-///     (1-based). What "Click on Sac" jumps to.
-///   * `owner` — `Color::White` if the episode partition
-///     started with `+` (so white is the perspective owner /
-///     sacrificer), `Color::Black` if started with `-`.
-///   * `net_cp` — signed net from the owner's perspective.
-///     Positive: owner gained net. Negative: owner gave up
-///     more than they got back ("real" sacrifice).
-///   * `raw_piece` / `raw_piece_cp` — biggest single piece
-///     (read from `Move::captured_piece`) anywhere in the
-///     episode. The "Sac brutto" letter.
+///   * `ply` — first ply of the series' first small group
+///     (1-based). "Click on Sac" jumps here.
+///   * `net_cp` — signed sum across the whole series, from
+///     white's perspective. Positive: white came out ahead
+///     in material. Negative: black came out ahead.
+///   * `peak_cp` — signed sum of the small group with the
+///     largest `|sum|` in the series. Marks the most
+///     dramatic single exchange — typically the actual
+///     sacrifice moment (e.g. queen-for-bishop in Byrne–
+///     Fischer 1956 → `+570`, since net white captured 570
+///     in that 2-ply tower).
+///   * `raw_piece` / `raw_piece_cp` — biggest piece (by cp)
+///     captured inside the peak small group. Identified
+///     directly from `Move::captured_piece`, not inferred
+///     from cp buckets, so knight (320) and bishop (330)
+///     are never confused.
 ///
-/// Episodes whose every small group's biggest piece is a
-/// pawn are filtered out — banal pawn-only exchanges are
-/// not interesting enough to surface.
+/// In display, `Sac` reads as: piece-letter + signed peak
+/// + signed net, e.g. "Q +570 -560" — queen physically
+/// dropped, the peak small group went 570 cp white's way,
+/// but the whole series netted -560 (black came out ahead).
 struct MaterialSac {
     int       ply = 0;
-    Color     owner = Color::White;
     int       net_cp = 0;
+    int       peak_cp = 0;
     PieceType raw_piece = PieceType::None;
     int       raw_piece_cp = 0;
 };
@@ -147,10 +155,10 @@ struct GameRecord {
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way. Current: 9 (MaterialSac
-    /// rewritten as group-based episodes; old loss/recovery
-    /// fields replaced with owner + net_cp + raw piece).
-    int schema = 9;
+    /// changes in a non-additive way. Current: 10 (MaterialSac
+    /// reworked as connected series; fields are net_cp,
+    /// peak_cp, raw_piece — owner dropped).
+    int schema = 10;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares
