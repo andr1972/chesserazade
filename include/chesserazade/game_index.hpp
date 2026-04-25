@@ -72,37 +72,48 @@ struct UnderPromotion {
     PieceType piece = PieceType::None;
 };
 
-/// Sharp material drop against the mover, detected during
-/// index build.
+/// One material-exchange episode detected during index build.
 ///
-/// `loss_cp` is the **net** material the mover lost over
-/// their move + opponent's replies, with the detection window
-/// dynamically extended through chains of captures so that
-/// immediate recaptures net against the initial loss.
+/// **How episodes are formed.** Plies that capture material
+/// are clustered into "small groups" — sequences of
+/// consecutive captures. Each small group gets a signed sum
+/// (from white's perspective: `+` = white captured net, `-` =
+/// black captured net); small groups whose `|sum| < 100` are
+/// dropped as plain trades (knight-for-bishop nets to ±10,
+/// pawn-for-pawn to 0).
 ///
-/// `raw_piece` is the biggest single piece the mover lost
-/// *in* that window, identified directly from the move's
-/// `captured_piece` field rather than inferred from a cp
-/// bucket. For Fischer's 17…Be6!! / 18.Bxb6 line: `loss_cp`
-/// nets to rook-magnitude (queen-for-bishop) while
-/// `raw_piece` = Queen, since a queen physically dropped.
-/// `raw_loss_cp` is the cp value of that piece, stored for
-/// sorting convenience.
+/// The remaining small groups, in chronological order, are
+/// partitioned per perspective into **large groups** — the
+/// "episodes" stored here. From white's perspective, an
+/// episode is a run `+...+−...−`: white captures first, then
+/// black recovers. From black's perspective, the symmetric
+/// `−...−+...+`. The same capture stream produces two
+/// partitions, one per side; both are scanned, and the
+/// per-game "biggest" episode is whichever has the largest
+/// `|net_cp|` across both partitions.
 ///
-/// `recovery_cp` tracks how much the mover recovered over a
-/// 20-ply forward window. Measured as **endpoint minus
-/// settle-point advantage**, not as a peak — so further
-/// material losses after an initial recovery *subtract*, and
-/// the final figure reflects net material swing through the
-/// window. Clamped at zero on the low side.
+/// **Fields.**
+///   * `ply` — first ply of the episode's first small group
+///     (1-based). What "Click on Sac" jumps to.
+///   * `owner` — `Color::White` if the episode partition
+///     started with `+` (so white is the perspective owner /
+///     sacrificer), `Color::Black` if started with `-`.
+///   * `net_cp` — signed net from the owner's perspective.
+///     Positive: owner gained net. Negative: owner gave up
+///     more than they got back ("real" sacrifice).
+///   * `raw_piece` / `raw_piece_cp` — biggest single piece
+///     (read from `Move::captured_piece`) anywhere in the
+///     episode. The "Sac brutto" letter.
 ///
-/// `ply` is the sacrificing move (1-based).
+/// Episodes whose every small group's biggest piece is a
+/// pawn are filtered out — banal pawn-only exchanges are
+/// not interesting enough to surface.
 struct MaterialSac {
     int       ply = 0;
-    int       loss_cp = 0;
+    Color     owner = Color::White;
+    int       net_cp = 0;
     PieceType raw_piece = PieceType::None;
-    int       raw_loss_cp = 0;
-    int       recovery_cp = 0;
+    int       raw_piece_cp = 0;
 };
 
 /// A single game's metadata. Extends `PgnGameHeader` with a
@@ -136,9 +147,10 @@ struct GameRecord {
 /// The full index for one PGN file.
 struct GameIndex {
     /// On-disk format version. Bump when the JSON layout
-    /// changes in a non-additive way. Current: 8 (MaterialSac
-    /// gained `raw_piece`; recovery metric changed).
-    int schema = 8;
+    /// changes in a non-additive way. Current: 9 (MaterialSac
+    /// rewritten as group-based episodes; old loss/recovery
+    /// fields replaced with owner + net_cp + raw piece).
+    int schema = 9;
 
     /// Unix epoch seconds of the PGN file's last modification
     /// at the time the index was built. The loader compares

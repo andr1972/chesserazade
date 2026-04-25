@@ -77,17 +77,17 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
             if (rec.knight_fork_plies.empty()) return QString{};
             return static_cast<int>(rec.knight_fork_plies.size());
         case ColSac: {
-            // Picks the sacrifice with the biggest *raw* single-
-            // piece drop and shows that piece's letter directly
-            // from its PieceType, plus how much of its value was
-            // won back within the 20-ply forward window (net,
-            // not peak — further losses subtract). "Q 100%" = a
-            // queen physically fell and an equivalent queen's
-            // worth was recovered by window end.
+            // Episode-based view. Pick the episode with the
+            // biggest |net_cp| from across both perspectives;
+            // show net (with sign + owner color) and the
+            // biggest piece that fell in that episode.
+            // Format: "W +570 R" or "B -900 Q".
             if (rec.material_sacs.empty()) return QString{};
             const MaterialSac* best = &rec.material_sacs.front();
             for (const auto& s : rec.material_sacs) {
-                if (s.raw_loss_cp > best->raw_loss_cp) best = &s;
+                if (std::abs(s.net_cp) > std::abs(best->net_cp)) {
+                    best = &s;
+                }
             }
             QChar letter;
             switch (best->raw_piece) {
@@ -98,10 +98,13 @@ QVariant GameListModel::data(const QModelIndex& idx, int role) const {
                 case PieceType::Pawn:   letter = QLatin1Char('P'); break;
                 default:                letter = QLatin1Char('?'); break;
             }
-            const int pct = (best->raw_loss_cp > 0)
-                ? (100 * best->recovery_cp / best->raw_loss_cp)
-                : 0;
-            return QStringLiteral("%1 %2%").arg(letter).arg(pct);
+            const QChar owner =
+                (best->owner == Color::White) ? QLatin1Char('W')
+                                              : QLatin1Char('B');
+            const QString sign = best->net_cp >= 0
+                ? QStringLiteral("+") : QString{};
+            return QStringLiteral("%1 %2%3 %4")
+                .arg(owner).arg(sign).arg(best->net_cp).arg(letter);
         }
         case ColEvent:  return QString::fromStdString(g.event);
         default:        return {};
@@ -170,20 +173,24 @@ QVariant GameListModel::headerData(int section,
                 "royal fork motif.\n\n"
                 "Click this column to jump to the first knight fork.");
             case ColSac:    return tr(
-                "Biggest piece sacrificed, with recovery % over a "
-                "20-ply forward window.\n\n"
-                "Letter = piece that physically dropped "
-                "(P/N/B/R/Q).\n"
-                "% = how much of that piece's cp value was recovered "
-                "by the end of the 20-ply window (endpoint minus "
-                "settle point, so later losses subtract).\n\n"
-                "Detection: the 2-ply exchange window is extended "
-                "through any chain of consecutive captures (up to "
-                "6 plies) so a multi-capture tower nets correctly. "
-                "Trigger threshold: 300 cp net loss. Plain trades "
-                "(R-for-R, even-value swaps) net to zero and are "
-                "skipped.\n\n"
-                "Click this column to jump to the sacrificing move.");
+                "Biggest material exchange episode.\n\n"
+                "Format: \"<owner> <signed cp> <piece>\"\n"
+                "  owner   — W (white) or B (black), the side "
+                "from whose perspective the episode is read.\n"
+                "  cp      — net material change for the owner "
+                "across the episode (+ owner gained, − owner "
+                "sacrificed without full recovery).\n"
+                "  piece   — biggest piece that physically fell "
+                "anywhere in the episode (P/N/B/R/Q).\n\n"
+                "Episodes are formed by clustering consecutive "
+                "captures into \"small groups\", then partitioning "
+                "the chronological sign sequence per side: white "
+                "sees runs +…+−…−, black sees −…−+…+. Pawn-only "
+                "small groups are kept as recovery noise; episodes "
+                "consisting entirely of pawn-only small groups are "
+                "filtered out.\n\n"
+                "Click this column to jump to the episode's "
+                "starting ply.");
             case ColEvent:  return tr("Event / tournament name from "
                                       "the PGN tag.");
             default:        return {};

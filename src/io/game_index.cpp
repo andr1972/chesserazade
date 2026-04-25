@@ -93,27 +93,13 @@ struct Derived {
     return bal;
 }
 
-/// Net-material-loss threshold (cp) for registering a
-/// sacrifice event. Measured AFTER the exchange sequence
-/// settles — see the dynamic window in `find_sacs`. 300 cp
-/// ≈ a minor piece: anything less tends to be ordinary
-/// trade noise, anything more is a real material swing.
-constexpr int NET_THRESHOLD_CP = 300;
-
-/// Upper bound on how far the detection window extends
-/// through a chain of captures, in plies. Exchanges lasting
-/// longer than this are truncated — rare in practice; 6 plies
-/// = 3 full moves covers even the deepest orthodox exchange
-/// tower (pile-up on one square) without pathological reach.
-constexpr int EXCHANGE_MAX_WINDOW = 6;
-
-/// Forward window (plies) to check for recovery after the
-/// exchange settles. 20 plies = 10 full moves — long enough
-/// to cover multi-move brilliancies like Byrne–Fischer 1956
-/// where the queen sac repays over 15+ plies of combinative
-/// play. Longer windows risk conflating the sac with later
-/// unrelated material swings; 20 is the classical middle.
-constexpr int SAC_RECOVERY_WINDOW = 20;
+/// Threshold below which a small group's signed sum is
+/// considered "noise" (knight-for-bishop nets to ±10,
+/// pawn-for-pawn to 0). Such small groups are dropped from
+/// the sign sequence before episodes are partitioned.
+/// Strict less-than: a single unrecaptured pawn (sum = ±100)
+/// passes and contributes to the next large group.
+constexpr int SMALL_GROUP_DROP_BELOW = 100;
 
 /// Find sacrifice events.
 ///
@@ -137,84 +123,175 @@ constexpr int SAC_RECOVERY_WINDOW = 20;
 /// Events for different mover-plies can overlap; the UI picks
 /// the largest by raw_loss for the Sac column, and the
 /// filter-by-sacrifice checkbox just tests non-empty.
-std::vector<MaterialSac> find_sacs(const std::vector<int>& balances,
-                                   const std::vector<Move>& moves) {
-    std::vector<MaterialSac> out;
-    const int n_plies = static_cast<int>(balances.size()) - 1;
-    if (n_plies <= 1) return out;
+// One "small group": consecutive captures uninterrupted by a
+// quiet ply. Stores its signed sum (white-perspective) and
+// the biggest piece that fell in the run — used to filter
+// pawn-only large groups later.
+struct SmallGroup {
+    int       start_ply = 0;   // 1-based, ply of first capture
+    int       sum_cp = 0;      // signed; positive = white gained
+    PieceType max_piece = PieceType::None;
+    int       max_piece_cp = 0;
+};
 
-    for (int i = 0; i < n_plies; ++i) {
-        // Mover: white on even i (ply 1 = i==0), black on odd.
-        const int mover_sign = (i % 2 == 0) ? +1 : -1;
+[[nodiscard]] std::vector<SmallGroup>
+find_small_groups(const std::vector<int>& balances,
+                  const std::vector<Move>& moves) {
+    std::vector<SmallGroup> out;
+    const int n = static_cast<int>(moves.size());
+    int i = 0;
+    while (i < n) {
+        const int delta = balances[static_cast<std::size_t>(i + 1)]
+                        - balances[static_cast<std::size_t>(i)];
+        if (delta == 0) { ++i; continue; }
 
-        // Dynamically extend the detection window through the
-        // exchange chain. Start with mover's move plus at least
-        // opponent's reply; keep advancing while the next ply
-        // captures something.
-        int end_k = std::min(i + 2,
-                              static_cast<int>(balances.size()) - 1);
-        const int cap_k = std::min(i + EXCHANGE_MAX_WINDOW,
-                                    static_cast<int>(balances.size()) - 1);
-        while (end_k < cap_k
-               && balances[static_cast<std::size_t>(end_k + 1)]
-                  != balances[static_cast<std::size_t>(end_k)]) {
-            ++end_k;
-        }
-
-        const int adv_before = mover_sign
-            * balances[static_cast<std::size_t>(i)];
-        const int adv_after = mover_sign
-            * balances[static_cast<std::size_t>(end_k)];
-        const int net_loss = adv_before - adv_after;
-        if (net_loss < NET_THRESHOLD_CP) continue;
-
-        // Raw loss: biggest single piece the mover lost in the
-        // window. Identify the piece directly from the move's
-        // `captured_piece` — bypasses the cp-bucket guessing of
-        // the previous implementation.
-        PieceType raw_piece = PieceType::None;
-        int raw_loss = 0;
-        for (int j = i; j < end_k; ++j) {
-            const int delta_white =
-                balances[static_cast<std::size_t>(j + 1)]
-                - balances[static_cast<std::size_t>(j)];
-            const int against_mover = -mover_sign * delta_white;
-            if (against_mover <= 0) continue; // not a loss for mover on this ply
-            // Ply j: move index j, captured piece is whatever
-            // the MOVER of ply j took — from the mover-of-the-
-            // detection perspective, that's their OWN piece
-            // that fell.
+        SmallGroup g;
+        g.start_ply = i + 1; // 1-based
+        // Walk forward across consecutive captures.
+        int j = i;
+        while (j < n) {
+            const int d = balances[static_cast<std::size_t>(j + 1)]
+                        - balances[static_cast<std::size_t>(j)];
+            if (d == 0) break;
+            g.sum_cp += d;
             const PieceType cap =
                 moves[static_cast<std::size_t>(j)].captured_piece.type;
             if (cap != PieceType::None) {
                 const int v = piece_value(cap);
-                if (v > raw_loss) {
-                    raw_loss = v;
-                    raw_piece = cap;
+                if (v > g.max_piece_cp) {
+                    g.max_piece_cp = v;
+                    g.max_piece = cap;
                 }
             }
+            ++j;
         }
+        out.push_back(g);
+        i = j;
+    }
+    return out;
+}
 
-        // Recovery measured as NET balance swing from settle
-        // point to window end (not peak). Further material
-        // losses after a partial recovery naturally subtract
-        // from the reported figure, so recovery_cp = 100% of
-        // raw_loss_cp means "by the end of the window the
-        // mover's material was back to pre-sac level".
-        const int window_end = std::min(
-            end_k + SAC_RECOVERY_WINDOW,
-            static_cast<int>(balances.size()) - 1);
-        const int adv_final = mover_sign
-            * balances[static_cast<std::size_t>(window_end)];
-        const int recovery = std::max(0, adv_final - adv_after);
+// Sign label for a small group. 0 marks groups whose sum is
+// below the noise threshold — they're dropped from the
+// sequence before episode partitioning.
+[[nodiscard]] int sign_of(const SmallGroup& g) noexcept {
+    if (g.sum_cp >= SMALL_GROUP_DROP_BELOW)  return +1;
+    if (g.sum_cp <= -SMALL_GROUP_DROP_BELOW) return -1;
+    return 0;
+}
 
-        MaterialSac s;
-        s.ply = i + 1; // 1-based
-        s.loss_cp = net_loss;
-        s.raw_piece = raw_piece;
-        s.raw_loss_cp = raw_loss;
-        s.recovery_cp = recovery;
-        out.push_back(s);
+// Partition a stream of (already-sign-filtered, non-zero)
+// small-group indices into "episodes" for one perspective.
+// `leading_sign` selects the perspective:
+//   +1 → white's view, episodes shaped (+...+−...−)
+//   −1 → black's view, episodes shaped (−...−+...+)
+// Each returned vector is the contiguous list of small-group
+// indices belonging to one episode. Episodes that never see
+// the trailing sign (e.g. a final hanging `+` for white) are
+// kept as "open" — net is just the lead-side sum.
+[[nodiscard]] std::vector<std::vector<int>>
+partition_episodes(const std::vector<SmallGroup>& groups,
+                   const std::vector<int>& nonzero_indices,
+                   int leading_sign) {
+    std::vector<std::vector<int>> episodes;
+    enum class Phase { Pre, Lead, Trail };
+    Phase phase = Phase::Pre;
+    std::vector<int> current;
+    for (const int gi : nonzero_indices) {
+        const int s = sign_of(groups[static_cast<std::size_t>(gi)]);
+        switch (phase) {
+            case Phase::Pre:
+                if (s == leading_sign) {
+                    current.push_back(gi);
+                    phase = Phase::Lead;
+                }
+                // else skip leading opposite-sign small groups
+                break;
+            case Phase::Lead:
+                if (s == leading_sign) {
+                    current.push_back(gi);
+                } else {
+                    current.push_back(gi);
+                    phase = Phase::Trail;
+                }
+                break;
+            case Phase::Trail:
+                if (s == leading_sign) {
+                    // Start of new episode.
+                    episodes.push_back(std::move(current));
+                    current.clear();
+                    current.push_back(gi);
+                    phase = Phase::Lead;
+                } else {
+                    current.push_back(gi);
+                }
+                break;
+        }
+    }
+    if (!current.empty()) episodes.push_back(std::move(current));
+    return episodes;
+}
+
+std::vector<MaterialSac> find_sacs(const std::vector<int>& balances,
+                                   const std::vector<Move>& moves) {
+    std::vector<MaterialSac> out;
+    if (moves.empty()) return out;
+
+    const auto small_groups = find_small_groups(balances, moves);
+
+    // Index list of small groups whose sign != 0.
+    std::vector<int> nonzero;
+    nonzero.reserve(small_groups.size());
+    for (std::size_t i = 0; i < small_groups.size(); ++i) {
+        if (sign_of(small_groups[i]) != 0) {
+            nonzero.push_back(static_cast<int>(i));
+        }
+    }
+    if (nonzero.empty()) return out;
+
+    // Partition for both perspectives and emit episodes.
+    for (const int leading : {+1, -1}) {
+        const auto episodes =
+            partition_episodes(small_groups, nonzero, leading);
+        for (const auto& ep : episodes) {
+            if (ep.empty()) continue;
+            // Filter: drop episodes whose every small group has
+            // max piece ≤ pawn — banal pawn-only exchanges.
+            bool any_above_pawn = false;
+            for (const int gi : ep) {
+                const auto& g = small_groups[static_cast<std::size_t>(gi)];
+                if (g.max_piece_cp > piece_value(PieceType::Pawn)) {
+                    any_above_pawn = true;
+                    break;
+                }
+            }
+            if (!any_above_pawn) continue;
+
+            // Episode metrics.
+            int net_white = 0;
+            PieceType raw_piece = PieceType::None;
+            int raw_piece_cp = 0;
+            for (const int gi : ep) {
+                const auto& g = small_groups[static_cast<std::size_t>(gi)];
+                net_white += g.sum_cp;
+                if (g.max_piece_cp > raw_piece_cp) {
+                    raw_piece_cp = g.max_piece_cp;
+                    raw_piece = g.max_piece;
+                }
+            }
+            // Owner-perspective net: positive = owner gained,
+            // negative = owner sacrificed-without-recovery.
+            const int net_owner = (leading == +1) ? net_white : -net_white;
+
+            MaterialSac s;
+            s.ply = small_groups[static_cast<std::size_t>(ep.front())]
+                        .start_ply;
+            s.owner = (leading == +1) ? Color::White : Color::Black;
+            s.net_cp = net_owner;
+            s.raw_piece = raw_piece;
+            s.raw_piece_cp = raw_piece_cp;
+            out.push_back(s);
+        }
     }
     return out;
 }
@@ -428,10 +505,11 @@ void write_record(std::ostream& os, const GameRecord& r) {
         const auto& s = r.material_sacs[i];
         if (i > 0) os << ", ";
         os << "{\"ply\": " << s.ply
-           << ", \"loss_cp\": " << s.loss_cp
+           << ", \"owner\": \""
+           << (s.owner == Color::White ? "white" : "black") << "\""
+           << ", \"net_cp\": " << s.net_cp
            << ", \"raw_piece\": \"" << piece_letter(s.raw_piece) << "\""
-           << ", \"raw_loss_cp\": " << s.raw_loss_cp
-           << ", \"recovery_cp\": " << s.recovery_cp << "}";
+           << ", \"raw_piece_cp\": " << s.raw_piece_cp << "}";
     }
     os << "]\n";
     os << "    }";
@@ -627,8 +705,13 @@ bool parse_record(Cursor& c, GameRecord& r) {
             if (!expect_key(c, "ply") || !parse_int(c, v)) return false;
             s.ply = static_cast<int>(v);
             if (!c.match(',')) return false;
-            if (!expect_key(c, "loss_cp") || !parse_int(c, v)) return false;
-            s.loss_cp = static_cast<int>(v);
+            if (!expect_key(c, "owner")) return false;
+            std::string ow;
+            if (!parse_string(c, ow)) return false;
+            s.owner = (ow == "black") ? Color::Black : Color::White;
+            if (!c.match(',')) return false;
+            if (!expect_key(c, "net_cp") || !parse_int(c, v)) return false;
+            s.net_cp = static_cast<int>(v);
             if (!c.match(',')) return false;
             if (!expect_key(c, "raw_piece")) return false;
             std::string rp;
@@ -636,13 +719,9 @@ bool parse_record(Cursor& c, GameRecord& r) {
             s.raw_piece = rp.empty() ? PieceType::None
                                      : piece_from_letter(rp[0]);
             if (!c.match(',')) return false;
-            if (!expect_key(c, "raw_loss_cp")
+            if (!expect_key(c, "raw_piece_cp")
                 || !parse_int(c, v)) return false;
-            s.raw_loss_cp = static_cast<int>(v);
-            if (!c.match(',')) return false;
-            if (!expect_key(c, "recovery_cp")
-                || !parse_int(c, v)) return false;
-            s.recovery_cp = static_cast<int>(v);
+            s.raw_piece_cp = static_cast<int>(v);
             if (!c.match('}')) return false;
             r.material_sacs.push_back(s);
             if (c.match(',')) continue;
@@ -661,7 +740,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
-    idx.schema = 8;
+    idx.schema = 9;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -734,7 +813,7 @@ std::optional<GameIndex> load_index(const std::string& path) {
     // rather than migrate we return nullopt so the caller
     // rebuilds from the PGN — rebuild is cheap and keeps the
     // loader free of per-version fixup code.
-    if (idx.schema != 8) return std::nullopt;
+    if (idx.schema != 9) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;
