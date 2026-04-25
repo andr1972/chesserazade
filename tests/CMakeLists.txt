@@ -32,6 +32,7 @@ add_executable(chesserazade_tests
     test_magic.cpp
     test_uci.cpp
     test_pgn_index.cpp
+    test_game_index.cpp
     test_tree_recorder.cpp
     ${CMAKE_SOURCE_DIR}/analyzer/search_tree.cpp
     test_search_tree.cpp

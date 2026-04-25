@@ -798,7 +798,7 @@ GameIndex build_index(std::string_view pgn_bytes,
                       const BuildProgressCb& progress,
                       const std::atomic<bool>& cancel) {
     GameIndex idx;
-    idx.schema = 9;
+    idx.schema = 10;
     idx.pgn_mtime = pgn_mtime;
 
     const auto headers = index_games(pgn_bytes);
@@ -871,7 +871,7 @@ std::optional<GameIndex> load_index(const std::string& path) {
     // rather than migrate we return nullopt so the caller
     // rebuilds from the PGN — rebuild is cheap and keeps the
     // loader free of per-version fixup code.
-    if (idx.schema != 9) return std::nullopt;
+    if (idx.schema != 10) return std::nullopt;
 
     if (!expect_key(c, "pgn_mtime") || !parse_int(c, i64)
         || !c.match(',')) return std::nullopt;
