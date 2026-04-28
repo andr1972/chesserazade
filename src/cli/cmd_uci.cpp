@@ -23,6 +23,7 @@
 #include "cli/cmd_uci.hpp"
 
 #include "board/board8x8_mailbox.hpp"
+#include "board/board_bitboard.hpp"
 
 #include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
@@ -339,6 +340,15 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
     for (int d = 1; d <= max_depth; ++d) {
         SearchLimits lim;
         lim.max_depth = d;
+        // Match the analyzer / solve CLI optimization stack so
+        // games played through UCI use the engine's strongest
+        // configuration (LMR, history, aspiration, PVS, check
+        // extensions; TT is already shared via `s.tt`).
+        lim.enable_lmr        = true;
+        lim.enable_history    = true;
+        lim.enable_aspiration = true;
+        lim.enable_pvs        = true;
+        lim.enable_check_ext  = true;
         if (budget_ms > 0) {
             const auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -349,8 +359,18 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
             lim.time_budget = std::chrono::milliseconds{remaining};
         }
 
-        Board8x8Mailbox work = s.board;
-        const SearchResult r = Search::find_best(work, lim, &s.tt);
+        // Search runs on `BoardBitboard` for speed. Re-derive
+        // from FEN each iteration so make/unmake inside the
+        // search doesn't accumulate state across iterations.
+        const std::string fen = serialize_fen(s.board);
+        auto bb_work = BoardBitboard::from_fen(fen);
+        SearchResult r;
+        if (bb_work.has_value()) {
+            r = Search::find_best(*bb_work, lim, &s.tt);
+        } else {
+            Board8x8Mailbox work = s.board;
+            r = Search::find_best(work, lim, &s.tt);
+        }
 
         if (r.completed_depth < d) {
             // The current iteration was aborted by the clock —
