@@ -28,9 +28,10 @@
             "name": "release",
             "inherits": "base",
             "displayName": "Release",
-            "description": "Optimized build, asserts off",
+            "description": "Optimized build, asserts off, debug info kept (-g) so addr2line and gdb can resolve crashes — debug info has zero runtime cost",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS_RELEASE": "-O3 -g -DNDEBUG"
             }
         },
         {
