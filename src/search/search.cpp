@@ -467,6 +467,24 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     ++nodes;
     out_stats = {};
 
+    // Hard recursion cap. `pv`, `killers`, and `pv.moves[ply+1]`
+    // accesses below all assume `ply < PV_SIZE`. Without this
+    // guard a position whose search legitimately runs past
+    // `MAX_DEPTH` — most easily a perpetual-check sequence with
+    // `enable_check_ext` keeping `depth` constant — would index
+    // off the end of those fixed-size arrays. Treat `ply ==
+    // MAX_DEPTH` as a horizon and bail out with a quiescence
+    // verdict (or static eval if quiescence is disabled).
+    if (ply >= Search::MAX_DEPTH) {
+        if (stop.disable_quiescence) {
+            const int e = stop.use_incremental_eval
+                ? board.evaluate_incremental()
+                : evaluate(board);
+            return {e, true};
+        }
+        return quiesce(board, alpha, beta, nodes, stop, out_stats);
+    }
+
     const std::size_t p = static_cast<std::size_t>(ply);
     pv.length[p] = 0;
 
