@@ -170,6 +170,18 @@ struct SearchLimits {
     /// label polls it; other callers can leave it null.
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
 
+    /// Contempt: centipawns subtracted from the side-to-move's
+    /// score whenever search returns a draw verdict (in-tree
+    /// repetition or 50-move rule). With `contempt_cp = 20` and
+    /// the engine's static eval at +200, a drawn line scores
+    /// -20 (much worse than +200 → engine avoids the draw); at
+    /// -200 the same draw scores -20 (much better than -200 →
+    /// engine seeks the draw). The asymmetry — winners avoid
+    /// repetitions, losers run for them — falls out automatically
+    /// from a single signed value. Default 0 = "draw is exactly
+    /// 0", same behaviour as before contempt was added.
+    int contempt_cp = 0;
+
     /// Game-history zobrist keys reaching back from before the
     /// search root. The search treats any in-tree position whose
     /// zobrist matches an entry here OR an earlier entry on the

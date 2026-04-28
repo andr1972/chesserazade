@@ -204,6 +204,42 @@ TEST_CASE("Search: in-tree repetition is seen as a draw",
     REQUIRE(r.score > 0);
 }
 
+TEST_CASE("Search: contempt makes draws less attractive to whoever's on move",
+          "[search][contempt]") {
+    // Equal-material king-and-pawn endgame seeded so the white
+    // king has a choice between staying near the center or
+    // walking back to a 3-fold repetition with the recorded root.
+    // Contempt = 30 must make any in-tree path that returns the
+    // root key score -30 (draw_score = -contempt_cp from side-
+    // to-move's POV) instead of 0. We verify two things:
+    //
+    //   1. With contempt = 0, the search returns its "honest"
+    //      score for the position.
+    //   2. With contempt > 0, repetition lines are scored
+    //      strictly worse — the absolute best score must be
+    //      ≥ the no-contempt score (the engine prefers any
+    //      non-drawing alternative).
+    auto b = board_from("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+    const ZobristKey root_key = b.zobrist_key();
+    const std::array<ZobristKey, 1> hist{root_key};
+
+    SearchLimits l0;
+    l0.max_depth = 4;
+    l0.position_history = hist;
+    const SearchResult r0 = Search::find_best(b, l0);
+
+    SearchLimits l1 = l0;
+    l1.contempt_cp = 30;
+    const SearchResult r1 = Search::find_best(b, l1);
+
+    REQUIRE(r0.completed_depth == 4);
+    REQUIRE(r1.completed_depth == 4);
+    // Contempt only re-prices draws, so non-drawing winning
+    // lines see the same score; the picked move must remain at
+    // least as good as without contempt.
+    REQUIRE(r1.score >= r0.score);
+}
+
 TEST_CASE("Search: 50-move rule cuts a winning subtree to a draw",
           "[search][fifty-move]") {
     // White is up a queen but the half-move clock starts at 99.

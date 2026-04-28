@@ -124,6 +124,7 @@ struct Stop {
     bool enable_aspiration = false;
     bool enable_pvs = false;
     bool enable_check_ext = false;
+    int contempt_cp = 0;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
     /// Pre-search game history: zobrist keys of positions reached
@@ -484,22 +485,22 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     // (ply 0) — repetitions of the root itself are detected from
     // ply ≥ 1 once the root key has been pushed onto the path.
     if (ply > 0) {
+        // The draw score is `-contempt_cp` from the side-to-
+        // move's perspective: a positive contempt makes draws
+        // *less* attractive to whoever is on move at this node,
+        // which propagates through negamax as "winners avoid /
+        // losers seek". When contempt is 0 (the default) the
+        // value collapses to plain 0.
+        const int draw_score = -stop.contempt_cp;
         for (ZobristKey k : stop.position_history) {
-            if (k == key) return {0, true};
+            if (k == key) return {draw_score, true};
         }
         for (ZobristKey k : stop.search_path) {
-            if (k == key) return {0, true};
+            if (k == key) return {draw_score, true};
         }
-        // 50-move rule: 100 half-moves (50 full moves) without a
-        // pawn move or a capture is a draw the player on move can
-        // claim. Treat as forced draw — same reasoning as the
-        // repetition heuristic: side wishing to avoid a draw
-        // can't unilaterally do so once the clock has already
-        // run out. Skip at the root for symmetry with repetition
-        // detection (the *position* we're searching from is
-        // never itself the draw verdict).
+        // 50-move rule (100 half-moves without progress).
         if (board.halfmove_clock() >= 100) {
-            return {0, true};
+            return {draw_score, true};
         }
     }
 
@@ -919,6 +920,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_aspiration,
         limits.enable_pvs,
         limits.enable_check_ext,
+        limits.contempt_cp,
         limits.cancel,
         limits.progress_nodes,
         limits.position_history,
