@@ -13,6 +13,7 @@
 #include <chesserazade/search.hpp>
 #include <chesserazade/transposition_table.hpp>
 
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cstddef>
@@ -221,9 +222,16 @@ int cmd_solve(std::span<const std::string_view> args) {
         bool have_result = false;
         std::uint64_t total_nodes = 0;
         long long total_ms = 0;
+        // `progress_nodes` reports the live node count from inside
+        // `find_best` and — unlike `SearchResult.nodes` — is *not*
+        // rolled back when an iteration aborts. We read it after
+        // each call to count the work the aborted iteration
+        // actually did, which would otherwise be lost.
+        std::atomic<std::uint64_t> progress{0};
         for (int d = 1; d <= limits.max_depth; ++d) {
             SearchLimits lim = limits;
             lim.max_depth = d;
+            lim.progress_nodes = &progress;
             if (parsed.options.time_ms > 0) {
                 const long long remaining =
                     static_cast<long long>(parsed.options.time_ms) - total_ms;
@@ -231,13 +239,24 @@ int cmd_solve(std::span<const std::string_view> args) {
                 lim.time_budget = std::chrono::milliseconds{remaining};
             }
             const auto iter_begin = clk::now();
+            // Reset to 0 before the call — `find_best` stores
+            // (not adds) into `progress_nodes`, so without the
+            // reset the value would dip then climb back up,
+            // making a delta meaningless.
+            progress.store(0, std::memory_order_relaxed);
             const SearchResult ir = Search::find_best(*bb, lim, &tt);
             const long long iter_ms =
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     clk::now() - iter_begin).count();
+            // Prefer the larger of the two — `ir.nodes` is exact
+            // for completed iterations but rolled back on abort;
+            // `progress` is approximate (stale by one budget-check
+            // tick) but never rolls back. The max captures both.
+            const std::uint64_t actual_nodes = std::max<std::uint64_t>(
+                ir.nodes, progress.load(std::memory_order_relaxed));
             if (ir.completed_depth < d) {
                 if (!have_result) r = ir;
-                total_nodes += ir.nodes;
+                total_nodes += actual_nodes;
                 total_ms =
                     std::chrono::duration_cast<std::chrono::milliseconds>(
                         clk::now() - begin).count();
@@ -245,7 +264,7 @@ int cmd_solve(std::span<const std::string_view> args) {
             }
             r = ir;
             have_result = true;
-            total_nodes += ir.nodes;
+            total_nodes += actual_nodes;
             total_ms =
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     clk::now() - begin).count();
