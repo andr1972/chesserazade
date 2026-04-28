@@ -490,6 +490,17 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         for (ZobristKey k : stop.search_path) {
             if (k == key) return {0, true};
         }
+        // 50-move rule: 100 half-moves (50 full moves) without a
+        // pawn move or a capture is a draw the player on move can
+        // claim. Treat as forced draw — same reasoning as the
+        // repetition heuristic: side wishing to avoid a draw
+        // can't unilaterally do so once the clock has already
+        // run out. Skip at the root for symmetry with repetition
+        // detection (the *position* we're searching from is
+        // never itself the draw verdict).
+        if (board.halfmove_clock() >= 100) {
+            return {0, true};
+        }
     }
 
     PathGuard path_guard(stop.search_path, key);

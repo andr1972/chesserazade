@@ -204,6 +204,30 @@ TEST_CASE("Search: in-tree repetition is seen as a draw",
     REQUIRE(r.score > 0);
 }
 
+TEST_CASE("Search: 50-move rule cuts a winning subtree to a draw",
+          "[search][fifty-move]") {
+    // White is up a queen but the half-move clock starts at 99.
+    // The very next move (whatever white plays — neither pawn
+    // move nor capture in this position because we want to test
+    // the "still wins" path through the engine's depth-1 view of
+    // the score) increments the clock to 100, which the search
+    // must then read as a draw. We verify by giving the search a
+    // choice between a pawn push (resets the clock — winning
+    // subtree fully alive) and any other move (clock to 100 →
+    // any subtree-leaf below the horizon scores 0). At depth ≥ 2
+    // the pawn push must come out best.
+    auto b = board_from("4k3/8/4P3/8/8/8/8/3QK3 w - - 99 50");
+    SearchLimits l;
+    l.max_depth = 4;
+    const SearchResult r = Search::find_best(b, l);
+    REQUIRE(r.completed_depth == 4);
+    REQUIRE(r.best_move.from != Square::None);
+    // The pawn push (e6→e7, resetting the clock) should be
+    // preferred over a king/queen shuffle that drives the clock
+    // past 100 and converts the win into a draw at every leaf.
+    REQUIRE(to_uci(r.best_move) == "e6e7");
+}
+
 TEST_CASE("Search: picks the move that wins a queen at depth 2",
           "[search][material]") {
     // Black's queen hangs on d8 to white's rook on d1 — with
