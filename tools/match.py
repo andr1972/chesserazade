@@ -102,10 +102,18 @@ def _default_name_from_cmd(cmd: str) -> str:
 class Engine:
     def __init__(self, cmd: str, name: Optional[str] = None) -> None:
         self.cmd = cmd
+        # stderr → /tmp/<name>-<pid>.err so a crashing engine
+        # leaves an audit trail (assertion text, sanitizer report,
+        # last UCI command before the close). Read it after a
+        # crash to figure out what killed the subprocess.
+        self.stderr_path = Path(
+            f"/tmp/match-{Path(shlex.split(cmd)[0]).name}-"
+            f"{int(time.time()*1000)}-{id(self)}.err")
+        self._stderr_file = open(self.stderr_path, "w")
         self.proc = subprocess.Popen(
             shlex.split(cmd),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, text=True, bufsize=1,
+            stderr=self._stderr_file, text=True, bufsize=1,
         )
         self.name = name or _default_name_from_cmd(cmd)
         self._send("uci")
@@ -165,6 +173,19 @@ class Engine:
             self.proc.wait(timeout=2)
         except Exception:
             self.proc.kill()
+        finally:
+            try:
+                self._stderr_file.close()
+            except Exception:
+                pass
+            # Drop empty stderr logs so /tmp doesn't fill up with
+            # zero-byte files from clean exits — keep only the
+            # ones that actually captured output.
+            try:
+                if self.stderr_path.stat().st_size == 0:
+                    self.stderr_path.unlink()
+            except Exception:
+                pass
 
 
 def play_game(white: Engine, black: Engine, *,
@@ -349,18 +370,50 @@ def main() -> int:
             games_pgn[i] = game
 
     def worker(wid: int) -> None:
-        e1 = Engine(args.engine1, args.name1)
-        e2 = Engine(args.engine2, args.name2)
+        # `e1` / `e2` may be replaced mid-loop after an engine
+        # crash (see the except below), so they're declared
+        # outside the loop and the cleanup at the end re-reads
+        # whatever is current.
+        e1: Optional[Engine] = Engine(args.engine1, args.name1)
+        e2: Optional[Engine] = Engine(args.engine2, args.name2)
         try:
             while True:
                 try:
                     i = work_q.get_nowait()
                 except queue.Empty:
                     return
-                play_one(e1, e2, i, wid)
+                try:
+                    play_one(e1, e2, i, wid)
+                except (RuntimeError, TimeoutError) as exc:
+                    # Likely an engine subprocess died (segfault,
+                    # assertion, mid-search close). Drop the game
+                    # — exclude it from PGN and from the score —
+                    # and respawn fresh engines so the worker can
+                    # keep pulling from the queue.
+                    stderr_paths = [str(e.stderr_path)
+                                    for e in (e1, e2)
+                                    if e is not None]
+                    with lock:
+                        print(f"[{i+1}/{args.games}] worker {wid}: "
+                              f"game aborted ({exc}); engine stderr at: "
+                              + ", ".join(stderr_paths),
+                              flush=True)
+                        worker_status[wid] = None
+                    for e in (e1, e2):
+                        if e is not None:
+                            try:
+                                e.quit()
+                            except Exception:
+                                pass
+                    e1 = Engine(args.engine1, args.name1)
+                    e2 = Engine(args.engine2, args.name2)
         finally:
-            e1.quit()
-            e2.quit()
+            for e in (e1, e2):
+                if e is not None:
+                    try:
+                        e.quit()
+                    except Exception:
+                        pass
 
     def heartbeat() -> None:
         # Sleep in small ticks so we can react quickly to
