@@ -141,6 +141,7 @@ void handle_ucinewgame(UciSession& s) {
     s.tt.clear();
     auto r = Board8x8Mailbox::from_fen(STARTING_POSITION_FEN);
     if (r) s.board = *r;
+    s.position_history.clear();
 }
 
 /// `setoption name <X> [value <Y>]`. We accept the documented
@@ -210,13 +211,29 @@ void handle_position(UciSession& s,
     if (!r) return;
     s.board = *r;
 
+    // Rebuild position history from scratch on every `position`
+    // command — UCI lets the GUI overwrite the game tree at any
+    // point. Push every position *before* the live `s.board`
+    // (i.e. the start FEN, then the position after each played
+    // move except the last); the live position itself goes onto
+    // the search-path stack via the root negamax frame.
+    s.position_history.clear();
+    s.position_history.push_back(s.board.zobrist_key());
+
     if (i < toks.size() && toks[i] == "moves") {
         ++i;
         for (; i < toks.size(); ++i) {
             auto m = resolve_uci(s.board, toks[i]);
             if (!m) return;
             s.board.make_move(*m);
+            s.position_history.push_back(s.board.zobrist_key());
         }
+    }
+    // Drop the live position — it'll appear on the search path
+    // as the root, and game-history entries equal to the root
+    // would otherwise look like a self-repetition at every node.
+    if (!s.position_history.empty()) {
+        s.position_history.pop_back();
     }
 }
 
@@ -349,6 +366,12 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
         lim.enable_aspiration = true;
         lim.enable_pvs        = true;
         lim.enable_check_ext  = true;
+        // Past-game zobrists so the search detects 3-fold lines
+        // reaching back into actually-played moves, plus a small
+        // contempt so the engine prefers fighting on over a
+        // forced draw when the static eval is positive.
+        lim.position_history  = s.position_history;
+        lim.contempt_cp       = 20;
         if (budget_ms > 0) {
             const auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(

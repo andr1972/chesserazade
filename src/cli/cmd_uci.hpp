@@ -12,12 +12,14 @@
 
 #include "board/board8x8_mailbox.hpp"
 
+#include <chesserazade/board.hpp>
 #include <chesserazade/transposition_table.hpp>
 
 #include <iosfwd>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace chesserazade::cli {
 
@@ -30,6 +32,13 @@ struct UciSession {
     Board8x8Mailbox board;
     TranspositionTable tt;
     int hash_mb;
+    /// Zobrist keys of every position reached *before* the
+    /// current `board` — i.e. start position + after each move
+    /// played, with the very last position (= `board` itself)
+    /// excluded. Passed to `SearchLimits::position_history` so
+    /// the search detects a 3-fold-style repetition reaching
+    /// back into the played game.
+    std::vector<ZobristKey> position_history;
 
     UciSession();
 };
