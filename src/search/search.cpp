@@ -126,6 +126,15 @@ struct Stop {
     bool enable_check_ext = false;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
+    /// Pre-search game history: zobrist keys of positions reached
+    /// before `find_best` was called. Used by repetition detection
+    /// in `negamax`.
+    std::span<const ZobristKey> position_history{};
+    /// Live search-path zobrists, pushed on entry to each
+    /// in-search node and popped on exit. A node sees its own
+    /// key already in this stack only if the line is a
+    /// repetition.
+    std::vector<ZobristKey> search_path{};
     bool abort = false;
 
     bool should_stop(std::uint64_t nodes_so_far) noexcept {
@@ -433,6 +442,21 @@ NegamaxResult quiesce(Board& board, int alpha, int beta,
 // Main negamax
 // ---------------------------------------------------------------------------
 
+/// RAII helper: keep `Stop::search_path` consistent with the
+/// recursion. Pushes a zobrist on construction, pops on
+/// destruction — so every `negamax` return path (early TT cut,
+/// quiescence, β-cutoff, normal completion, even an aborted
+/// subtree) automatically restores the stack.
+struct PathGuard {
+    std::vector<ZobristKey>& path;
+    PathGuard(std::vector<ZobristKey>& p, ZobristKey k) : path(p) {
+        path.push_back(k);
+    }
+    ~PathGuard() { path.pop_back(); }
+    PathGuard(const PathGuard&) = delete;
+    PathGuard& operator=(const PathGuard&) = delete;
+};
+
 NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                       std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
                       HistoryTable& history,
@@ -449,13 +473,33 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         return {0, false};
     }
 
+    const ZobristKey key = board.zobrist_key();
+
+    // --- Repetition detection -----------------------------------------
+    // 2-fold heuristic: any in-search position whose zobrist matches
+    // either the pre-search game history *or* an earlier node on the
+    // current search path is a forced draw. Reasoning: whichever side
+    // entered the loop can replay it, so the line is at best the
+    // draw score for the side hoping to improve. Skip at the root
+    // (ply 0) — repetitions of the root itself are detected from
+    // ply ≥ 1 once the root key has been pushed onto the path.
+    if (ply > 0) {
+        for (ZobristKey k : stop.position_history) {
+            if (k == key) return {0, true};
+        }
+        for (ZobristKey k : stop.search_path) {
+            if (k == key) return {0, true};
+        }
+    }
+
+    PathGuard path_guard(stop.search_path, key);
+
     // --- TT probe -----------------------------------------------------
     // On a probe-cut we reconstruct `exact` from the stored bound.
     // Loop-completed stores use `Exact` (best > α₀) or `Upper`
     // (fail-low, all children visited) — both mean "all direct
     // children were visited" in our sense. A `Lower` store only
     // happens at a β-cutoff, which is precisely `exact=false`.
-    const ZobristKey key = board.zobrist_key();
     Move tt_move{};
     if (tt != nullptr) {
         const TtProbe probe = tt->probe(key);
@@ -866,8 +910,13 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_check_ext,
         limits.cancel,
         limits.progress_nodes,
-        false,
+        limits.position_history,
+        {},     // search_path: starts empty, grows during recursion
+        false,  // abort
     };
+    // Reserve up front so the per-node push/pop never reallocates
+    // (which would invalidate the inline span used by the recursion).
+    stop.search_path.reserve(static_cast<std::size_t>(MAX_DEPTH) + 1);
 
     // Root terminal.
     const MoveList root_moves = MoveGenerator::generate_legal(board);

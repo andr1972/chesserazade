@@ -33,12 +33,14 @@
 /// ordering beyond trivial (0.8), quiescence (0.8).
 #pragma once
 
+#include <chesserazade/board.hpp>
 #include <chesserazade/move.hpp>
 
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <vector>
 
 namespace chesserazade {
@@ -167,6 +169,19 @@ struct SearchLimits {
     /// budget-check boundary. The analyzer's live-progress
     /// label polls it; other callers can leave it null.
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
+
+    /// Game-history zobrist keys reaching back from before the
+    /// search root. The search treats any in-tree position whose
+    /// zobrist matches an entry here OR an earlier entry on the
+    /// current search path as a *repetition draw* and returns the
+    /// draw score immediately — the same heuristic top engines
+    /// use ("a single in-search repetition is a forced draw,
+    /// because the opponent can always retread the loop").
+    /// Empty span (the default) means "no history" — fine for
+    /// puzzle-solving, but a UCI-driven game should populate this
+    /// from the move stack so `e1 → e2 → e1` mid-search is
+    /// detectable. The span's storage must outlive `find_best`.
+    std::span<const ZobristKey> position_history{};
 };
 
 /// Cumulative capture-value and check-giving counts along a

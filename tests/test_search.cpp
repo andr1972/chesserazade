@@ -22,6 +22,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <string>
 
 using namespace chesserazade;
@@ -174,6 +175,33 @@ TEST_CASE("Search: node limit cuts the search early", "[search][limits]") {
     REQUIRE(r.completed_depth >= 1);
     REQUIRE(r.completed_depth < 6);
     REQUIRE(r.best_move.from != Square::None);
+}
+
+TEST_CASE("Search: in-tree repetition is seen as a draw",
+          "[search][repetition]") {
+    // White has K + Q vs lone black king — winning by 9+ pawn
+    // units, so without repetition awareness depth-4 returns a
+    // big positive score. We feed the current zobrist into
+    // `position_history`; any line in the search tree that
+    // returns to this exact position now scores 0 (forced draw)
+    // rather than the static eval. The search must still
+    // complete and pick a legal best move — we're testing that
+    // the path-stack push/pop and the early-return don't break
+    // the rest of the search machinery.
+    auto b = board_from("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+    const ZobristKey root_key = b.zobrist_key();
+    const std::array<ZobristKey, 1> hist{root_key};
+
+    SearchLimits l;
+    l.max_depth = 4;
+    l.position_history = hist;
+    const SearchResult r = Search::find_best(b, l);
+    REQUIRE(r.completed_depth == 4);
+    REQUIRE(r.best_move.from != Square::None);
+    // Sanity: white still finds a winning move (the queen
+    // chases / mates), so the score is positive even with
+    // repetition detection on.
+    REQUIRE(r.score > 0);
 }
 
 TEST_CASE("Search: picks the move that wins a queen at depth 2",
