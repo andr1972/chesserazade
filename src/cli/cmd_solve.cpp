@@ -219,6 +219,7 @@ int cmd_solve(std::span<const std::string_view> args) {
         using clk = std::chrono::steady_clock;
         const auto begin = clk::now();
         bool have_result = false;
+        std::uint64_t total_nodes = 0;
         for (int d = 1; d <= limits.max_depth; ++d) {
             SearchLimits lim = limits;
             lim.max_depth = d;
@@ -238,6 +239,14 @@ int cmd_solve(std::span<const std::string_view> args) {
             }
             r = ir;
             have_result = true;
+            total_nodes += ir.nodes;
+            const long long total_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    clk::now() - begin).count();
+            const double mnps = total_ms > 0
+                ? static_cast<double>(total_nodes) / 1000.0
+                  / static_cast<double>(total_ms)
+                : 0.0;
 
             std::cout << "depth  " << ir.completed_depth << "  score ";
             if (Search::is_mate_score(ir.score)) {
@@ -248,9 +257,10 @@ int cmd_solve(std::span<const std::string_view> args) {
             } else {
                 std::cout << "cp " << ir.score;
             }
-            std::cout << " nodes " << ir.nodes
-                      << "  time " << ir.elapsed.count() << " ms\n"
-                      << "  pv";
+            std::cout << " nodes " << total_nodes
+                      << "  time " << total_ms << " ms";
+            std::printf("  speed %.2f Mn/s\n", mnps);
+            std::cout << "  pv";
             for (const Move& m : ir.principal_variation) {
                 std::cout << ' ' << to_uci(m);
             }
