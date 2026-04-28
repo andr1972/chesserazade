@@ -167,15 +167,24 @@ class Engine:
 def play_game(white: Engine, black: Engine, *,
               movetime_white: int, movetime_black: int,
               opening: Optional[chess.Board] = None,
-              game_label: str = "") -> tuple[str, chess.Board, str]:
+              game_label: str = "",
+              status_ref: Optional[dict] = None
+              ) -> tuple[str, chess.Board, str]:
     """Play one game. Returns (result_string, final_board, termination_reason).
 
     `game_label` (e.g. "[3/10]") is prefixed to every per-move log line so
     a tail -f can attribute moves to the right game in a multi-game match.
+
+    `status_ref`, when supplied, gets `status_ref["moves"]` updated to the
+    current full-move number after each move — the heartbeat thread reads
+    this to report live progress without holding the per-move loop's
+    print lock.
     """
     white.new_game()
     black.new_game()
     board = opening.copy() if opening is not None else chess.Board()
+    if status_ref is not None:
+        status_ref["moves"] = 0
     if game_label:
         opening_str = " ".join(m.uci() for m in board.move_stack)
         if opening_str:
@@ -197,6 +206,8 @@ def play_game(white: Engine, black: Engine, *,
             sys.stdout.write(".")
             sys.stdout.flush()
         board.push(move)
+        if status_ref is not None:
+            status_ref["moves"] = board.fullmove_number
     if game_label:
         sys.stdout.write("\n")
         sys.stdout.flush()
@@ -230,6 +241,9 @@ def main() -> int:
                          " -j alone = number of physical cores."
                          " -jN = N workers, capped at the physical core count"
                          " and at the number of games.")
+    ap.add_argument("--heartbeat-interval", type=float, default=5.0,
+                    help="seconds between per-worker heartbeat lines in"
+                         " parallel mode (default 5). Set to 0 to disable.")
     args = ap.parse_args()
 
     phys = physical_cores()
@@ -269,21 +283,38 @@ def main() -> int:
     for i in range(args.games):
         work_q.put(i)
 
-    def play_one(e1: Engine, e2: Engine, i: int) -> None:
+    # Per-worker live status — keys are worker ids (0..jobs-1).
+    # `None` means the worker is between games / done. Each
+    # entry while a game is in progress holds the game index,
+    # the move number (updated from `play_game`), and the wall-
+    # clock start. The heartbeat thread reads these under
+    # `lock`; workers update the dict without locking on the
+    # hot per-move path (single-writer per slot makes that safe).
+    worker_status: dict[int, Optional[dict]] = {w: None for w in range(jobs)}
+    done_event = threading.Event()
+
+    def play_one(e1: Engine, e2: Engine, i: int, wid: int) -> None:
         # Alternate colors: even index → e1 white, odd → e2 white.
         white, black = (e1, e2) if (i % 2 == 0) else (e2, e1)
         opening = openings[i // 2] if openings is not None else None
         # Per-move dots only make sense in serial mode; in parallel
-        # they would interleave between concurrent games.
+        # they would interleave between concurrent games (the
+        # heartbeat thread reports progress instead).
         label = f"[{i+1}/{args.games}]" if jobs == 1 else ""
         t0 = time.time()
-        mt_white = mt1 if white is e1 else mt2
-        mt_black = mt1 if black is e1 else mt2
-        result, board, term = play_game(white, black,
-                                        movetime_white=mt_white,
-                                        movetime_black=mt_black,
-                                        opening=opening,
-                                        game_label=label)
+        status_entry = {"game": i, "moves": 0, "started": t0}
+        worker_status[wid] = status_entry
+        try:
+            mt_white = mt1 if white is e1 else mt2
+            mt_black = mt1 if black is e1 else mt2
+            result, board, term = play_game(white, black,
+                                            movetime_white=mt_white,
+                                            movetime_black=mt_black,
+                                            opening=opening,
+                                            game_label=label,
+                                            status_ref=status_entry)
+        finally:
+            worker_status[wid] = None
         dt_s = time.time() - t0
         with lock:
             if result == "1-0":
@@ -306,7 +337,7 @@ def main() -> int:
             game.headers["TimeControl"] = f"{args.movetime}ms/move"
             games_pgn[i] = game
 
-    def worker() -> None:
+    def worker(wid: int) -> None:
         e1 = Engine(args.engine1, args.name1)
         e2 = Engine(args.engine2, args.name2)
         try:
@@ -315,22 +346,61 @@ def main() -> int:
                     i = work_q.get_nowait()
                 except queue.Empty:
                     return
-                play_one(e1, e2, i)
+                play_one(e1, e2, i, wid)
         finally:
             e1.quit()
             e2.quit()
 
+    def heartbeat() -> None:
+        # Sleep in small ticks so we can react quickly to
+        # `done_event` without depending on a long sleep.
+        interval = args.heartbeat_interval
+        while not done_event.wait(timeout=min(0.5, interval)):
+            now = time.time()
+            # Build the snapshot under `lock` so its print line
+            # can't be split by a worker's result line.
+            with lock:
+                done = sum(1 for g in games_pgn if g is not None)
+                parts = []
+                for w in sorted(worker_status):
+                    s = worker_status[w]
+                    if s is None:
+                        continue
+                    elapsed = now - s["started"]
+                    parts.append(f"W{w}: g{s['game']+1} m{s['moves']} "
+                                 f"({elapsed:.0f}s)")
+                if parts:
+                    print(f"[heartbeat] done {done}/{args.games} | "
+                          + " | ".join(parts), flush=True)
+            # Drift-free pacing: subtract the print cost from the
+            # next sleep so the cadence stays close to `interval`.
+            slept = time.time() - now
+            remaining = max(0.0, interval - slept)
+            if done_event.wait(timeout=remaining):
+                return
+
+    hb_thread: Optional[threading.Thread] = None
     try:
+        if jobs > 1 and args.heartbeat_interval > 0:
+            hb_thread = threading.Thread(target=heartbeat, daemon=True)
+            hb_thread.start()
+
         if jobs == 1:
-            worker()
+            worker(0)
         else:
-            threads = [threading.Thread(target=worker, daemon=True)
-                       for _ in range(jobs)]
+            threads = [threading.Thread(target=worker, args=(w,), daemon=True)
+                       for w in range(jobs)]
             for t in threads:
                 t.start()
             for t in threads:
                 t.join()
+
     finally:
+        # Stop the heartbeat thread regardless of how we got here
+        # (normal completion, KeyboardInterrupt, engine crash).
+        done_event.set()
+        if hb_thread is not None:
+            hb_thread.join(timeout=2.0)
         completed = [g for g in games_pgn if g is not None]
         with args.pgn.open("w") as f:
             for g in completed:
