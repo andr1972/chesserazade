@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2024-2026 Andrzej Borucki
+# SPDX-License-Identifier: Apache-2.0
+
 """Run a UCI engine match. Two engines, N games, fixed movetime.
 
 Usage:
@@ -184,7 +187,7 @@ def play_game(white: Engine, black: Engine, *,
     black.new_game()
     board = opening.copy() if opening is not None else chess.Board()
     if status_ref is not None:
-        status_ref["moves"] = 0
+        status_ref["last_move"] = "—"
     if game_label:
         opening_str = " ".join(m.uci() for m in board.move_stack)
         if opening_str:
@@ -207,7 +210,15 @@ def play_game(white: Engine, black: Engine, *,
             sys.stdout.flush()
         board.push(move)
         if status_ref is not None:
-            status_ref["moves"] = board.fullmove_number
+            # After the push, `board.turn` is whose move comes
+            # *next*, so the side that just played is the
+            # opposite. The full-move number ticks up only after
+            # black's move, so a black move shares the number with
+            # the white move that preceded it.
+            if board.turn == chess.WHITE:
+                status_ref["last_move"] = f"{board.fullmove_number - 1}b"
+            else:
+                status_ref["last_move"] = f"{board.fullmove_number}w"
     if game_label:
         sys.stdout.write("\n")
         sys.stdout.flush()
@@ -302,7 +313,7 @@ def main() -> int:
         # heartbeat thread reports progress instead).
         label = f"[{i+1}/{args.games}]" if jobs == 1 else ""
         t0 = time.time()
-        status_entry = {"game": i, "moves": 0, "started": t0}
+        status_entry = {"game": i, "last_move": "—", "started": t0}
         worker_status[wid] = status_entry
         try:
             mt_white = mt1 if white is e1 else mt2
@@ -367,7 +378,7 @@ def main() -> int:
                     if s is None:
                         continue
                     elapsed = now - s["started"]
-                    parts.append(f"W{w}: g{s['game']+1} m{s['moves']} "
+                    parts.append(f"W{w}: g{s['game']+1} m{s['last_move']} "
                                  f"({elapsed:.0f}s)")
                 if parts:
                     print(f"[heartbeat] done {done}/{args.games} | "
