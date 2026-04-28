@@ -273,9 +273,12 @@ def main() -> int:
                          " -j alone = number of physical cores."
                          " -jN = N workers, capped at the physical core count"
                          " and at the number of games.")
-    ap.add_argument("--heartbeat-interval", type=float, default=5.0,
-                    help="seconds between per-worker heartbeat lines in"
-                         " parallel mode (default 5). Set to 0 to disable.")
+    ap.add_argument("--heartbeat-interval", type=float, default=30.0,
+                    help="seconds of console silence before the next heartbeat"
+                         " line is printed in parallel mode (default 30)."
+                         " Each game-result line resets the timer, so during"
+                         " a busy run heartbeats stay quiet. Set to 0 to"
+                         " disable entirely.")
     args = ap.parse_args()
 
     phys = physical_cores()
@@ -324,6 +327,11 @@ def main() -> int:
     # hot per-move path (single-writer per slot makes that safe).
     worker_status: dict[int, Optional[dict]] = {w: None for w in range(jobs)}
     done_event = threading.Event()
+    # Timestamp of the last line written to stdout (header counts).
+    # The heartbeat thread waits until `now - last_print_ts >=
+    # heartbeat_interval` before printing, so a busy run with
+    # frequent game completions stays quiet.
+    last_print_ts = [time.time()]
 
     def play_one(e1: Engine, e2: Engine, i: int, wid: int) -> None:
         # Alternate colors: even index → e1 white, odd → e2 white.
@@ -360,6 +368,7 @@ def main() -> int:
                   f"({term}, {board.fullmove_number} moves, {dt_s:.1f}s) | "
                   f"{name1} {score[name1]:.1f} - {score[name2]:.1f} {name2}",
                   flush=True)
+            last_print_ts[0] = time.time()
             game = chess.pgn.Game.from_board(board)
             game.headers["Event"] = "Rukh vs chesserazade match"
             game.headers["Round"] = str(i + 1)
@@ -398,6 +407,7 @@ def main() -> int:
                               f"game aborted ({exc}); engine stderr at: "
                               + ", ".join(stderr_paths),
                               flush=True)
+                        last_print_ts[0] = time.time()
                         worker_status[wid] = None
                     for e in (e1, e2):
                         if e is not None:
@@ -416,13 +426,21 @@ def main() -> int:
                         pass
 
     def heartbeat() -> None:
-        # Sleep in small ticks so we can react quickly to
-        # `done_event` without depending on a long sleep.
+        # Idle-timer semantics: print only when the console has
+        # been silent for `interval` seconds, then reset the
+        # timer. Game-result and abort lines also touch
+        # `last_print_ts`, so a busy match stays quiet and the
+        # heartbeat surfaces only when something is genuinely
+        # taking a while (long late-game endgame, stuck engine).
         interval = args.heartbeat_interval
-        while not done_event.wait(timeout=min(0.5, interval)):
+        # Tick small enough to react to `done_event` without a
+        # noticeable shutdown lag, capped by the interval so very
+        # short intervals still work.
+        tick = min(1.0, interval)
+        while not done_event.wait(timeout=tick):
             now = time.time()
-            # Build the snapshot under `lock` so its print line
-            # can't be split by a worker's result line.
+            if now - last_print_ts[0] < interval:
+                continue
             with lock:
                 done = sum(1 for g in games_pgn if g is not None)
                 parts = []
@@ -436,12 +454,7 @@ def main() -> int:
                 if parts:
                     print(f"[heartbeat] done {done}/{args.games} | "
                           + " | ".join(parts), flush=True)
-            # Drift-free pacing: subtract the print cost from the
-            # next sleep so the cadence stays close to `interval`.
-            slept = time.time() - now
-            remaining = max(0.0, interval - slept)
-            if done_event.wait(timeout=remaining):
-                return
+                    last_print_ts[0] = time.time()
 
     hb_thread: Optional[threading.Thread] = None
     try:
