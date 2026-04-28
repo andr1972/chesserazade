@@ -220,32 +220,38 @@ int cmd_solve(std::span<const std::string_view> args) {
         const auto begin = clk::now();
         bool have_result = false;
         std::uint64_t total_nodes = 0;
+        long long total_ms = 0;
         for (int d = 1; d <= limits.max_depth; ++d) {
             SearchLimits lim = limits;
             lim.max_depth = d;
             if (parsed.options.time_ms > 0) {
-                const auto elapsed =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        clk::now() - begin).count();
                 const long long remaining =
-                    static_cast<long long>(parsed.options.time_ms) - elapsed;
+                    static_cast<long long>(parsed.options.time_ms) - total_ms;
                 if (remaining <= 0) break;
                 lim.time_budget = std::chrono::milliseconds{remaining};
             }
+            const auto iter_begin = clk::now();
             const SearchResult ir = Search::find_best(*bb, lim, &tt);
+            const long long iter_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    clk::now() - iter_begin).count();
             if (ir.completed_depth < d) {
                 if (!have_result) r = ir;
+                total_nodes += ir.nodes;
+                total_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        clk::now() - begin).count();
                 break;
             }
             r = ir;
             have_result = true;
             total_nodes += ir.nodes;
-            const long long total_ms =
+            total_ms =
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     clk::now() - begin).count();
-            const double mnps = total_ms > 0
-                ? static_cast<double>(total_nodes) / 1000.0
-                  / static_cast<double>(total_ms)
+            const double mnps = iter_ms > 0
+                ? static_cast<double>(ir.nodes) / 1000.0
+                  / static_cast<double>(iter_ms)
                 : 0.0;
 
             std::cout << "depth  " << ir.completed_depth << "  score ";
@@ -257,8 +263,8 @@ int cmd_solve(std::span<const std::string_view> args) {
             } else {
                 std::cout << "cp " << ir.score;
             }
-            std::cout << " nodes " << total_nodes
-                      << "  time " << total_ms << " ms";
+            std::cout << " nodes " << ir.nodes
+                      << "  time " << iter_ms << " ms";
             std::printf("  speed %.2f Mn/s\n", mnps);
             std::cout << "  pv";
             for (const Move& m : ir.principal_variation) {
@@ -269,6 +275,11 @@ int cmd_solve(std::span<const std::string_view> args) {
 
             if (Search::is_mate_score(ir.score)) break;
         }
+        // Overwrite the final result's nodes/elapsed with the
+        // cumulative totals so the summary block reports the
+        // whole search rather than just the last ID call.
+        r.nodes = total_nodes;
+        r.elapsed = std::chrono::milliseconds{total_ms};
         std::cout << '\n';
     }
 
