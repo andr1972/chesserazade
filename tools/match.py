@@ -32,7 +32,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import chess
 import chess.pgn
@@ -192,7 +192,8 @@ def play_game(white: Engine, black: Engine, *,
               movetime_white: int, movetime_black: int,
               opening: Optional[chess.Board] = None,
               game_label: str = "",
-              status_ref: Optional[dict] = None
+              status_ref: Optional[dict] = None,
+              fen_log: Optional[Callable[[str], None]] = None
               ) -> tuple[str, chess.Board, str]:
     """Play one game. Returns (result_string, final_board, termination_reason).
 
@@ -209,6 +210,8 @@ def play_game(white: Engine, black: Engine, *,
     board = opening.copy() if opening is not None else chess.Board()
     if status_ref is not None:
         status_ref["last_move"] = "—"
+    if fen_log is not None:
+        fen_log(f"start {white.name} vs {black.name}  fen {board.fen()}")
     if game_label:
         opening_str = " ".join(m.uci() for m in board.move_stack)
         if opening_str:
@@ -230,16 +233,16 @@ def play_game(white: Engine, black: Engine, *,
             sys.stdout.write(".")
             sys.stdout.flush()
         board.push(move)
+        # `board.turn` is now whose move comes *next*; tag the
+        # log/status with the side that just played.
+        if board.turn == chess.WHITE:
+            tag = f"{board.fullmove_number - 1}b"
+        else:
+            tag = f"{board.fullmove_number}w"
         if status_ref is not None:
-            # After the push, `board.turn` is whose move comes
-            # *next*, so the side that just played is the
-            # opposite. The full-move number ticks up only after
-            # black's move, so a black move shares the number with
-            # the white move that preceded it.
-            if board.turn == chess.WHITE:
-                status_ref["last_move"] = f"{board.fullmove_number - 1}b"
-            else:
-                status_ref["last_move"] = f"{board.fullmove_number}w"
+            status_ref["last_move"] = tag
+        if fen_log is not None:
+            fen_log(f"{tag} {move.uci()}  fen {board.fen()}")
     if game_label:
         sys.stdout.write("\n")
         sys.stdout.flush()
@@ -273,6 +276,13 @@ def main() -> int:
                          " -j alone = number of physical cores."
                          " -jN = N workers, capped at the physical core count"
                          " and at the number of games.")
+    ap.add_argument("--log", type=Path, default=None,
+                    help="append a line per move (and per game start)"
+                         " containing the resulting FEN. If a worker's engine"
+                         " crashes, the last log line names the position the"
+                         " engine was about to search. Lines from concurrent"
+                         " games are interleaved but each is prefixed with"
+                         " the game index.")
     ap.add_argument("--heartbeat-interval", type=float, default=30.0,
                     help="seconds of console silence before the next heartbeat"
                          " line is printed in parallel mode (default 30)."
@@ -314,9 +324,22 @@ def main() -> int:
     score: dict[str, float] = {name1: 0.0, name2: 0.0}
     games_pgn: list[Optional[chess.pgn.Game]] = [None] * args.games
     lock = threading.Lock()
+    log_lock = threading.Lock()
     work_q: queue.Queue[int] = queue.Queue()
     for i in range(args.games):
         work_q.put(i)
+
+    log_file = None
+    if args.log is not None:
+        args.log.parent.mkdir(parents=True, exist_ok=True)
+        # Line buffering so a crashing worker still flushes its
+        # most recent line — with default block buffering the
+        # last few moves before the crash would be lost.
+        log_file = open(args.log, "a", buffering=1)
+        log_file.write(
+            f"# match start {dt.datetime.now().isoformat()}  "
+            f"{name1} vs {name2}  movetime {args.movetime}ms  "
+            f"games {args.games}  jobs {jobs}\n")
 
     # Per-worker live status — keys are worker ids (0..jobs-1).
     # `None` means the worker is between games / done. Each
@@ -344,6 +367,14 @@ def main() -> int:
         t0 = time.time()
         status_entry = {"game": i, "last_move": "—", "started": t0}
         worker_status[wid] = status_entry
+
+        fen_log = None
+        if log_file is not None:
+            game_index = i + 1
+            def fen_log(line: str) -> None:
+                with log_lock:
+                    log_file.write(f"[g{game_index}] {line}\n")
+
         try:
             mt_white = mt1 if white is e1 else mt2
             mt_black = mt1 if black is e1 else mt2
@@ -352,7 +383,8 @@ def main() -> int:
                                             movetime_black=mt_black,
                                             opening=opening,
                                             game_label=label,
-                                            status_ref=status_entry)
+                                            status_ref=status_entry,
+                                            fen_log=fen_log)
         finally:
             worker_status[wid] = None
         dt_s = time.time() - t0
@@ -369,6 +401,8 @@ def main() -> int:
                   f"{name1} {score[name1]:.1f} - {score[name2]:.1f} {name2}",
                   flush=True)
             last_print_ts[0] = time.time()
+            if fen_log is not None:
+                fen_log(f"end {result} ({term})")
             game = chess.pgn.Game.from_board(board)
             game.headers["Event"] = "Rukh vs chesserazade match"
             game.headers["Round"] = str(i + 1)
@@ -409,6 +443,11 @@ def main() -> int:
                               flush=True)
                         last_print_ts[0] = time.time()
                         worker_status[wid] = None
+                    if log_file is not None:
+                        with log_lock:
+                            log_file.write(
+                                f"[g{i+1}] !! aborted: {exc}; "
+                                f"stderr {','.join(stderr_paths)}\n")
                     for e in (e1, e2):
                         if e is not None:
                             try:
@@ -497,6 +536,15 @@ def main() -> int:
         print(f"\n# === final: {name1} {s1:.1f} - {s2:.1f} {name2}  "
               f"({wins}W / {draws}D / {losses}L of {played:.0f})", flush=True)
         print(f"# wrote {args.pgn}", flush=True)
+        if log_file is not None:
+            log_file.write(
+                f"# match end {dt.datetime.now().isoformat()}  "
+                f"final {name1} {s1:.1f} - {s2:.1f} {name2}\n")
+            try:
+                log_file.close()
+            except Exception:
+                pass
+            print(f"# fen log {args.log}", flush=True)
 
     return 0
 
