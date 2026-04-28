@@ -4,6 +4,7 @@
 #include "cli/cmd_solve.hpp"
 
 #include "board/board8x8_mailbox.hpp"
+#include "board/board_bitboard.hpp"
 
 #include <chesserazade/fen.hpp>
 #include <chesserazade/move.hpp>
@@ -185,16 +186,80 @@ int cmd_solve(std::span<const std::string_view> args) {
                                                 : Search::MAX_DEPTH;
     limits.time_budget = std::chrono::milliseconds{parsed.options.time_ms};
     limits.node_budget = parsed.options.nodes;
+    // Match the analyzer's default solve stack: bitboard board,
+    // TT, LMR, history, aspiration, PVS, check extensions. Without
+    // these the CLI's reachable depth lags the analyzer's at the
+    // same time budget by several plies.
+    limits.enable_lmr        = true;
+    limits.enable_history    = true;
+    limits.enable_aspiration = true;
+    limits.enable_pvs        = true;
+    limits.enable_check_ext  = true;
 
     // Allocate a default 1M-entry TT (~16 MiB). A future --hash
     // flag will expose the size when that matters.
     TranspositionTable tt;
 
+    // Search runs on `BoardBitboard` for speed; the mailbox copy
+    // above is preserved for SAN-based PV rendering.
+    auto bb = BoardBitboard::from_fen(parsed.options.fen);
+    if (!bb.has_value()) {
+        std::cerr << "solve: " << bb.error().message << '\n';
+        return 1;
+    }
+
     SearchResult r;
     if (parsed.options.mate_in > 0) {
-        r = PuzzleSolver::solve_mate_in(*board, parsed.options.mate_in, &tt);
+        r = PuzzleSolver::solve_mate_in(*bb, parsed.options.mate_in, &tt);
     } else {
-        r = Search::find_best(*board, limits, &tt);
+        // Drive iterative deepening externally (one depth per
+        // call) so we can print intermediate iterations the way
+        // the analyzer's panel does. The TT is shared across
+        // calls so re-running 1..d each iteration is cheap.
+        using clk = std::chrono::steady_clock;
+        const auto begin = clk::now();
+        bool have_result = false;
+        for (int d = 1; d <= limits.max_depth; ++d) {
+            SearchLimits lim = limits;
+            lim.max_depth = d;
+            if (parsed.options.time_ms > 0) {
+                const auto elapsed =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        clk::now() - begin).count();
+                const long long remaining =
+                    static_cast<long long>(parsed.options.time_ms) - elapsed;
+                if (remaining <= 0) break;
+                lim.time_budget = std::chrono::milliseconds{remaining};
+            }
+            const SearchResult ir = Search::find_best(*bb, lim, &tt);
+            if (ir.completed_depth < d) {
+                if (!have_result) r = ir;
+                break;
+            }
+            r = ir;
+            have_result = true;
+
+            std::cout << "depth  " << ir.completed_depth << "  score ";
+            if (Search::is_mate_score(ir.score)) {
+                const int plies = Search::plies_to_mate(ir.score);
+                const int abs_plies = plies > 0 ? plies : -plies;
+                const int moves = (abs_plies + 1) / 2;
+                std::cout << "mate " << (plies > 0 ? moves : -moves);
+            } else {
+                std::cout << "cp " << ir.score;
+            }
+            std::cout << " nodes " << ir.nodes
+                      << "  time " << ir.elapsed.count() << " ms\n"
+                      << "  pv";
+            for (const Move& m : ir.principal_variation) {
+                std::cout << ' ' << to_uci(m);
+            }
+            std::cout << '\n';
+            std::cout.flush();
+
+            if (Search::is_mate_score(ir.score)) break;
+        }
+        std::cout << '\n';
     }
 
     if (parsed.options.mate_in > 0 && !Search::is_mate_score(r.score)) {
