@@ -310,6 +310,11 @@ int cmd_solve(std::span<const std::string_view> args) {
                     hit_rate);
     }
     std::cout << "time:  " << r.elapsed.count() << " ms\n";
+    if (r.elapsed.count() > 0) {
+        const double mnps = static_cast<double>(r.nodes) / 1000.0
+                          / static_cast<double>(r.elapsed.count());
+        std::printf("speed: %.2f Mn/s\n", mnps);
+    }
     return 0;
 }
 
