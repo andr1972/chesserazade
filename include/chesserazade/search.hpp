@@ -56,7 +56,7 @@ class TranspositionTable;
 struct SearchLimits {
     /// Maximum depth in plies. The search iterates up to (and
     /// including) this depth. Clamped to `Search::MAX_DEPTH`.
-    int max_depth = 32;
+    int max_depth = 128;
 
     /// Wall-clock budget. Zero means "no time limit". Checked
     /// periodically during the search (not on every node, to
@@ -338,8 +338,18 @@ public:
     static constexpr int INF_SCORE = 32001;
 
     /// Maximum search depth this engine will accept. Bounds the
-    /// on-stack triangular PV table.
-    static constexpr int MAX_DEPTH = 32;
+    /// on-stack triangular PV / killer tables and the in-search
+    /// recursion cap in `negamax`. Sized generously so a long
+    /// analysis (hours of think time, deep iterative deepening
+    /// plus check / single-reply extensions) doesn't index off
+    /// the end of the fixed-size arrays.
+    ///
+    /// Stockfish uses MAX_PLY = 246 — overkill for an educational
+    /// engine; 128 gives roughly 4× the practical seldepth (~50)
+    /// and the on-stack cost is bounded: PvTable is
+    /// 128 × 128 × sizeof(Move) ≈ 100 KiB, comfortable for the
+    /// default 8 MiB thread stack.
+    static constexpr int MAX_DEPTH = 128;
 
     /// Find the best move in `board`, iteratively deepening up
     /// to `depth`. `board` is mutated during the search and
