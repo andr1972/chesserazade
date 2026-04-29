@@ -81,13 +81,14 @@ def random_opening(plies: int, rng: random.Random) -> chess.Board:
 REPO = Path(__file__).resolve().parent.parent
 
 
-def _default_name_from_cmd(cmd: str) -> str:
-    """Make a sensible default engine name from its command line.
+def _binary_path_from_cmd(cmd: str) -> Path:
+    """Extract the engine binary path from a UCI command line.
 
-    For `env RUKH_NNUE=/x/y/z.nnue /path/to/rukh` we want the binary's
-    basename ('rukh' here) rather than the literal 'env'. Skip a leading
-    `env` plus any KEY=VALUE assignments, then take the last path
-    component (without extension)."""
+    For `env RUKH_NNUE=/x/y/z.nnue /path/to/rukh` we want
+    `/path/to/rukh`, not the literal `env`. Skip a leading `env`
+    plus any KEY=VALUE assignments, then return the next token.
+    Returns an empty Path when nothing parseable is left.
+    """
     tokens = shlex.split(cmd)
     i = 0
     if tokens and tokens[0] == "env":
@@ -95,8 +96,54 @@ def _default_name_from_cmd(cmd: str) -> str:
         while i < len(tokens) and "=" in tokens[i]:
             i += 1
     if i >= len(tokens):
+        return Path()
+    return Path(tokens[i])
+
+
+def _default_name_from_cmd(cmd: str) -> str:
+    """Default engine name = binary basename without extension."""
+    p = _binary_path_from_cmd(cmd)
+    if p == Path():
         return cmd.split()[0]
-    return Path(tokens[i]).stem
+    return p.stem
+
+
+def _resolve_names(cmd1: str, cmd2: str,
+                   name1: Optional[str], name2: Optional[str]
+                   ) -> tuple[str, str]:
+    """Pick display names for the two engines.
+
+    If the user passed explicit `--name1` / `--name2`, those win
+    unconditionally. Otherwise derive from the binary name. When
+    both default names collide (a typical A/B test of the same
+    binary built two ways — `build/release/chesserazade` vs
+    `build/release-optim/chesserazade`) prepend the parent
+    directory so the score lines stay distinguishable.
+    """
+    if name1 is not None and name2 is not None:
+        return name1, name2
+    p1 = _binary_path_from_cmd(cmd1)
+    p2 = _binary_path_from_cmd(cmd2)
+    n1 = name1 or p1.stem or cmd1.split()[0]
+    n2 = name2 or p2.stem or cmd2.split()[0]
+    if n1 == n2 and name1 is None and name2 is None:
+        # Disambiguate by parent directory.
+        parent1 = p1.parent.name or "1"
+        parent2 = p2.parent.name or "2"
+        if parent1 != parent2:
+            # Names collide on the binary stem so the *parent
+            # directory* is the only distinguishing piece — show
+            # just that, not "parent/binary", to keep score
+            # lines compact in A/B sweeps like
+            # `build/release-optim/chesserazade` vs
+            # `build/release/chesserazade`.
+            n1 = parent1
+            n2 = parent2
+        else:
+            # Same path? Last-resort tag.
+            n1 = f"{n1}#1"
+            n2 = f"{n2}#2"
+    return n1, n2
 
 
 class Engine:
@@ -116,6 +163,7 @@ class Engine:
             stderr=self._stderr_file, text=True, bufsize=1,
         )
         self.name = name or _default_name_from_cmd(cmd)
+        self.last_depth = 0  # set by go() per move
         self._send("uci")
         self._wait_for("uciok", timeout=10)
         self._send("isready")
@@ -145,14 +193,25 @@ class Engine:
         self._send("isready")
         self._wait_for("readyok", timeout=10)
 
-    def go(self, board: chess.Board, movetime_ms: int) -> chess.Move:
+    def go(self, board: chess.Board, movetime_ms: int,
+           depth: Optional[int] = None) -> chess.Move:
         moves = " ".join(m.uci() for m in board.move_stack)
         if moves:
             self._send(f"position startpos moves {moves}")
         else:
             self._send("position startpos")
-        self._send(f"go movetime {movetime_ms}")
+        # Both depth and movetime can be sent — search stops at
+        # whichever fires first.
+        cmd = f"go movetime {movetime_ms}"
+        if depth is not None and depth > 0:
+            cmd += f" depth {depth}"
+        self._send(cmd)
         # Engine sends some 'info ...' lines, then 'bestmove <m>'.
+        # Track the deepest "info depth N" we see during the
+        # search so the caller can read `self.last_depth` after
+        # `go` returns. Reset to 0 on every go so an unanswered
+        # depth probe shows up explicitly.
+        self.last_depth = 0
         deadline = time.time() + (movetime_ms / 1000.0) + 5.0
         assert self.proc.stdout is not None
         while time.time() < deadline:
@@ -160,6 +219,19 @@ class Engine:
             if not line:
                 raise RuntimeError(f"{self.name}: engine closed mid-search")
             line = line.strip()
+            if line.startswith("info "):
+                # UCI 'info ... depth N ...' — N is the next token.
+                tokens = line.split()
+                for k, tok in enumerate(tokens):
+                    if tok == "depth" and k + 1 < len(tokens):
+                        try:
+                            d = int(tokens[k + 1])
+                        except ValueError:
+                            break
+                        if d > self.last_depth:
+                            self.last_depth = d
+                        break
+                continue
             if line.startswith("bestmove"):
                 tokens = line.split()
                 if len(tokens) < 2:
@@ -190,10 +262,13 @@ class Engine:
 
 def play_game(white: Engine, black: Engine, *,
               movetime_white: int, movetime_black: int,
+              depth_white: Optional[int] = None,
+              depth_black: Optional[int] = None,
               opening: Optional[chess.Board] = None,
               game_label: str = "",
               status_ref: Optional[dict] = None,
-              fen_log: Optional[Callable[[str], None]] = None
+              fen_log: Optional[Callable[[str], None]] = None,
+              max_moves: int = 0
               ) -> tuple[str, chess.Board, str]:
     """Play one game. Returns (result_string, final_board, termination_reason).
 
@@ -219,9 +294,19 @@ def play_game(white: Engine, black: Engine, *,
         sys.stdout.write(f"{game_label} ")
         sys.stdout.flush()
     while not board.is_game_over(claim_draw=True):
+        # Adjudicated draw cap: very long games (175+ full moves)
+        # explode UCI overhead — the `position startpos moves ...`
+        # token list grows linearly and parsing dominates by the
+        # endgame. After `max_moves`, treat as a draw so the
+        # match progresses.
+        if max_moves > 0 and board.fullmove_number > max_moves:
+            if game_label:
+                sys.stdout.write("\n"); sys.stdout.flush()
+            return "1/2-1/2", board, "MAX_MOVES"
         engine = white if board.turn == chess.WHITE else black
         movetime_ms = movetime_white if board.turn == chess.WHITE else movetime_black
-        move = engine.go(board, movetime_ms)
+        depth_cap = depth_white if board.turn == chess.WHITE else depth_black
+        move = engine.go(board, movetime_ms, depth_cap)
         if move not in board.legal_moves:
             # Forfeit: engine returned an illegal move.
             losing_color = "White" if board.turn == chess.WHITE else "Black"
@@ -242,7 +327,8 @@ def play_game(white: Engine, black: Engine, *,
         if status_ref is not None:
             status_ref["last_move"] = tag
         if fen_log is not None:
-            fen_log(f"{tag} {move.uci()}  fen {board.fen()}")
+            fen_log(f"{tag} {move.uci()} depth {engine.last_depth}  "
+                    f"fen {board.fen()}")
     if game_label:
         sys.stdout.write("\n")
         sys.stdout.flush()
@@ -263,6 +349,19 @@ def main() -> int:
                     help="override movetime for engine 1 (handicap matches)")
     ap.add_argument("--movetime2", type=int, default=None,
                     help="override movetime for engine 2")
+    ap.add_argument("--depth", type=int, default=None,
+                    help="hard ply cap per move (search stops at"
+                         " whichever fires first: this depth or movetime)."
+                         " Default: no extra cap (movetime alone).")
+    ap.add_argument("--depth1", type=int, default=None,
+                    help="override --depth for engine 1 (handicap matches)")
+    ap.add_argument("--depth2", type=int, default=None,
+                    help="override --depth for engine 2")
+    ap.add_argument("--max-moves", type=int, default=0,
+                    help="adjudicate as a draw after this many full moves"
+                         " — keeps games-per-side bounded so a single"
+                         " marathon endgame doesn't stall the match."
+                         " Default 0 = no cap (rely on FIDE rules).")
     ap.add_argument("--random-plies", type=int, default=4,
                     help="Random plies played from startpos before the engines"
                          " take over. Pairs of games share the same opening,"
@@ -301,8 +400,9 @@ def main() -> int:
     # Resolve names without spawning yet — used in the header and as
     # the canonical keys for `score` / `games_pgn` (every parallel
     # worker creates its own engine pair with the same name).
-    name1 = args.name1 or _default_name_from_cmd(args.engine1)
-    name2 = args.name2 or _default_name_from_cmd(args.engine2)
+    # Auto-disambiguates when both binaries share a basename.
+    name1, name2 = _resolve_names(args.engine1, args.engine2,
+                                  args.name1, args.name2)
 
     if args.pgn is None:
         ts = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -311,6 +411,8 @@ def main() -> int:
 
     mt1 = args.movetime1 if args.movetime1 is not None else args.movetime
     mt2 = args.movetime2 if args.movetime2 is not None else args.movetime
+    dp1 = args.depth1 if args.depth1 is not None else args.depth
+    dp2 = args.depth2 if args.depth2 is not None else args.depth
     rng = random.Random(args.seed)
     # Pre-generate one opening per *pair* of games so we can play it twice
     # (once from each side) — gives a fair sample at half the openings cost.
@@ -378,13 +480,18 @@ def main() -> int:
         try:
             mt_white = mt1 if white is e1 else mt2
             mt_black = mt1 if black is e1 else mt2
+            dp_white = dp1 if white is e1 else dp2
+            dp_black = dp1 if black is e1 else dp2
             result, board, term = play_game(white, black,
                                             movetime_white=mt_white,
                                             movetime_black=mt_black,
+                                            depth_white=dp_white,
+                                            depth_black=dp_black,
                                             opening=opening,
                                             game_label=label,
                                             status_ref=status_entry,
-                                            fen_log=fen_log)
+                                            fen_log=fen_log,
+                                            max_moves=args.max_moves)
         finally:
             worker_status[wid] = None
         dt_s = time.time() - t0
@@ -417,8 +524,8 @@ def main() -> int:
         # crash (see the except below), so they're declared
         # outside the loop and the cleanup at the end re-reads
         # whatever is current.
-        e1: Optional[Engine] = Engine(args.engine1, args.name1)
-        e2: Optional[Engine] = Engine(args.engine2, args.name2)
+        e1: Optional[Engine] = Engine(args.engine1, name1)
+        e2: Optional[Engine] = Engine(args.engine2, name2)
         try:
             while True:
                 try:
@@ -454,8 +561,8 @@ def main() -> int:
                                 e.quit()
                             except Exception:
                                 pass
-                    e1 = Engine(args.engine1, args.name1)
-                    e2 = Engine(args.engine2, args.name2)
+                    e1 = Engine(args.engine1, name1)
+                    e2 = Engine(args.engine2, name2)
         finally:
             for e in (e1, e2):
                 if e is not None:

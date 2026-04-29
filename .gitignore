@@ -1,4 +1,5 @@
 runs/
+wynik*.dat
 
 # Prerequisites
 *.d
@@ -64,3 +65,4 @@ install_manifest.txt
 
 # macOS
 .DS_Store
+__pycache__/

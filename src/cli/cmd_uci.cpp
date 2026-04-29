@@ -338,12 +338,19 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
 
     if (g.infinite) {
         // No time cap; rely on MAX_DEPTH.
-    } else if (g.depth > 0) {
-        max_depth = g.depth;
-    } else if (g.movetime_ms > 0) {
-        budget_ms = g.movetime_ms;
     } else {
-        budget_ms = derive_movetime(g, s.board.side_to_move());
+        // Allow both `depth` and `movetime` to fire — the search
+        // stops at whichever limit hits first. Lets a tester
+        // force "1000 ms but at most 14 ply" with
+        // `go depth 14 movetime 1000`.
+        if (g.depth > 0) max_depth = g.depth;
+        if (g.movetime_ms > 0) {
+            budget_ms = g.movetime_ms;
+        } else if (g.depth <= 0) {
+            // No explicit limit at all — fall back to time
+            // management derived from clock + increment.
+            budget_ms = derive_movetime(g, s.board.side_to_move());
+        }
     }
 
     s.tt.new_search();
