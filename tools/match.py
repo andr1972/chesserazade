@@ -468,6 +468,13 @@ def main() -> int:
     pin_cpus: list[int] = []
     if not args.no_pin and jobs > 1:
         pin_cpus = physical_core_cpus()[:jobs]
+    # Randomise per-worker spawn order (e1-first vs e2-first) so any
+    # micro-advantage to the first-spawned process averages out
+    # instead of pinning to a fixed half of the workers. Seeded from
+    # --seed + offset so runs stay reproducible and the stream is
+    # independent of the openings RNG.
+    spawn_e1_first = [random.Random(args.seed + 1 + w).random() < 0.5
+                      for w in range(jobs)]
 
     # Resolve names without spawning yet — used in the header and as
     # the canonical keys for `score` / `games_pgn` (every parallel
@@ -599,13 +606,10 @@ def main() -> int:
         # outside the loop and the cleanup at the end re-reads
         # whatever is current.
         pin = pin_cpus[wid] if wid < len(pin_cpus) else None
-        # Half the workers spawn engine1 first, half spawn engine2
-        # first. Whichever process is created first gets a slightly
-        # warmer page cache and lower allocator fragmentation when
-        # it answers its first `go`; without this split, that micro-
-        # advantage always goes to the same engine and shows up as
-        # ~1 score point of bias across 40 games of self-play.
-        if wid % 2 == 0:
+        # Spawn order randomised per worker (see `spawn_e1_first`)
+        # so the first-spawned-process micro-advantage averages out
+        # rather than landing on a deterministic half of workers.
+        if spawn_e1_first[wid]:
             e1: Optional[Engine] = Engine(args.engine1, name1, pin_cpu=pin)
             e2: Optional[Engine] = Engine(args.engine2, name2, pin_cpu=pin)
         else:
@@ -646,7 +650,7 @@ def main() -> int:
                                 e.quit()
                             except Exception:
                                 pass
-                    if wid % 2 == 0:
+                    if spawn_e1_first[wid]:
                         e1 = Engine(args.engine1, name1, pin_cpu=pin)
                         e2 = Engine(args.engine2, name2, pin_cpu=pin)
                     else:
