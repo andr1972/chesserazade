@@ -38,27 +38,37 @@ import chess
 import chess.pgn
 
 
-def physical_cores() -> int:
-    """Number of distinct *physical* CPU cores. Falls back to logical
-    `os.cpu_count()` if `/proc/cpuinfo` can't be parsed (non-Linux,
-    sandboxed, etc.)."""
-    seen: set[tuple[str, str]] = set()
+def physical_core_cpus() -> list[int]:
+    """One representative logical-CPU id per *physical* core, in the
+    order they appear in /proc/cpuinfo. SMT siblings of the same
+    physical core are dropped — we keep just the first. Empty list
+    if /proc/cpuinfo can't be parsed (non-Linux, sandboxed)."""
+    seen: dict[tuple[str, str], int] = {}
     try:
         with open("/proc/cpuinfo") as f:
-            pid = cid = None
+            proc = pid = cid = None
             for line in f:
-                if line.startswith("physical id"):
+                if line.startswith("processor"):
+                    proc = int(line.split(":")[1].strip())
+                elif line.startswith("physical id"):
                     pid = line.split(":")[1].strip()
                 elif line.startswith("core id"):
                     cid = line.split(":")[1].strip()
                 elif line.strip() == "":
-                    if pid is not None and cid is not None:
-                        seen.add((pid, cid))
-                    pid = cid = None
+                    if proc is not None and pid is not None and cid is not None:
+                        seen.setdefault((pid, cid), proc)
+                    proc = pid = cid = None
     except Exception:
-        pass
-    if seen:
-        return len(seen)
+        return []
+    return list(seen.values())
+
+
+def physical_cores() -> int:
+    """Number of distinct *physical* CPU cores. Falls back to logical
+    `os.cpu_count()` if `/proc/cpuinfo` can't be parsed."""
+    cpus = physical_core_cpus()
+    if cpus:
+        return len(cpus)
     return os.cpu_count() or 1
 
 
@@ -147,7 +157,8 @@ def _resolve_names(cmd1: str, cmd2: str,
 
 
 class Engine:
-    def __init__(self, cmd: str, name: Optional[str] = None) -> None:
+    def __init__(self, cmd: str, name: Optional[str] = None,
+                 pin_cpu: Optional[int] = None) -> None:
         self.cmd = cmd
         # stderr → /tmp/<name>-<pid>.err so a crashing engine
         # leaves an audit trail (assertion text, sanitizer report,
@@ -157,8 +168,16 @@ class Engine:
             f"/tmp/match-{Path(shlex.split(cmd)[0]).name}-"
             f"{int(time.time()*1000)}-{id(self)}.err")
         self._stderr_file = open(self.stderr_path, "w")
+        argv = shlex.split(cmd)
+        if pin_cpu is not None:
+            # Pin both engines of a worker to the same physical
+            # core so the kernel time-slices them rather than
+            # letting them fight other workers' engines for cache.
+            # Each game-pair then runs on a predictable, isolated
+            # core with no cross-pair contention.
+            argv = ["taskset", "-c", str(pin_cpu)] + argv
         self.proc = subprocess.Popen(
-            shlex.split(cmd),
+            argv,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=self._stderr_file, text=True, bufsize=1,
         )
@@ -382,6 +401,11 @@ def main() -> int:
                          " engine was about to search. Lines from concurrent"
                          " games are interleaved but each is prefixed with"
                          " the game index.")
+    ap.add_argument("--no-pin", action="store_true",
+                    help="disable CPU pinning. By default each parallel"
+                         " worker is pinned to one physical core (via"
+                         " taskset) so its two engines time-slice on that"
+                         " core without contending with other workers.")
     ap.add_argument("--heartbeat-interval", type=float, default=30.0,
                     help="seconds of console silence before the next heartbeat"
                          " line is printed in parallel mode (default 30)."
@@ -396,6 +420,11 @@ def main() -> int:
     else:
         jobs = args.jobs
     jobs = max(1, min(jobs, phys, args.games))
+    # One physical-core CPU id per worker for pinning. Empty list
+    # disables pinning (e.g. /proc/cpuinfo unavailable, or --no-pin).
+    pin_cpus: list[int] = []
+    if not args.no_pin and jobs > 1:
+        pin_cpus = physical_core_cpus()[:jobs]
 
     # Resolve names without spawning yet — used in the header and as
     # the canonical keys for `score` / `games_pgn` (every parallel
@@ -420,8 +449,10 @@ def main() -> int:
     openings = [random_opening(args.random_plies, rng)
                 for _ in range(pair_count)] if args.random_plies > 0 else None
 
+    pin_desc = (f", pinned to CPUs {pin_cpus}" if pin_cpus
+                else (", no pin" if jobs > 1 else ""))
     print(f"# {name1} vs {name2} — {args.games} games × {args.movetime}ms/move "
-          f"(jobs={jobs}, physical cores={phys})", flush=True)
+          f"(jobs={jobs}, physical cores={phys}{pin_desc})", flush=True)
 
     score: dict[str, float] = {name1: 0.0, name2: 0.0}
     games_pgn: list[Optional[chess.pgn.Game]] = [None] * args.games
@@ -524,8 +555,9 @@ def main() -> int:
         # crash (see the except below), so they're declared
         # outside the loop and the cleanup at the end re-reads
         # whatever is current.
-        e1: Optional[Engine] = Engine(args.engine1, name1)
-        e2: Optional[Engine] = Engine(args.engine2, name2)
+        pin = pin_cpus[wid] if wid < len(pin_cpus) else None
+        e1: Optional[Engine] = Engine(args.engine1, name1, pin_cpu=pin)
+        e2: Optional[Engine] = Engine(args.engine2, name2, pin_cpu=pin)
         try:
             while True:
                 try:
@@ -561,8 +593,8 @@ def main() -> int:
                                 e.quit()
                             except Exception:
                                 pass
-                    e1 = Engine(args.engine1, name1)
-                    e2 = Engine(args.engine2, name2)
+                    e1 = Engine(args.engine1, name1, pin_cpu=pin)
+                    e2 = Engine(args.engine2, name2, pin_cpu=pin)
         finally:
             for e in (e1, e2):
                 if e is not None:
