@@ -115,7 +115,12 @@ def run_match(eng1: str, eng2: str, *,
         cmd += ["--movetime1", str(mt1)]
     if mt2 is not None:
         cmd += ["--movetime2", str(mt2)]
-    if jobs is not None:
+    if jobs is None:
+        # Bare `-j` triggers match.py's phys-1 default (its const=-1
+        # path). Without any `-j` at all, match.py would default to
+        # serial — rarely what the caller wants.
+        cmd += ["-j"]
+    else:
         cmd += ["-j", str(jobs)]
     if extra_args:
         cmd += extra_args
@@ -173,6 +178,26 @@ def fmt_elo_bound(val: float) -> str:
     return f"{val:+.0f}"
 
 
+def _print_ranking(ranking: list, adj_results: list, tc_desc: str) -> None:
+    """Render the final ranking table. `adj_results` may be empty
+    (phase 2 skipped) — then every row reads '(rough only)'."""
+    print()
+    print(f"# === tournament ranking ({tc_desc}) ===")
+    print(f"{'rank':<4}  {'engine':<24}  {'Δ vs next (95% CI)':<28}")
+    for i, name in enumerate(ranking):
+        if i < len(adj_results):
+            r = adj_results[i]
+            point, lo, hi = elo_interval(r["score_higher"], r["n"])
+            cell = (f"{fmt_elo_bound(point)} "
+                    f"[{fmt_elo_bound(lo)}, {fmt_elo_bound(hi)}]"
+                    f"  N={r['n']}")
+        elif not adj_results:
+            cell = "(rough only)"
+        else:
+            cell = "(last)"
+        print(f"{i+1:<4}  {name:<24}  {cell}")
+
+
 def estimate_mode(n: int, movetime: int, jobs: int,
                   rough_games: int, precise_games: int,
                   mt1: int, mt2: int) -> None:
@@ -216,12 +241,15 @@ def main() -> int:
                          " --movetime1).")
     ap.add_argument("--rough-games", type=int, default=100,
                     help="games per rough comparison (default 100)")
-    ap.add_argument("--precise-games", type=int, default=1000,
-                    help="games per adjacent verify (default 1000)")
+    ap.add_argument("--precise-games", type=int, default=0,
+                    help="games per adjacent verify. Default 0 disables"
+                         " phase 2 entirely (rough ranking only). Pass"
+                         " e.g. --precise-games 1000 to opt in.")
     ap.add_argument("--max-precise", type=int, default=5000,
-                    help="cap when escalating undecided pairs"
-                         " (default 5000; set equal to --precise-games"
-                         " to disable escalation)")
+                    help="cap when escalating undecided pairs in"
+                         " phase 2. Set equal to --precise-games to"
+                         " disable escalation. Ignored when phase 2"
+                         " itself is disabled.")
     ap.add_argument("-j", "--jobs", type=int, default=None,
                     help="passed through to match.py")
     ap.add_argument("--estimate", action="store_true",
@@ -353,6 +381,16 @@ def main() -> int:
     say(f"# rough ranking: {' > '.join(ranking)}")
 
     # ---- Phase 2: adjacent verify with escalation -------------------
+    # Opt-in: --precise-games 0 (default) skips phase 2 entirely so a
+    # bare invocation gives only the rough ordering. Pass an explicit
+    # game count to enable.
+    if args.precise_games <= 0:
+        adj_results: list[dict] = []
+        say("# phase 2 skipped (--precise-games not set; pass e.g."
+            " --precise-games 1000 to enable)")
+        _print_ranking(ranking, adj_results, tc_desc)
+        return 0
+
     adj_count = max(0, len(ranking) - 1)
     adj_eta = adj_count * estimate_seconds_per_match(
         args.precise_games, movetime, jobs_for_estimate, mt1, mt2)
@@ -400,20 +438,7 @@ def main() -> int:
         })
     say(f"# phase 2 done in {fmt_duration(time.time() - t_phase2)}")
 
-    # ---- Final ranking table ---------------------------------------
-    print()
-    print(f"# === tournament ranking ({tc_desc}) ===")
-    print(f"{'rank':<4}  {'engine':<24}  {'Δ vs next (95% CI)':<28}")
-    for i, name in enumerate(ranking):
-        if i < len(adj_results):
-            r = adj_results[i]
-            point, lo, hi = elo_interval(r["score_higher"], r["n"])
-            cell = (f"{fmt_elo_bound(point)} "
-                    f"[{fmt_elo_bound(lo)}, {fmt_elo_bound(hi)}]"
-                    f"  N={r['n']}")
-        else:
-            cell = "(last)"
-        print(f"{i+1:<4}  {name:<24}  {cell}")
+    _print_ranking(ranking, adj_results, tc_desc)
     return 0
 
 
