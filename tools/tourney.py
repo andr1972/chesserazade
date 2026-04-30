@@ -438,9 +438,23 @@ def main() -> int:
     t_phase2 = time.time()
     for i in range(len(ranking) - 1):
         higher, lower = ranking[i], ranking[i + 1]
-        cum_h = cum_l = 0.0
-        played = 0
-        # Escalation ladder: precise → 2× → max_precise.
+        # Reuse the rough-phase score for this pair as a down-payment
+        # against the precise target. mergesort guarantees adjacency
+        # implies a direct comparison was made; if that pair somehow
+        # wasn't measured (defensive — shouldn't happen), start fresh.
+        rough_key = (higher, lower) if higher < lower else (lower, higher)
+        if rough_key in rough_compares:
+            sA, sB = rough_compares[rough_key]
+            if (higher, lower) == rough_key:
+                cum_h, cum_l = sA, sB
+            else:
+                cum_h, cum_l = sB, sA
+            played = args.rough_games
+        else:
+            cum_h = cum_l = 0.0
+            played = 0
+        # Escalation ladder: precise → 2× → max_precise (all are
+        # *targets* for total games, not increments — rough counts).
         targets = [args.precise_games]
         if args.max_precise > args.precise_games:
             targets.append(min(args.precise_games * 2, args.max_precise))
