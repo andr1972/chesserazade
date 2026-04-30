@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Time-control sweep — head-to-head between two engine builds at
-# 100 / 200 / 500 / 1000 ms × 40 games each. Outputs:
+# 100 / 200 / 500 / 1000 ms × 20 games each. Outputs:
 #   wynik<MS>.dat        — match.py summary on stdout
 #
 # Usage:
@@ -12,9 +12,9 @@
 #   ./test.sh "./eng1 --opt" "./eng2 --opt"       # if you need to pass args
 #
 # Env-var overrides (optional):
-#   GAMES=20            (default 40)
+#   GAMES=20            (default 20)
 #   TIMES="100 500"     (default "100 200 500 1000")
-#   JOBS=-j8            (default -j   = use all physical cores)
+#   JOBS=-j8            (default -j   = phys cores - 1)
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
@@ -24,7 +24,7 @@ fi
 ENG1="$1"
 ENG2="$2"
 
-GAMES="${GAMES:-40}"
+GAMES="${GAMES:-20}"
 TIMES="${TIMES:-100 200 500 1000}"
 JOBS="${JOBS:--j}"
 
