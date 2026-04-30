@@ -27,6 +27,7 @@ import os
 import queue
 import random
 import shlex
+import signal
 import subprocess
 import sys
 import threading
@@ -183,10 +184,33 @@ class Engine:
         )
         self.name = name or _default_name_from_cmd(cmd)
         self.last_depth = 0  # set by go() per move
+        self._suspended = False
         self._send("uci")
         self._wait_for("uciok", timeout=10)
         self._send("isready")
         self._wait_for("readyok", timeout=10)
+
+    def suspend(self) -> None:
+        """SIGSTOP the engine. Used when the opponent is to move so a
+        rogue engine can't burn CPU off-clock (pondering, busy loops).
+        Best-effort: silently ignored on platforms without SIGSTOP or
+        if the process is already gone."""
+        if self._suspended or self.proc.poll() is not None:
+            return
+        try:
+            self.proc.send_signal(signal.SIGSTOP)
+            self._suspended = True
+        except Exception:
+            pass
+
+    def resume(self) -> None:
+        if not self._suspended or self.proc.poll() is not None:
+            return
+        try:
+            self.proc.send_signal(signal.SIGCONT)
+            self._suspended = False
+        except Exception:
+            pass
 
     def _send(self, line: str) -> None:
         assert self.proc.stdin is not None
@@ -208,6 +232,9 @@ class Engine:
         raise TimeoutError(f"{self.name}: did not say '{token}' in {timeout}s; last={last!r}")
 
     def new_game(self) -> None:
+        # Engine must be running to handle ucinewgame — previous
+        # game may have left it suspended on the loser's side.
+        self.resume()
         self._send("ucinewgame")
         self._send("isready")
         self._wait_for("readyok", timeout=10)
@@ -260,6 +287,8 @@ class Engine:
 
     def quit(self) -> None:
         try:
+            # Must be running to receive `quit` and exit cleanly.
+            self.resume()
             self._send("quit")
             self.proc.wait(timeout=2)
         except Exception:
@@ -323,8 +352,15 @@ def play_game(white: Engine, black: Engine, *,
                 sys.stdout.write("\n"); sys.stdout.flush()
             return "1/2-1/2", board, "MAX_MOVES"
         engine = white if board.turn == chess.WHITE else black
+        idle = black if board.turn == chess.WHITE else white
         movetime_ms = movetime_white if board.turn == chess.WHITE else movetime_black
         depth_cap = depth_white if board.turn == chess.WHITE else depth_black
+        # Freeze the side that isn't on move so it physically can't
+        # burn CPU off-clock (rogue ponder, `while true` busy-wait).
+        # On a single shared core (taskset pinning), this matters: a
+        # cheating opponent could otherwise eat half our budget.
+        idle.suspend()
+        engine.resume()
         move = engine.go(board, movetime_ms, depth_cap)
         if move not in board.legal_moves:
             # Forfeit: engine returned an illegal move.
@@ -391,8 +427,9 @@ def main() -> int:
                     help="output PGN; default runs/match-<timestamp>.pgn")
     ap.add_argument("-j", "--jobs", nargs="?", type=int, const=-1, default=1,
                     help="parallel games (make-style). No flag = serial."
-                         " -j alone = number of physical cores."
-                         " -jN = N workers, capped at the physical core count"
+                         " -j alone = (physical cores - 1), leaving one core"
+                         " for match.py and OS noise so pinned worker cores"
+                         " stay clean. -jN = N workers, capped the same way"
                          " and at the number of games.")
     ap.add_argument("--log", type=Path, default=None,
                     help="append a line per move (and per game start)"
@@ -415,11 +452,17 @@ def main() -> int:
     args = ap.parse_args()
 
     phys = physical_cores()
+    # Leave one physical core free for match.py itself + OS noise.
+    # With every core pinned to a worker pair, background load
+    # (~20% on a typical desktop) lands on whichever pinned core is
+    # handy and slows that pair's *currently-running* engine, biasing
+    # the result. Capping at phys-1 keeps engine cores clean.
+    job_cap = max(1, phys - 1) if phys >= 2 else 1
     if args.jobs == -1:
-        jobs = phys
+        jobs = job_cap
     else:
         jobs = args.jobs
-    jobs = max(1, min(jobs, phys, args.games))
+    jobs = max(1, min(jobs, job_cap, args.games))
     # One physical-core CPU id per worker for pinning. Empty list
     # disables pinning (e.g. /proc/cpuinfo unavailable, or --no-pin).
     pin_cpus: list[int] = []
