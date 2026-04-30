@@ -103,6 +103,14 @@ _DOT_RED = "\033[31m.\033[0m"
 _DOT_PLAIN = "."
 
 
+def _lower_cmdline(a: str, b: str, order: list) -> str:
+    """Return whichever of `a`, `b` came first in the user's
+    command-line engine list. Used to anchor dot colouring so a
+    pair like 'engine #3 vs engine #5' always reports from #3's
+    perspective regardless of phase or rough-rank inversion."""
+    return a if order.index(a) <= order.index(b) else b
+
+
 def _dot_for(result: str, white: str, black: str, track: str,
              coloured: bool) -> str:
     """Colour for one game's progress dot, from `track`'s perspective."""
@@ -417,7 +425,7 @@ def main() -> int:
                 mt2=mt2 if mt2 != movetime else None,
                 name1=a, name2=b, jobs=args.jobs,
                 progress=not args.quiet,
-                track=names[0])
+                track=_lower_cmdline(a, b, names))
             dt = time.time() - t0
             say(f"  rough {a} vs {b}: {sA:.1f} - {sB:.1f}  "
                 f"({fmt_duration(dt)})")
@@ -505,7 +513,7 @@ def main() -> int:
                 mt2=mt2 if mt2 != movetime else None,
                 name1=higher, name2=lower, jobs=args.jobs,
                 progress=not args.quiet,
-                track=names[0])
+                track=_lower_cmdline(higher, lower, names))
             cum_h += sH; cum_l += sL; played += n
             say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
                 f"{fmt_multi_ci(cum_h, played)}  "
