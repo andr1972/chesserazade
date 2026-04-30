@@ -41,6 +41,60 @@ import chess
 import chess.pgn
 
 
+def elo_diff(score: float, n: float) -> float:
+    """Logistic-Elo from a score percentage. ±inf at the endpoints
+    (100% / 0%) — caller decides how to format infinities."""
+    if n <= 0:
+        return 0.0
+    p = score / n
+    if p <= 0.0:
+        return -math.inf
+    if p >= 1.0:
+        return math.inf
+    return -400.0 * math.log10(1.0 / p - 1.0)
+
+
+def elo_interval(score: float, n: float, alpha: float = 0.05
+                 ) -> tuple[float, float, float]:
+    """Wilson-based confidence interval on the score percentage,
+    converted to Elo. Returns (point, lo, hi) — any of which may be
+    ±inf when the bound corresponds to score% 0 or 100. Wilson is
+    chosen because it stays well-defined at the extremes (a plain
+    Wald interval would collapse to width-zero at 20:0).
+
+    Treats each game as a unit-trial; with draws the score is
+    fractional, which makes the binomial assumption approximate but
+    matches what BayesElo / Ordo / Cute-Chess all do in practice."""
+    if n <= 0:
+        return 0.0, -math.inf, math.inf
+    z = NormalDist().inv_cdf(1.0 - alpha / 2.0)
+    p_hat = score / n
+    denom = 1.0 + z * z / n
+    center = (p_hat + z * z / (2.0 * n)) / denom
+    half = (z * math.sqrt(p_hat * (1.0 - p_hat) / n
+                          + z * z / (4.0 * n * n))) / denom
+    p_lo = max(0.0, center - half)
+    p_hi = min(1.0, center + half)
+    return elo_diff(score, n), elo_diff(p_lo * n, n), elo_diff(p_hi * n, n)
+
+
+def format_elo(score1: float, score2: float, *, alpha: float = 0.05) -> str:
+    """One-line Elo summary. At extreme scores (one side ran the
+    table) reports a one-sided bound like '>+278' instead of an
+    undefined point estimate. More games tighten both sides; with
+    draws-only the interval stays wide-open by design."""
+    n = score1 + score2
+    point, lo, hi = elo_interval(score1, n, alpha=alpha)
+    conf_pct = int(round((1.0 - alpha) * 100))
+    if math.isinf(point) and point > 0:
+        return f"Elo: >{lo:+.0f} ({conf_pct}% CI lower bound)"
+    if math.isinf(point) and point < 0:
+        return f"Elo: <{hi:+.0f} ({conf_pct}% CI upper bound)"
+    lo_s = f"{lo:+.0f}" if not math.isinf(lo) else "-inf"
+    hi_s = f"{hi:+.0f}" if not math.isinf(hi) else "+inf"
+    return f"Elo: {point:+.0f} [{lo_s}, {hi_s}] ({conf_pct}% CI)"
+
+
 def match_verdict(score1: float, score2: float, draws: int,
                   name1: str = "1", name2: str = "2", *,
                   alpha: float = 0.05) -> str:
@@ -769,6 +823,7 @@ def main() -> int:
         print(f"\n# === final: {name1} {s1:.1f} - {s2:.1f} {name2}  "
               f"({wins}W / {draws}D / {losses}L of {played:.0f})", flush=True)
         print(f"# {match_verdict(s1, s2, draws, name1, name2)}", flush=True)
+        print(f"# {format_elo(s1, s2)}", flush=True)
         print(f"# wrote {args.pgn}", flush=True)
         if log_file is not None:
             log_file.write(
