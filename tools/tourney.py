@@ -178,21 +178,38 @@ def fmt_elo_bound(val: float) -> str:
     return f"{val:+.0f}"
 
 
+_CI_LEVELS = (50, 75, 90, 95)
+
+
+def fmt_multi_ci(score: float, n: int) -> str:
+    """Elo point + CI at 50/75/90/95% — same format as match.py's
+    final summary so a single-pair tourney row reads the same as a
+    one-shot match.py invocation."""
+    point = elo_interval(score, n)[0]
+    head = f"{fmt_elo_bound(point)}" if not math.isinf(point) else ""
+    parts = []
+    for pct in _CI_LEVELS:
+        alpha = 1.0 - pct / 100.0
+        _, lo, hi = elo_interval(score, n, alpha=alpha)
+        if math.isinf(point) and point > 0:
+            parts.append(f"{pct}%>{fmt_elo_bound(lo)}")
+        elif math.isinf(point) and point < 0:
+            parts.append(f"{pct}%<{fmt_elo_bound(hi)}")
+        else:
+            parts.append(f"{pct}%:[{fmt_elo_bound(lo)},{fmt_elo_bound(hi)}]")
+    return (head + " " + " ".join(parts)).strip() + f"  N={n}"
+
+
 def _print_ranking(ranking: list, adj_results: list, tc_desc: str) -> None:
-    """Render the final ranking table. `adj_results` may be empty
-    (phase 2 skipped) — then every row reads '(rough only)'."""
+    """Render the final ranking table. Each row shows Elo gap to the
+    next-ranked engine with 50/75/90/95 % CIs. Final row reads (last)."""
     print()
     print(f"# === tournament ranking ({tc_desc}) ===")
-    print(f"{'rank':<4}  {'engine':<24}  {'Δ vs next (95% CI)':<28}")
+    print(f"{'rank':<4}  {'engine':<24}  Δ vs next (50/75/90/95% CI)")
     for i, name in enumerate(ranking):
         if i < len(adj_results):
             r = adj_results[i]
-            point, lo, hi = elo_interval(r["score_higher"], r["n"])
-            cell = (f"{fmt_elo_bound(point)} "
-                    f"[{fmt_elo_bound(lo)}, {fmt_elo_bound(hi)}]"
-                    f"  N={r['n']}")
-        elif not adj_results:
-            cell = "(rough only)"
+            cell = fmt_multi_ci(r["score_higher"], r["n"])
         else:
             cell = "(last)"
         print(f"{i+1:<4}  {name:<24}  {cell}")
@@ -385,9 +402,28 @@ def main() -> int:
     # bare invocation gives only the rough ordering. Pass an explicit
     # game count to enable.
     if args.precise_games <= 0:
+        # Pull score data from the rough comparisons we already
+        # made — mergesort guarantees every rank-adjacent pair was
+        # compared during a merge, so each adjacency has a (sA, sB)
+        # tuple in rough_compares. Use that for Elo with multi-CI;
+        # the CIs will be wide because N is only --rough-games.
         adj_results: list[dict] = []
-        say("# phase 2 skipped (--precise-games not set; pass e.g."
-            " --precise-games 1000 to enable)")
+        for i in range(len(ranking) - 1):
+            higher, lower = ranking[i], ranking[i + 1]
+            key = (higher, lower) if higher < lower else (lower, higher)
+            if key in rough_compares:
+                sA, sB = rough_compares[key]
+                if (higher, lower) == key:
+                    s_h, s_l = sA, sB
+                else:
+                    s_h, s_l = sB, sA
+                adj_results.append({
+                    "higher": higher, "lower": lower,
+                    "score_higher": s_h, "score_lower": s_l,
+                    "n": args.rough_games,
+                })
+        say("# phase 2 skipped (--precise-games not set;"
+            " pass e.g. --precise-games 1000 to enable)")
         _print_ranking(ranking, adj_results, tc_desc)
         return 0
 
