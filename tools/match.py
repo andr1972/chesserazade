@@ -599,8 +599,18 @@ def main() -> int:
         # outside the loop and the cleanup at the end re-reads
         # whatever is current.
         pin = pin_cpus[wid] if wid < len(pin_cpus) else None
-        e1: Optional[Engine] = Engine(args.engine1, name1, pin_cpu=pin)
-        e2: Optional[Engine] = Engine(args.engine2, name2, pin_cpu=pin)
+        # Half the workers spawn engine1 first, half spawn engine2
+        # first. Whichever process is created first gets a slightly
+        # warmer page cache and lower allocator fragmentation when
+        # it answers its first `go`; without this split, that micro-
+        # advantage always goes to the same engine and shows up as
+        # ~1 score point of bias across 40 games of self-play.
+        if wid % 2 == 0:
+            e1: Optional[Engine] = Engine(args.engine1, name1, pin_cpu=pin)
+            e2: Optional[Engine] = Engine(args.engine2, name2, pin_cpu=pin)
+        else:
+            e2 = Engine(args.engine2, name2, pin_cpu=pin)
+            e1 = Engine(args.engine1, name1, pin_cpu=pin)
         try:
             while True:
                 try:
@@ -636,8 +646,12 @@ def main() -> int:
                                 e.quit()
                             except Exception:
                                 pass
-                    e1 = Engine(args.engine1, name1, pin_cpu=pin)
-                    e2 = Engine(args.engine2, name2, pin_cpu=pin)
+                    if wid % 2 == 0:
+                        e1 = Engine(args.engine1, name1, pin_cpu=pin)
+                        e2 = Engine(args.engine2, name2, pin_cpu=pin)
+                    else:
+                        e2 = Engine(args.engine2, name2, pin_cpu=pin)
+                        e1 = Engine(args.engine1, name1, pin_cpu=pin)
         finally:
             for e in (e1, e2):
                 if e is not None:
