@@ -91,7 +91,25 @@ def parse_match_output(stdout: str) -> tuple[float, float, int, int]:
     )
 
 
-_GAME_LINE = re.compile(r"^\[(\d+)/(\d+)\]\s+\S.*:\s+(?:1-0|0-1|1/2-1/2)\b")
+_GAME_LINE = re.compile(
+    r"^\[(\d+)/(\d+)\]\s+(\S+)\s+-\s+(\S+):\s+(1-0|0-1|1/2-1/2)\b"
+)
+
+# ANSI colours for per-game progress dots: green when engine1 wins,
+# red when it loses, default-foreground for draws. Emitted only on
+# real TTYs so log-file captures stay clean.
+_DOT_GREEN = "\033[32m.\033[0m"
+_DOT_RED = "\033[31m.\033[0m"
+_DOT_PLAIN = "."
+
+
+def _dot_for(result: str, white: str, black: str, name1: str,
+             coloured: bool) -> str:
+    if not coloured or result == "1/2-1/2":
+        return _DOT_PLAIN
+    won = (result == "1-0" and white == name1) or \
+          (result == "0-1" and black == name1)
+    return _DOT_GREEN if won else _DOT_RED
 
 
 def run_match(eng1: str, eng2: str, *,
@@ -128,15 +146,19 @@ def run_match(eng1: str, eng2: str, *,
         res = subprocess.run(cmd, capture_output=True, text=True, check=True)
         s1, s2, draws, _wins1 = parse_match_output(res.stdout)
         return s1, s2, draws
-    # Streaming mode: print '.' to stderr per game-completion line.
+    # Streaming mode: print '.' to stderr per game-completion line,
+    # coloured by engine1's result (green=win, red=loss, plain=draw).
+    coloured = sys.stderr.isatty()
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     captured: list[str] = []
     assert proc.stdout is not None
     for line in proc.stdout:
         captured.append(line)
-        if _GAME_LINE.match(line):
-            sys.stderr.write(".")
+        m = _GAME_LINE.match(line)
+        if m:
+            white, black, result = m.group(3), m.group(4), m.group(5)
+            sys.stderr.write(_dot_for(result, white, black, name1, coloured))
             sys.stderr.flush()
     rc = proc.wait()
     sys.stderr.write("\n")
