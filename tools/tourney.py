@@ -309,8 +309,10 @@ def main() -> int:
 
     tc_desc = (f"{mt1}/{mt2} ms (handicap)" if handicap
                else f"{movetime} ms/move")
+    jobs_desc = (f"jobs={args.jobs}" if args.jobs is not None
+                 else f"jobs=default (~phys-1, est. {jobs_for_estimate})")
     say(f"# tournament: {len(args.engines)} engines, "
-        f"{tc_desc}, jobs={args.jobs}")
+        f"{tc_desc}, {jobs_desc}")
     say(f"# engines: {', '.join(names)}")
 
     # ---- Phase 1: mergesort rough ranking ---------------------------
