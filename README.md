@@ -96,6 +96,41 @@ chesserazade fetch
 
 ---
 
+## Engine matches and tournaments
+
+Two Python helpers under `tools/` drive head-to-head play between
+UCI engines. Both need `python-chess` — activate a venv that has
+it before running.
+
+```bash
+# Single head-to-head match (40 games × 1000 ms/move, 11 workers)
+python tools/match.py --engine1 ./build/release/chesserazade \
+                      --engine2 ./path/to/rukh \
+                      --games 40 --movetime 1000 -j
+
+# Two-phase tournament: mergesort rough ranking, then precise
+# verify between adjacent ranks. Sub-quadratic in the number of
+# engines so 10-15 entrants is feasible overnight.
+python tools/tourney.py --movetime 1000 \
+       ./build/release/a ./build/release/b /path/to/rukh stockfish
+
+# Wall-time estimate before committing to an overnight run
+python tools/tourney.py --estimate --movetime 1000 -n 10
+
+# Handicap match — measure Elo per time-doubling
+python tools/tourney.py --movetime 1000 \
+       --movetime1 100 --movetime2 1000 a b
+
+# Quiet mode — only the final ranking table is printed
+python tools/tourney.py --quiet --movetime 1000 a b c
+```
+
+`tourney.py` defaults: 100 games per rough comparison, 1000 per
+adjacent verify with escalation to 5000 when the 95 % Elo CI still
+includes zero. All parameters are overridable; see `--help`.
+
+---
+
 ## Architecture at a glance
 
 ```
