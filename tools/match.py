@@ -78,21 +78,41 @@ def elo_interval(score: float, n: float, alpha: float = 0.05
     return elo_diff(score, n), elo_diff(p_lo * n, n), elo_diff(p_hi * n, n)
 
 
-def format_elo(score1: float, score2: float, *, alpha: float = 0.05) -> str:
-    """One-line Elo summary. At extreme scores (one side ran the
-    table) reports a one-sided bound like '>+278' instead of an
-    undefined point estimate. More games tighten both sides; with
-    draws-only the interval stays wide-open by design."""
+def format_elo(score1: float, score2: float, *,
+               confidences: tuple[int, ...] = (50, 75, 95)) -> str:
+    """One-line Elo summary with several confidence intervals so the
+    reader can pick the level they care about. 95% is convention,
+    50% / 75% give a tighter-looking band that's still mathematically
+    honest — the trade-off is just how often the true Elo would land
+    inside it across repeated experiments. At extreme scores (one
+    side ran the table) the point estimate is ±inf, so we report
+    one-sided bounds at each level instead."""
     n = score1 + score2
-    point, lo, hi = elo_interval(score1, n, alpha=alpha)
-    conf_pct = int(round((1.0 - alpha) * 100))
-    if math.isinf(point) and point > 0:
-        return f"Elo: >{lo:+.0f} ({conf_pct}% CI lower bound)"
-    if math.isinf(point) and point < 0:
-        return f"Elo: <{hi:+.0f} ({conf_pct}% CI upper bound)"
-    lo_s = f"{lo:+.0f}" if not math.isinf(lo) else "-inf"
-    hi_s = f"{hi:+.0f}" if not math.isinf(hi) else "+inf"
-    return f"Elo: {point:+.0f} [{lo_s}, {hi_s}] ({conf_pct}% CI)"
+    point = elo_diff(score1, n)
+
+    def fmt_bound(val: float) -> str:
+        if math.isinf(val):
+            return "-inf" if val < 0 else "+inf"
+        return f"{val:+.0f}"
+
+    parts = []
+    for pct in confidences:
+        alpha = 1.0 - pct / 100.0
+        _, lo, hi = elo_interval(score1, n, alpha=alpha)
+        if math.isinf(point) and point > 0:
+            parts.append(f"{pct}%: >{fmt_bound(lo)}")
+        elif math.isinf(point) and point < 0:
+            parts.append(f"{pct}%: <{fmt_bound(hi)}")
+        else:
+            parts.append(f"{pct}%: [{fmt_bound(lo)}, {fmt_bound(hi)}]")
+
+    if math.isinf(point):
+        # Point estimate is undefined (one side ran the table); the
+        # one-sided bounds in `parts` carry the whole signal.
+        head = "Elo:"
+    else:
+        head = f"Elo: {point:+.0f}"
+    return head + "  " + "  ".join(parts)
 
 
 def match_verdict(score1: float, score2: float, draws: int,
