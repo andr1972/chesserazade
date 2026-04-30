@@ -11,7 +11,7 @@
 #
 # Examples:
 #   ./testply.sh ./build/release-optim/chesserazade ./build/release/chesserazade
-#   ./testply.sh "./eng1 uci" "./eng2 uci"
+#   ./testply.sh "./eng1 --opt" "./eng2 --opt"
 #
 # Env-var overrides (optional):
 #   GAMES=20            (default 40)
@@ -31,11 +31,6 @@ GAMES="${GAMES:-40}"
 TIME="${TIME:-1000}"
 PLIES="${PLIES:-1 2 3 4 5 6 7 8 9 11 13 15}"
 JOBS="${JOBS:--j}"
-
-# `uci` is appended only if the user passed a bare path; preserves
-# `./eng arg1 arg2` style commands intact.
-if [[ "$ENG1" != *" "* ]]; then ENG1="$ENG1 uci"; fi
-if [[ "$ENG2" != *" "* ]]; then ENG2="$ENG2 uci"; fi
 
 mkdir -p runs
 
