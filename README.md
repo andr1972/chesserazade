@@ -118,8 +118,8 @@ python tools/tourney.py --movetime 1000 \
 python tools/tourney.py --estimate --movetime 1000 -n 10
 
 # Handicap match — measure Elo per time-doubling
-python tools/tourney.py --movetime 1000 \
-       --movetime1 100 --movetime2 1000 a b
+# (--movetime1/--movetime2 replace --movetime; exactly two engines)
+python tools/tourney.py --movetime1 100 --movetime2 1000 a b
 
 # Quiet mode — only the final ranking table is printed
 python tools/tourney.py --quiet --movetime 1000 a b c

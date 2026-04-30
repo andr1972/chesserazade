@@ -176,13 +176,18 @@ def main() -> int:
                     help="engine commands or paths. Names default to"
                          " the binary stem; collisions get the parent"
                          " directory prepended (same logic as match.py).")
-    ap.add_argument("--movetime", type=int, required=True,
-                    help="ms per move (both engines unless --movetime1"
-                         " / --movetime2 override).")
+    ap.add_argument("--movetime", type=int, default=None,
+                    help="ms per move for every engine. Required for"
+                         " tournaments of 3+ engines. Mutually exclusive"
+                         " with --movetime1/--movetime2.")
     ap.add_argument("--movetime1", type=int, default=None,
-                    help="handicap: ms/move for engine1 only")
+                    help="handicap mode: ms/move for engine1. Must be"
+                         " paired with --movetime2; turns the run into"
+                         " a 2-engine match (exactly two engines required,"
+                         " no --movetime).")
     ap.add_argument("--movetime2", type=int, default=None,
-                    help="handicap: ms/move for engine2 only")
+                    help="handicap mode: ms/move for engine2 (see"
+                         " --movetime1).")
     ap.add_argument("--rough-games", type=int, default=100,
                     help="games per rough comparison (default 100)")
     ap.add_argument("--precise-games", type=int, default=1000,
@@ -203,8 +208,33 @@ def main() -> int:
                          " the final ranking table is printed")
     args = ap.parse_args()
 
-    mt1 = args.movetime1 if args.movetime1 is not None else args.movetime
-    mt2 = args.movetime2 if args.movetime2 is not None else args.movetime
+    # Time-control mode: either uniform --movetime or handicap with
+    # --movetime1+--movetime2 (exactly 2 engines). Mixing the two
+    # would be ambiguous, missing both leaves the run undefined.
+    handicap = args.movetime1 is not None or args.movetime2 is not None
+    if handicap and args.movetime is not None:
+        print("--movetime is mutually exclusive with --movetime1/--movetime2",
+              file=sys.stderr)
+        return 2
+    if handicap and (args.movetime1 is None or args.movetime2 is None):
+        print("--movetime1 and --movetime2 must be given together",
+              file=sys.stderr)
+        return 2
+    if not handicap and args.movetime is None:
+        print("--movetime is required (or use --movetime1+--movetime2"
+              " for a 2-engine handicap match)", file=sys.stderr)
+        return 2
+
+    if handicap:
+        mt1, mt2 = args.movetime1, args.movetime2
+        # Use mt1 as match.py's --movetime baseline; mt2 will be
+        # passed as --movetime2 override. Wall-time estimate uses the
+        # arithmetic mean (per-game cost is ply × avg(mt1, mt2)).
+        movetime = mt1
+    else:
+        movetime = args.movetime
+        mt1 = mt2 = movetime
+
     jobs_for_estimate = args.jobs if args.jobs is not None else 11
 
     if args.estimate:
@@ -212,10 +242,18 @@ def main() -> int:
             print("--estimate needs -n N or an engine list", file=sys.stderr)
             return 2
         n = args.n if args.n is not None else len(args.engines)
-        estimate_mode(n, args.movetime, jobs_for_estimate,
+        if handicap and n != 2:
+            print("--movetime1/--movetime2 require exactly 2 engines",
+                  file=sys.stderr)
+            return 2
+        estimate_mode(n, movetime, jobs_for_estimate,
                       args.rough_games, args.precise_games, mt1, mt2)
         return 0
 
+    if handicap and len(args.engines) != 2:
+        print(f"--movetime1/--movetime2 require exactly 2 engines"
+              f" (got {len(args.engines)})", file=sys.stderr)
+        return 2
     if len(args.engines) < 2:
         print("need at least 2 engines (or --estimate -n N)", file=sys.stderr)
         return 2
@@ -243,14 +281,16 @@ def main() -> int:
 
     eng_by_name = dict(zip(names, args.engines))
 
+    tc_desc = (f"{mt1}/{mt2} ms (handicap)" if handicap
+               else f"{movetime} ms/move")
     say(f"# tournament: {len(args.engines)} engines, "
-        f"{args.movetime} ms/move, jobs={args.jobs}")
+        f"{tc_desc}, jobs={args.jobs}")
     say(f"# engines: {', '.join(names)}")
 
     # ---- Phase 1: mergesort rough ranking ---------------------------
     rough_n_est = mergesort_compares(len(args.engines))
     rough_eta = rough_n_est * estimate_seconds_per_match(
-        args.rough_games, args.movetime, jobs_for_estimate, mt1, mt2)
+        args.rough_games, movetime, jobs_for_estimate, mt1, mt2)
     say(f"# phase 1: mergesort × {args.rough_games} games "
         f"(~{rough_n_est} matches, est. {fmt_duration(rough_eta)})")
 
@@ -267,9 +307,9 @@ def main() -> int:
             t0 = time.time()
             sA, sB, _drw = run_match(
                 eng_by_name[a], eng_by_name[b],
-                games=args.rough_games, movetime=args.movetime,
-                mt1=mt1 if mt1 != args.movetime else None,
-                mt2=mt2 if mt2 != args.movetime else None,
+                games=args.rough_games, movetime=movetime,
+                mt1=mt1 if mt1 != movetime else None,
+                mt2=mt2 if mt2 != movetime else None,
                 name1=a, name2=b, jobs=args.jobs)
             dt = time.time() - t0
             say(f"  rough {a} vs {b}: {sA:.1f} - {sB:.1f}  "
@@ -286,7 +326,7 @@ def main() -> int:
     # ---- Phase 2: adjacent verify with escalation -------------------
     adj_count = max(0, len(ranking) - 1)
     adj_eta = adj_count * estimate_seconds_per_match(
-        args.precise_games, args.movetime, jobs_for_estimate, mt1, mt2)
+        args.precise_games, movetime, jobs_for_estimate, mt1, mt2)
     say(f"# phase 2: {adj_count} adjacent pairs × "
         f"{args.precise_games} games (est. {fmt_duration(adj_eta)})")
 
@@ -310,9 +350,9 @@ def main() -> int:
             t0 = time.time()
             sH, sL, _drw = run_match(
                 eng_by_name[higher], eng_by_name[lower],
-                games=need, movetime=args.movetime,
-                mt1=mt1 if mt1 != args.movetime else None,
-                mt2=mt2 if mt2 != args.movetime else None,
+                games=need, movetime=movetime,
+                mt1=mt1 if mt1 != movetime else None,
+                mt2=mt2 if mt2 != movetime else None,
                 name1=higher, name2=lower, jobs=args.jobs)
             cum_h += sH; cum_l += sL; played += need
             point, lo, hi = elo_interval(cum_h, played)
@@ -332,7 +372,7 @@ def main() -> int:
 
     # ---- Final ranking table ---------------------------------------
     print()
-    print(f"# === tournament ranking ({args.movetime} ms/move) ===")
+    print(f"# === tournament ranking ({tc_desc}) ===")
     print(f"{'rank':<4}  {'engine':<24}  {'Δ vs next (95% CI)':<28}")
     for i, name in enumerate(ranking):
         if i < len(adj_results):
