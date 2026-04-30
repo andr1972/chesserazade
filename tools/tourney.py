@@ -91,14 +91,21 @@ def parse_match_output(stdout: str) -> tuple[float, float, int, int]:
     )
 
 
+_GAME_LINE = re.compile(r"^\[(\d+)/(\d+)\]\s+\S.*:\s+(?:1-0|0-1|1/2-1/2)\b")
+
+
 def run_match(eng1: str, eng2: str, *,
               games: int, movetime: int,
               mt1: Optional[int] = None, mt2: Optional[int] = None,
               name1: str, name2: str,
               jobs: Optional[int] = None,
+              progress: bool = False,
               extra_args: Optional[list[str]] = None
               ) -> tuple[float, float, int]:
-    """Run match.py and return (score1, score2, draws)."""
+    """Run match.py and return (score1, score2, draws). When
+    `progress` is true, stream stdout and emit a '.' per completed
+    game on stderr so the caller can show live progress without
+    losing the parsed final summary."""
     cmd = [sys.executable, str(MATCH_PY),
            "--engine1", eng1, "--engine2", eng2,
            "--games", str(games),
@@ -112,8 +119,27 @@ def run_match(eng1: str, eng2: str, *,
         cmd += ["-j", str(jobs)]
     if extra_args:
         cmd += extra_args
-    res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    s1, s2, draws, _wins1 = parse_match_output(res.stdout)
+    if not progress:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        s1, s2, draws, _wins1 = parse_match_output(res.stdout)
+        return s1, s2, draws
+    # Streaming mode: print '.' to stderr per game-completion line.
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    captured: list[str] = []
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        captured.append(line)
+        if _GAME_LINE.match(line):
+            sys.stderr.write(".")
+            sys.stderr.flush()
+    rc = proc.wait()
+    sys.stderr.write("\n")
+    sys.stderr.flush()
+    if rc != 0:
+        raise RuntimeError(
+            f"match.py exited {rc}; tail:\n{''.join(captured[-10:])}")
+    s1, s2, draws, _wins1 = parse_match_output("".join(captured))
     return s1, s2, draws
 
 
@@ -310,7 +336,8 @@ def main() -> int:
                 games=args.rough_games, movetime=movetime,
                 mt1=mt1 if mt1 != movetime else None,
                 mt2=mt2 if mt2 != movetime else None,
-                name1=a, name2=b, jobs=args.jobs)
+                name1=a, name2=b, jobs=args.jobs,
+                progress=not args.quiet)
             dt = time.time() - t0
             say(f"  rough {a} vs {b}: {sA:.1f} - {sB:.1f}  "
                 f"({fmt_duration(dt)})")
@@ -353,7 +380,8 @@ def main() -> int:
                 games=need, movetime=movetime,
                 mt1=mt1 if mt1 != movetime else None,
                 mt2=mt2 if mt2 != movetime else None,
-                name1=higher, name2=lower, jobs=args.jobs)
+                name1=higher, name2=lower, jobs=args.jobs,
+                progress=not args.quiet)
             cum_h += sH; cum_l += sL; played += need
             point, lo, hi = elo_interval(cum_h, played)
             decisive = lo > 0  # lower bound above 0 means higher really is higher
