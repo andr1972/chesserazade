@@ -124,6 +124,30 @@ struct Stop {
     bool enable_aspiration = false;
     bool enable_pvs = false;
     bool enable_check_ext = false;
+    bool enable_nmp_verify = false;
+    /// Transient state for the NMP verification re-search: while
+    /// non-zero, NMP is suppressed for `nmp_color` until a node's
+    /// `ply` exceeds `nmp_min_ply`. Always 0 outside the verification
+    /// scope. See the Step 9 verification block below for details.
+    int nmp_min_ply = 0;
+    int nmp_color = -1;  // -1 == no constraint
+    /// Diagnostic counters — totals across the whole search.
+    /// Cheap (one increment per gate) and zero-cost when nothing
+    /// reads them; the iterative-deepening loop emits them as
+    /// `info string` for analysis runs.
+    /// State labels mirror the user's original log markers:
+    ///   0 = nmp_rejected   — gate predicate failed (else branch)
+    ///   1 = nmp_entered    — gate let the null search run
+    ///   2 = nmp_verified   — verify search confirmed the cutoff
+    ///   3 = nmp_aborted    — verify search aborted (time/cancel)
+    /// Plus intermediate breakdown counts so we can see *why* verify
+    /// did/didn't fire when the four-state totals don't match expect.
+    std::uint64_t nmp_rejected = 0;
+    std::uint64_t nmp_entered = 0;
+    std::uint64_t nmp_failed_high = 0;
+    std::uint64_t nmp_verify_attempts = 0;
+    std::uint64_t nmp_verified = 0;
+    std::uint64_t nmp_aborted = 0;
     int contempt_cp = 0;
     std::atomic<bool>* cancel = nullptr;
     std::atomic<std::uint64_t>* progress_nodes = nullptr;
@@ -602,21 +626,37 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     // Reducer R = 3 (classical; deeper formulas belong in 2.x
     // polish). The pruning branch is a shadow search — we pass
     // `rec = nullptr` so it does not pollute the analyzer tree.
-    constexpr int NMP_R = 3;
+    // Verification gate (SF Stockfish): when verification is in
+    // progress for our colour, suppress NMP at plies below
+    // `nmp_min_ply`. `nmp_color == -1` means no constraint.
+    //
+    // Diagnostic counters: per-search totals of how often each NMP
+    // path was taken. Read from the iterative-deepening loop and
+    // emitted as 'info string' so debug runs can confirm verify
+    // actually triggers (it requires depth >= 13 — easy to miss at
+    // short TC where IDs never get there). Search-instance state,
+    // not global, so concurrent searches don't mix.
+    const int us = static_cast<int>(board.side_to_move());
+    const bool nmp_allowed_for_side =
+        stop.nmp_color < 0 || us != stop.nmp_color || ply >= stop.nmp_min_ply;
     if (allow_null
+        && nmp_allowed_for_side
         && !stop.disable_alpha_beta
         && ply > 0
         && depth >= 3
         && !MoveGenerator::is_in_check(board, board.side_to_move())
         && has_non_pawn_material(board, board.side_to_move())) {
+        ++stop.nmp_entered;
+        constexpr int NMP_VERIFY_MIN_DEPTH = 13;
         const int static_eval = stop.use_incremental_eval
             ? board.evaluate_incremental()
             : evaluate(board);
         if (static_eval >= beta) {
+            const int NMP_R = 4;
             board.make_null_move();
             BranchStats null_stats;
             const NegamaxResult nr = negamax(
-                board, depth - NMP_R - 1, ply + 1,
+                board, depth - NMP_R, ply + 1,
                 -beta, -beta + 1,
                 nodes, pv, killers, history, stop, tt,
                 /*rec=*/nullptr, null_stats,
@@ -627,12 +667,49 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 
             const int null_score = -nr.score;
             if (null_score >= beta) {
-                // Fail-soft prune. `exact=false` because we
-                // didn't visit a single real child — the whole
-                // node is a bound, not a value.
-                return {null_score, false};
+                ++stop.nmp_failed_high;
+                // Verification re-search (SF classical Step 9): at
+                // high depths, when not already inside a verification
+                // scope, repeat the same reduced-depth search but
+                // for *our* side, with NMP disabled for us until
+                // `ply + 3·(depth−R)/4`. If verification confirms
+                // the cutoff (v ≥ β), accept it; otherwise fall
+                // through and search normally. Catches zugzwang
+                // positions where the opponent's null move was
+                // misleading. SF threshold is depth ≥ 13.
+                const bool need_verify =
+                    stop.enable_nmp_verify
+                    && stop.nmp_min_ply == 0
+                    && depth >= NMP_VERIFY_MIN_DEPTH;
+                if (!need_verify) {
+                    return {null_score, false};
+                }
+                ++stop.nmp_verify_attempts;
+                stop.nmp_min_ply = ply + 3 * (depth - NMP_R) / 4;
+                stop.nmp_color = us;
+                BranchStats verify_stats;
+                const NegamaxResult vr = negamax(
+                    board, depth - NMP_R, ply,
+                    beta - 1, beta,
+                    nodes, pv, killers, history, stop, tt,
+                    /*rec=*/nullptr, verify_stats,
+                    /*allow_null=*/true);
+                stop.nmp_min_ply = 0;
+                stop.nmp_color = -1;
+
+                if (stop.abort) {
+                    ++stop.nmp_aborted;
+                    return {0, false};
+                }
+                if (vr.score >= beta) {
+                    ++stop.nmp_verified;
+                    return {null_score, false};
+                }
+                // Verification failed — fall through to normal search.
             }
         }
+    } else {
+        ++stop.nmp_rejected;
     }
 
     // --- Legality + terminal ------------------------------------------
@@ -938,6 +1015,10 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_aspiration,
         limits.enable_pvs,
         limits.enable_check_ext,
+        limits.enable_nmp_verify,
+        0,    // nmp_min_ply
+        -1,   // nmp_color (no constraint)
+        0, 0, 0, 0, 0, 0,  // nmp_{rejected,entered,failed_high,verify_attempts,verified,aborted}
         limits.contempt_cp,
         limits.cancel,
         limits.progress_nodes,
@@ -1112,6 +1193,13 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         result.tt_probes = tt->probes() - probes_before;
         result.tt_hits   = tt->hits()   - hits_before;
     }
+
+    result.nmp_rejected        = stop.nmp_rejected;
+    result.nmp_entered         = stop.nmp_entered;
+    result.nmp_failed_high     = stop.nmp_failed_high;
+    result.nmp_verify_attempts = stop.nmp_verify_attempts;
+    result.nmp_verified        = stop.nmp_verified;
+    result.nmp_aborted         = stop.nmp_aborted;
 
     result.elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(

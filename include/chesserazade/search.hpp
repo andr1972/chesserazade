@@ -158,6 +158,17 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Check_Extensions
     bool enable_check_ext = false;
 
+    /// Verification re-search for null-move pruning. When the
+    /// regular NMP fails high at depth ≥ NMP_VERIFY_MIN_DEPTH,
+    /// a second search of the same reduced depth is run for our
+    /// own side (NMP disabled for us until ply exceeds a derived
+    /// threshold) to confirm the cutoff. Catches zugzwang
+    /// positions that vanilla NMP would mishandle. Ported from
+    /// Stockfish classical (~+5 Elo at long TCs in their tests;
+    /// expect less at chesserazade's strength).
+    /// See https://www.chessprogramming.org/Null_Move_Pruning
+    bool enable_nmp_verify = false;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The
@@ -319,6 +330,29 @@ struct SearchResult {
     /// TT is supplied to `find_best`, these remain zero.
     std::uint64_t tt_probes = 0;
     std::uint64_t tt_hits   = 0;
+
+    /// Null-move-pruning diagnostics. `nmp_entered` counts every
+    /// time the NMP gate let the null search run; `nmp_failed_high`
+    /// is the subset where the null search returned ≥ β (a tentative
+    /// cutoff). `nmp_verify_attempts` is the further subset that
+    /// triggered the verification re-search (only when
+    /// `enable_nmp_verify` is set and depth ≥ NMP_VERIFY_MIN_DEPTH);
+    /// `nmp_verify_passed` is the subset where verification confirmed
+    /// the cutoff. Useful for spotting whether verification ever fires
+    /// at a given TC — short searches often never reach depth 13.
+    /// Four primary states (mirroring the original log markers):
+    ///   nmp_rejected — gate predicate failed (no null search run)
+    ///   nmp_entered  — gate passed, null search executed
+    ///   nmp_verified — verify search confirmed the cutoff
+    ///   nmp_aborted  — verify search aborted (time/cancel)
+    /// `nmp_failed_high` / `nmp_verify_attempts` are intermediate
+    /// counts for diagnosing why verify did/didn't trigger.
+    std::uint64_t nmp_rejected = 0;
+    std::uint64_t nmp_entered = 0;
+    std::uint64_t nmp_failed_high = 0;
+    std::uint64_t nmp_verify_attempts = 0;
+    std::uint64_t nmp_verified = 0;
+    std::uint64_t nmp_aborted = 0;
 
     /// Captures and checks along the principal variation from
     /// the root through to the leaf. Capture values are always

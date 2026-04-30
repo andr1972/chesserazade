@@ -291,6 +291,12 @@ class Engine:
         )
         self.name = name or _default_name_from_cmd(cmd)
         self.last_depth = 0  # set by go() per move
+        # Aggregated counters parsed from `info string key=N` lines
+        # in the most recent `go`. Reset at the start of every go.
+        self.last_info: dict[str, int] = {}
+        # Cumulative across the engine's whole lifetime — handy for
+        # match-end summaries that want totals over hundreds of games.
+        self.cum_info: dict[str, int] = {}
         self._suspended = False
         self._send("uci")
         self._wait_for("uciok", timeout=10)
@@ -365,6 +371,7 @@ class Engine:
         # `go` returns. Reset to 0 on every go so an unanswered
         # depth probe shows up explicitly.
         self.last_depth = 0
+        self.last_info = {}
         deadline = time.time() + (movetime_ms / 1000.0) + 5.0
         assert self.proc.stdout is not None
         while time.time() < deadline:
@@ -373,6 +380,21 @@ class Engine:
                 raise RuntimeError(f"{self.name}: engine closed mid-search")
             line = line.strip()
             if line.startswith("info "):
+                # `info string ...` is a free-form UCI comment — the
+                # engine prints its NMP/verify counters there. Sum
+                # `key=N` tokens into per-search totals so the
+                # caller can read `engine.last_info` after `go`.
+                if line.startswith("info string "):
+                    body = line[len("info string "):]
+                    for tok in body.split():
+                        if "=" in tok:
+                            k, v = tok.split("=", 1)
+                            try:
+                                self.last_info[k] = (
+                                    self.last_info.get(k, 0) + int(v))
+                            except ValueError:
+                                pass
+                    continue
                 # UCI 'info ... depth N ...' — N is the next token.
                 tokens = line.split()
                 for k, tok in enumerate(tokens):
@@ -389,6 +411,8 @@ class Engine:
                 tokens = line.split()
                 if len(tokens) < 2:
                     raise RuntimeError(f"{self.name}: malformed bestmove: {line!r}")
+                for k, v in self.last_info.items():
+                    self.cum_info[k] = self.cum_info.get(k, 0) + v
                 return chess.Move.from_uci(tokens[1])
         raise TimeoutError(f"{self.name}: bestmove never arrived")
 
@@ -612,6 +636,10 @@ def main() -> int:
           f"(jobs={jobs}, physical cores={phys}{pin_desc})", flush=True)
 
     score: dict[str, float] = {name1: 0.0, name2: 0.0}
+    # `info string key=N` totals merged across all worker instances
+    # of each engine. Filled at worker cleanup (under `lock`) so the
+    # main thread can summarise NMP/etc counters at match end.
+    match_info: dict[str, dict[str, int]] = {name1: {}, name2: {}}
     games_pgn: list[Optional[chess.pgn.Game]] = [None] * args.games
     lock = threading.Lock()
     log_lock = threading.Lock()
@@ -766,6 +794,11 @@ def main() -> int:
         finally:
             for e in (e1, e2):
                 if e is not None:
+                    if e.cum_info and e.name in match_info:
+                        with lock:
+                            bucket = match_info[e.name]
+                            for k, v in e.cum_info.items():
+                                bucket[k] = bucket.get(k, 0) + v
                     try:
                         e.quit()
                     except Exception:
@@ -844,6 +877,11 @@ def main() -> int:
               f"({wins}W / {draws}D / {losses}L of {played:.0f})", flush=True)
         print(f"# {match_verdict(s1, s2, draws, name1, name2)}", flush=True)
         print(f"# {format_elo(s1, s2)}", flush=True)
+        for nm in (name1, name2):
+            info = match_info.get(nm) or {}
+            if info:
+                summary = " ".join(f"{k}={v}" for k, v in sorted(info.items()))
+                print(f"# {nm} info: {summary}", flush=True)
         print(f"# wrote {args.pgn}", flush=True)
         if log_file is not None:
             log_file.write(

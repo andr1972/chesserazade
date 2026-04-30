@@ -326,7 +326,21 @@ void emit_info(const SearchResult& r, std::ostream& out) {
     if (!r.principal_variation.empty()) {
         out << " pv " << format_pv(r.principal_variation);
     }
-    out << '\n' << std::flush;
+    out << '\n';
+    // NMP diagnostics — `info string` is a free-form UCI line that
+    // GUIs and match.py treat as a comment. Skipped when nothing
+    // entered the gate so untouched searches stay quiet.
+    if (r.nmp_entered + r.nmp_rejected > 0) {
+        out << "info string nmp"
+            << " rejected=" << r.nmp_rejected
+            << " entered=" << r.nmp_entered
+            << " failed_high=" << r.nmp_failed_high
+            << " verify_attempts=" << r.nmp_verify_attempts
+            << " verified=" << r.nmp_verified
+            << " aborted=" << r.nmp_aborted
+            << '\n';
+    }
+    out << std::flush;
 }
 
 void handle_go(UciSession& s, const std::vector<std::string>& toks,
@@ -373,6 +387,7 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
         lim.enable_aspiration = true;
         lim.enable_pvs        = true;
         lim.enable_check_ext  = true;
+        lim.enable_nmp_verify = true;
         // Past-game zobrists so the search detects 3-fold lines
         // reaching back into actually-played moves, plus a small
         // contempt so the engine prefers fighting on over a
