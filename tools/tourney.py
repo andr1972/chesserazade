@@ -103,12 +103,13 @@ _DOT_RED = "\033[31m.\033[0m"
 _DOT_PLAIN = "."
 
 
-def _dot_for(result: str, white: str, black: str, name1: str,
+def _dot_for(result: str, white: str, black: str, track: str,
              coloured: bool) -> str:
+    """Colour for one game's progress dot, from `track`'s perspective."""
     if not coloured or result == "1/2-1/2":
         return _DOT_PLAIN
-    won = (result == "1-0" and white == name1) or \
-          (result == "0-1" and black == name1)
+    won = (result == "1-0" and white == track) or \
+          (result == "0-1" and black == track)
     return _DOT_GREEN if won else _DOT_RED
 
 
@@ -118,6 +119,7 @@ def run_match(eng1: str, eng2: str, *,
               name1: str, name2: str,
               jobs: Optional[int] = None,
               progress: bool = False,
+              track: Optional[str] = None,
               extra_args: Optional[list[str]] = None
               ) -> tuple[float, float, int]:
     """Run match.py and return (score1, score2, draws). When
@@ -147,8 +149,13 @@ def run_match(eng1: str, eng2: str, *,
         s1, s2, draws, _wins1 = parse_match_output(res.stdout)
         return s1, s2, draws
     # Streaming mode: print '.' to stderr per game-completion line,
-    # coloured by engine1's result (green=win, red=loss, plain=draw).
+    # coloured from `track`'s perspective (green=track wins, red=loses,
+    # plain=draw). `track` defaults to name1 but the caller may pin it
+    # to a specific engine — typically the user's command-line first
+    # engine — so colours stay consistent across rough/precise phases
+    # regardless of how the rough ranking flips name1/name2.
     coloured = sys.stderr.isatty()
+    track_name = track if track in (name1, name2) else name1
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     captured: list[str] = []
@@ -158,7 +165,8 @@ def run_match(eng1: str, eng2: str, *,
         m = _GAME_LINE.match(line)
         if m:
             white, black, result = m.group(3), m.group(4), m.group(5)
-            sys.stderr.write(_dot_for(result, white, black, name1, coloured))
+            sys.stderr.write(_dot_for(result, white, black, track_name,
+                                      coloured))
             sys.stderr.flush()
     rc = proc.wait()
     sys.stderr.write("\n")
@@ -227,6 +235,8 @@ def _print_ranking(ranking: list, adj_results: list, tc_desc: str) -> None:
     next-ranked engine with 50/75/90/95 % CIs. Final row reads (last)."""
     print()
     print(f"# === tournament ranking ({tc_desc}) ===")
+    if ranking:
+        print(f"# winner: {ranking[0]}")
     print(f"{'rank':<4}  {'engine':<24}  Δ vs next (50/75/90/95% CI)")
     for i, name in enumerate(ranking):
         if i < len(adj_results):
@@ -406,7 +416,8 @@ def main() -> int:
                 mt1=mt1 if mt1 != movetime else None,
                 mt2=mt2 if mt2 != movetime else None,
                 name1=a, name2=b, jobs=args.jobs,
-                progress=not args.quiet)
+                progress=not args.quiet,
+                track=names[0])
             dt = time.time() - t0
             say(f"  rough {a} vs {b}: {sA:.1f} - {sB:.1f}  "
                 f"({fmt_duration(dt)})")
@@ -493,7 +504,8 @@ def main() -> int:
                 mt1=mt1 if mt1 != movetime else None,
                 mt2=mt2 if mt2 != movetime else None,
                 name1=higher, name2=lower, jobs=args.jobs,
-                progress=not args.quiet)
+                progress=not args.quiet,
+                track=names[0])
             cum_h += sH; cum_l += sL; played += n
             say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
                 f"{fmt_multi_ci(cum_h, played)}  "
