@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+# Copyright (c) 2024-2026 Andrzej Borucki
+# SPDX-License-Identifier: Apache-2.0
+
+"""Engine round-robin tournament with sub-quadratic comparisons.
+
+Two-phase plan:
+  1. Rough sort (mergesort, N·log₂N comparisons, --rough-games each).
+     Each comparison is a short head-to-head; the higher score wins.
+     No statistics — purely score-based, fast.
+  2. Adjacent verify: for each consecutive pair in the rough ranking,
+     run a longer match (--precise-games), escalating to 2× / 5× when
+     the 95% CI still includes zero so close-strength pairs get the
+     extra games they need without wasting them on lopsided ones.
+
+Final output is a ranking table with Elo + 95% CI relative to the
+top engine and to the next-lower engine.
+
+Time estimate (--estimate) prints phase-1 and phase-2 wall time for
+the given engine count and movetime so you can plan overnight runs
+before committing.
+
+Usage:
+    tools/tourney.py --movetime 1000 a b c d e
+    tools/tourney.py --movetime 1000 --estimate -n 10
+    tools/tourney.py --movetime 1000 --movetime1 100 --movetime2 1000 a b
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import re
+import subprocess
+import sys
+import time
+from functools import cmp_to_key
+from pathlib import Path
+from statistics import NormalDist
+from typing import Callable, Optional
+
+REPO = Path(__file__).resolve().parent.parent
+MATCH_PY = REPO / "tools" / "match.py"
+
+# Average plies/game observed in chesserazade self-play; used for
+# wall-time estimates. Real matches vary 60-180 ply depending on
+# engine strength and movetime, but 119 is a reasonable midpoint.
+AVG_PLIES = 119
+
+
+def fmt_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        return f"{seconds/60:.0f}m"
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    return f"{h}h {m:02d}m"
+
+
+def estimate_seconds_per_match(games: int, movetime_ms: int,
+                               jobs: int, mt1: int, mt2: int) -> float:
+    """Wall-clock seconds for one head-to-head match. Both engines
+    contribute moves so the per-game cost is plies × avg(mt1, mt2)."""
+    avg_mt = (mt1 + mt2) / 2.0
+    per_game_s = AVG_PLIES * avg_mt / 1000.0
+    return games * per_game_s / max(1, jobs)
+
+
+def mergesort_compares(n: int) -> int:
+    """Worst-case comparison count for mergesort on n items."""
+    if n <= 1:
+        return 0
+    return math.ceil(n * math.log2(n) - n + 1)
+
+
+def parse_match_output(stdout: str) -> tuple[float, float, int, int]:
+    """Pull (score1, score2, draws, wins1) from match.py stdout."""
+    pat = re.compile(
+        r"# === final: \S+ ([\d.]+) - ([\d.]+) \S+"
+        r"\s+\((\d+)W / (\d+)D / (\d+)L"
+    )
+    for line in stdout.splitlines():
+        m = pat.search(line)
+        if m:
+            return (float(m.group(1)), float(m.group(2)),
+                    int(m.group(4)), int(m.group(3)))
+    raise RuntimeError(
+        f"could not find '=== final' line in match output:\n"
+        f"...{stdout[-400:]}"
+    )
+
+
+def run_match(eng1: str, eng2: str, *,
+              games: int, movetime: int,
+              mt1: Optional[int] = None, mt2: Optional[int] = None,
+              name1: str, name2: str,
+              jobs: Optional[int] = None,
+              extra_args: Optional[list[str]] = None
+              ) -> tuple[float, float, int]:
+    """Run match.py and return (score1, score2, draws)."""
+    cmd = [sys.executable, str(MATCH_PY),
+           "--engine1", eng1, "--engine2", eng2,
+           "--games", str(games),
+           "--movetime", str(movetime),
+           "--name1", name1, "--name2", name2]
+    if mt1 is not None:
+        cmd += ["--movetime1", str(mt1)]
+    if mt2 is not None:
+        cmd += ["--movetime2", str(mt2)]
+    if jobs is not None:
+        cmd += ["-j", str(jobs)]
+    if extra_args:
+        cmd += extra_args
+    res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    s1, s2, draws, _wins1 = parse_match_output(res.stdout)
+    return s1, s2, draws
+
+
+# Wilson-based Elo CI mirrors `match.format_elo`. Inlined here so the
+# tourney has no Python-import dependency on match.py — match.py is
+# invoked as a subprocess for actual gameplay.
+def elo_interval(score: float, n: float, alpha: float = 0.05
+                 ) -> tuple[float, float, float]:
+    if n <= 0:
+        return 0.0, -math.inf, math.inf
+
+    def to_elo(p: float) -> float:
+        if p <= 0.0: return -math.inf
+        if p >= 1.0: return math.inf
+        return -400.0 * math.log10(1.0 / p - 1.0)
+
+    z = NormalDist().inv_cdf(1.0 - alpha / 2.0)
+    p_hat = score / n
+    denom = 1.0 + z * z / n
+    center = (p_hat + z * z / (2.0 * n)) / denom
+    half = (z * math.sqrt(p_hat * (1.0 - p_hat) / n
+                          + z * z / (4.0 * n * n))) / denom
+    p_lo = max(0.0, center - half)
+    p_hi = min(1.0, center + half)
+    return to_elo(p_hat), to_elo(p_lo * n / max(n, 1)), to_elo(p_hi * n / max(n, 1))
+
+
+def fmt_elo_bound(val: float) -> str:
+    if math.isinf(val):
+        return "-inf" if val < 0 else "+inf"
+    return f"{val:+.0f}"
+
+
+def estimate_mode(n: int, movetime: int, jobs: int,
+                  rough_games: int, precise_games: int,
+                  mt1: int, mt2: int) -> None:
+    rough_n = mergesort_compares(n)
+    adj_n = max(0, n - 1)
+    sec_rough = rough_n * estimate_seconds_per_match(
+        rough_games, movetime, jobs, mt1, mt2)
+    sec_precise = adj_n * estimate_seconds_per_match(
+        precise_games, movetime, jobs, mt1, mt2)
+    print(f"engines: {n}  movetime: {movetime} ms  "
+          f"jobs: {jobs}  avg plies: {AVG_PLIES}")
+    if mt1 != movetime or mt2 != movetime:
+        print(f"handicap: eng1={mt1}ms  eng2={mt2}ms")
+    print(f"phase 1 (rough × {rough_games} games):  "
+          f"{rough_n} matches → {fmt_duration(sec_rough)}")
+    print(f"phase 2 (adjacent × {precise_games} games): "
+          f"{adj_n} matches → {fmt_duration(sec_precise)}")
+    print(f"total estimate: {fmt_duration(sec_rough + sec_precise)}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Two-phase engine tournament (mergesort rough + "
+                    "adjacent precise verify).",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("engines", nargs="*",
+                    help="engine commands or paths. Names default to"
+                         " the binary stem; collisions get the parent"
+                         " directory prepended (same logic as match.py).")
+    ap.add_argument("--movetime", type=int, required=True,
+                    help="ms per move (both engines unless --movetime1"
+                         " / --movetime2 override).")
+    ap.add_argument("--movetime1", type=int, default=None,
+                    help="handicap: ms/move for engine1 only")
+    ap.add_argument("--movetime2", type=int, default=None,
+                    help="handicap: ms/move for engine2 only")
+    ap.add_argument("--rough-games", type=int, default=100,
+                    help="games per rough comparison (default 100)")
+    ap.add_argument("--precise-games", type=int, default=1000,
+                    help="games per adjacent verify (default 1000)")
+    ap.add_argument("--max-precise", type=int, default=5000,
+                    help="cap when escalating undecided pairs"
+                         " (default 5000; set equal to --precise-games"
+                         " to disable escalation)")
+    ap.add_argument("-j", "--jobs", type=int, default=None,
+                    help="passed through to match.py")
+    ap.add_argument("--estimate", action="store_true",
+                    help="print phase-1 / phase-2 wall-time estimate"
+                         " and exit; -n then sets the engine count")
+    ap.add_argument("-n", type=int, default=None,
+                    help="for --estimate only: number of engines")
+    ap.add_argument("--quiet", action="store_true",
+                    help="suppress per-match progress lines; only"
+                         " the final ranking table is printed")
+    args = ap.parse_args()
+
+    mt1 = args.movetime1 if args.movetime1 is not None else args.movetime
+    mt2 = args.movetime2 if args.movetime2 is not None else args.movetime
+    jobs_for_estimate = args.jobs if args.jobs is not None else 11
+
+    if args.estimate:
+        if args.n is None and not args.engines:
+            print("--estimate needs -n N or an engine list", file=sys.stderr)
+            return 2
+        n = args.n if args.n is not None else len(args.engines)
+        estimate_mode(n, args.movetime, jobs_for_estimate,
+                      args.rough_games, args.precise_games, mt1, mt2)
+        return 0
+
+    if len(args.engines) < 2:
+        print("need at least 2 engines (or --estimate -n N)", file=sys.stderr)
+        return 2
+
+    # Engine names: derive from binary stem, then disambiguate
+    # collisions by parent dir, mirroring match.py's logic but
+    # extended to the multi-engine case.
+    paths = [Path(e.split()[0]) for e in args.engines]
+    stems = [p.stem or e for p, e in zip(paths, args.engines)]
+    used: dict[str, int] = {}
+    names: list[str] = []
+    for stem, path in zip(stems, paths):
+        if stems.count(stem) == 1:
+            names.append(stem)
+        else:
+            parent = path.parent.name or "?"
+            cand = f"{parent}/{stem}"
+            if names.count(cand) > 0 or cand in used:
+                used[cand] = used.get(cand, 0) + 1
+                cand = f"{cand}#{used[cand]}"
+            names.append(cand)
+
+    say = (lambda *a, **k: None) if args.quiet else (
+        lambda *a, **k: print(*a, **k, flush=True))
+
+    eng_by_name = dict(zip(names, args.engines))
+
+    say(f"# tournament: {len(args.engines)} engines, "
+        f"{args.movetime} ms/move, jobs={args.jobs}")
+    say(f"# engines: {', '.join(names)}")
+
+    # ---- Phase 1: mergesort rough ranking ---------------------------
+    rough_n_est = mergesort_compares(len(args.engines))
+    rough_eta = rough_n_est * estimate_seconds_per_match(
+        args.rough_games, args.movetime, jobs_for_estimate, mt1, mt2)
+    say(f"# phase 1: mergesort × {args.rough_games} games "
+        f"(~{rough_n_est} matches, est. {fmt_duration(rough_eta)})")
+
+    rough_compares: dict[tuple[str, str], tuple[float, float]] = {}
+
+    def rough_compare(a: str, b: str) -> int:
+        # Negative → a is stronger (sorts earlier in descending-by-strength).
+        key = (a, b) if a < b else (b, a)
+        if key in rough_compares:
+            sA, sB = rough_compares[key]
+            if a > b:
+                sA, sB = sB, sA
+        else:
+            t0 = time.time()
+            sA, sB, _drw = run_match(
+                eng_by_name[a], eng_by_name[b],
+                games=args.rough_games, movetime=args.movetime,
+                mt1=mt1 if mt1 != args.movetime else None,
+                mt2=mt2 if mt2 != args.movetime else None,
+                name1=a, name2=b, jobs=args.jobs)
+            dt = time.time() - t0
+            say(f"  rough {a} vs {b}: {sA:.1f} - {sB:.1f}  "
+                f"({fmt_duration(dt)})")
+            stored = (sA, sB) if (a, b) == key else (sB, sA)
+            rough_compares[key] = stored
+        return -1 if sA > sB else (1 if sA < sB else 0)
+
+    t_phase1 = time.time()
+    ranking = sorted(names, key=cmp_to_key(rough_compare))
+    say(f"# phase 1 done in {fmt_duration(time.time() - t_phase1)}")
+    say(f"# rough ranking: {' > '.join(ranking)}")
+
+    # ---- Phase 2: adjacent verify with escalation -------------------
+    adj_count = max(0, len(ranking) - 1)
+    adj_eta = adj_count * estimate_seconds_per_match(
+        args.precise_games, args.movetime, jobs_for_estimate, mt1, mt2)
+    say(f"# phase 2: {adj_count} adjacent pairs × "
+        f"{args.precise_games} games (est. {fmt_duration(adj_eta)})")
+
+    # Per adjacent pair: store cumulative (score_higher, score_lower, n_games)
+    adj_results: list[dict] = []
+    t_phase2 = time.time()
+    for i in range(len(ranking) - 1):
+        higher, lower = ranking[i], ranking[i + 1]
+        cum_h = cum_l = 0.0
+        played = 0
+        # Escalation ladder: precise → 2× → max_precise.
+        targets = [args.precise_games]
+        if args.max_precise > args.precise_games:
+            targets.append(min(args.precise_games * 2, args.max_precise))
+        if args.max_precise > 2 * args.precise_games:
+            targets.append(args.max_precise)
+        for target in targets:
+            need = target - played
+            if need <= 0:
+                continue
+            t0 = time.time()
+            sH, sL, _drw = run_match(
+                eng_by_name[higher], eng_by_name[lower],
+                games=need, movetime=args.movetime,
+                mt1=mt1 if mt1 != args.movetime else None,
+                mt2=mt2 if mt2 != args.movetime else None,
+                name1=higher, name2=lower, jobs=args.jobs)
+            cum_h += sH; cum_l += sL; played += need
+            point, lo, hi = elo_interval(cum_h, played)
+            decisive = lo > 0  # lower bound above 0 means higher really is higher
+            say(f"  adj  {higher} vs {lower}: {cum_h:.1f}-{cum_l:.1f} "
+                f"of {played}  Elo {fmt_elo_bound(point)} "
+                f"[{fmt_elo_bound(lo)}, {fmt_elo_bound(hi)}]  "
+                f"({fmt_duration(time.time()-t0)})")
+            if decisive:
+                break
+        adj_results.append({
+            "higher": higher, "lower": lower,
+            "score_higher": cum_h, "score_lower": cum_l,
+            "n": played,
+        })
+    say(f"# phase 2 done in {fmt_duration(time.time() - t_phase2)}")
+
+    # ---- Final ranking table ---------------------------------------
+    print()
+    print(f"# === tournament ranking ({args.movetime} ms/move) ===")
+    print(f"{'rank':<4}  {'engine':<24}  {'Δ vs next (95% CI)':<28}")
+    for i, name in enumerate(ranking):
+        if i < len(adj_results):
+            r = adj_results[i]
+            point, lo, hi = elo_interval(r["score_higher"], r["n"])
+            cell = (f"{fmt_elo_bound(point)} "
+                    f"[{fmt_elo_bound(lo)}, {fmt_elo_bound(hi)}]"
+                    f"  N={r['n']}")
+        else:
+            cell = "(last)"
+        print(f"{i+1:<4}  {name:<24}  {cell}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
