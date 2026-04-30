@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import math
 import os
 import queue
 import random
@@ -33,10 +34,42 @@ import sys
 import threading
 import time
 from pathlib import Path
+from statistics import NormalDist
 from typing import Callable, Optional
 
 import chess
 import chess.pgn
+
+
+def match_verdict(score1: float, score2: float, draws: int,
+                  name1: str = "1", name2: str = "2", *,
+                  alpha: float = 0.05) -> str:
+    """Decide whether a head-to-head score is statistically decisive.
+
+    Under H0 (equal strength) decisive games split Binomial(d, 1/2),
+    so the score-difference z-statistic is
+        z = (score1 - N/2) · 2 / √decisive
+    with N the total games and `decisive` = N − draws. We reject H0
+    at confidence 1 − alpha when |z| exceeds the two-sided normal
+    quantile.
+
+    Returns one of:
+      'undecided (all draws)'
+      'undecided (|z|=… < z_crit=…)'
+      'Winner: <name> (|z|=…, p≈…)'
+    """
+    n = score1 + score2
+    decisive = int(round(n)) - draws
+    if decisive <= 0:
+        return "undecided (all draws)"
+    z = (score1 - n / 2.0) * 2.0 / math.sqrt(decisive)
+    z_crit = NormalDist().inv_cdf(1.0 - alpha / 2.0)
+    if abs(z) <= z_crit:
+        return (f"undecided (|z|={abs(z):.2f} < z_crit={z_crit:.2f}"
+                f" at α={alpha})")
+    p_value = 2.0 * (1.0 - NormalDist().cdf(abs(z)))
+    winner = name1 if z > 0 else name2
+    return f"Winner: {winner} (|z|={abs(z):.2f}, p≈{p_value:.3f})"
 
 
 def physical_core_cpus() -> list[int]:
@@ -735,6 +768,7 @@ def main() -> int:
         draws = sum(1 for g in completed if g.headers["Result"] == "1/2-1/2")
         print(f"\n# === final: {name1} {s1:.1f} - {s2:.1f} {name2}  "
               f"({wins}W / {draws}D / {losses}L of {played:.0f})", flush=True)
+        print(f"# {match_verdict(s1, s2, draws, name1, name2)}", flush=True)
         print(f"# wrote {args.pgn}", flush=True)
         if log_file is not None:
             log_file.write(
