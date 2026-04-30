@@ -436,6 +436,10 @@ def main() -> int:
     # Per adjacent pair: store cumulative (score_higher, score_lower, n_games)
     adj_results: list[dict] = []
     t_phase2 = time.time()
+    # Granularity for intermediate progress reports — same as the
+    # rough-phase block so the readout pace stays consistent across
+    # phases and the rough seed shows up as the very first data point.
+    chunk_size = args.rough_games
     for i in range(len(ranking) - 1):
         higher, lower = ranking[i], ranking[i + 1]
         # Reuse the rough-phase score for this pair as a down-payment
@@ -450,37 +454,42 @@ def main() -> int:
             else:
                 cum_h, cum_l = sB, sA
             played = args.rough_games
+            say(f"  adj  {higher} vs {lower}  (seed from rough)")
+            say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
+                f"{fmt_multi_ci(cum_h, played)}")
         else:
             cum_h = cum_l = 0.0
             played = 0
-        # Escalation ladder: precise → 2× → max_precise (all are
-        # *targets* for total games, not increments — rough counts).
-        targets = [args.precise_games]
-        if args.max_precise > args.precise_games:
-            targets.append(min(args.precise_games * 2, args.max_precise))
-        if args.max_precise > 2 * args.precise_games:
-            targets.append(args.max_precise)
-        for target in targets:
-            need = target - played
-            if need <= 0:
-                continue
+            say(f"  adj  {higher} vs {lower}")
+
+        def play_chunk(n: int) -> None:
+            nonlocal cum_h, cum_l, played
             t0 = time.time()
             sH, sL, _drw = run_match(
                 eng_by_name[higher], eng_by_name[lower],
-                games=need, movetime=movetime,
+                games=n, movetime=movetime,
                 mt1=mt1 if mt1 != movetime else None,
                 mt2=mt2 if mt2 != movetime else None,
                 name1=higher, name2=lower, jobs=args.jobs,
                 progress=not args.quiet)
-            cum_h += sH; cum_l += sL; played += need
-            point, lo, hi = elo_interval(cum_h, played)
-            decisive = lo > 0  # lower bound above 0 means higher really is higher
-            say(f"  adj  {higher} vs {lower}: {cum_h:.1f}-{cum_l:.1f} "
-                f"of {played}  Elo {fmt_elo_bound(point)} "
-                f"[{fmt_elo_bound(lo)}, {fmt_elo_bound(hi)}]  "
-                f"({fmt_duration(time.time()-t0)})")
-            if decisive:
-                break
+            cum_h += sH; cum_l += sL; played += n
+            say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
+                f"{fmt_multi_ci(cum_h, played)}  "
+                f"(+{n} in {fmt_duration(time.time()-t0)})")
+
+        def is_decisive() -> bool:
+            _, lo, hi = elo_interval(cum_h, played)
+            return lo > 0 or hi < 0
+
+        # Run chunks until the precise target is met. Then, if the
+        # 95% CI still straddles 0 and --max-precise allows it,
+        # keep going up to the cap.
+        while played < args.precise_games:
+            play_chunk(min(chunk_size, args.precise_games - played))
+        while (played < args.max_precise
+               and not is_decisive()):
+            play_chunk(min(chunk_size, args.max_precise - played))
+
         adj_results.append({
             "higher": higher, "lower": lower,
             "score_higher": cum_h, "score_lower": cum_l,
