@@ -35,6 +35,7 @@ class QPlainTextEdit;
 class QPushButton;
 class QRadioButton;
 class QSpinBox;
+class QDoubleSpinBox;
 class QThread;
 class QTimer;
 class QTreeView;
@@ -105,7 +106,7 @@ private:
     QButtonGroup* kind_group_ = nullptr;
 
     QSpinBox*     depth_spin_ = nullptr;
-    QSpinBox*     time_spin_  = nullptr;
+    QDoubleSpinBox* time_spin_ = nullptr;
     QSpinBox*     nodes_spin_ = nullptr;
     QComboBox*    nodes_mult_ = nullptr;
     QSpinBox*     tree_cap_spin_ = nullptr;

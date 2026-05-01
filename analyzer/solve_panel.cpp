@@ -23,6 +23,7 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QRegularExpression>
+#include <QDoubleSpinBox>
 #include <QSpinBox>
 #include <QApplication>
 #include <QClipboard>
@@ -87,10 +88,12 @@ SolvePanel::SolvePanel(QWidget* parent)
     depth_spin_->setValue(11);
     add_row(rb_depth_, tr("Max ply"), depth_spin_);
 
-    time_spin_ = new QSpinBox(budget_box);
-    time_spin_->setRange(1, 3600);
+    time_spin_ = new QDoubleSpinBox(budget_box);
+    time_spin_->setRange(0.1, 3600.0);
+    time_spin_->setSingleStep(0.05);
+    time_spin_->setDecimals(2);
     time_spin_->setSuffix(tr(" s"));
-    time_spin_->setValue(5);
+    time_spin_->setValue(1.0);
     add_row(rb_time_, tr("Time"), time_spin_);
 
     nodes_spin_ = new QSpinBox(budget_box);
@@ -517,7 +520,7 @@ SolveBudget SolvePanel::current_budget() const {
         b.depth = depth_spin_->value();
     } else if (rb_time_->isChecked()) {
         b.kind = SolveBudget::Kind::TimeMs;
-        b.time_ms = time_spin_->value() * 1000;
+        b.time_ms = static_cast<int>(time_spin_->value() * 1000.0);
     } else {
         b.kind = SolveBudget::Kind::Nodes;
         const long long mult =
