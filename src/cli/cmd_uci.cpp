@@ -388,6 +388,7 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
         lim.enable_pvs        = true;
         lim.enable_check_ext  = true;
         lim.enable_nmp_verify = true;
+        lim.enable_futility   = true;
         // Past-game zobrists so the search detects 3-fold lines
         // reaching back into actually-played moves, plus a small
         // contempt so the engine prefers fighting on over a

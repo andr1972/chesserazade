@@ -125,6 +125,7 @@ struct Stop {
     bool enable_pvs = false;
     bool enable_check_ext = false;
     bool enable_nmp_verify = false;
+    bool enable_futility = false;
     SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R3_PlusDepthDiv4;
     /// Transient state for the NMP verification re-search: while
     /// non-zero, NMP is suppressed for `nmp_color` until a node's
@@ -640,19 +641,34 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     const int us = static_cast<int>(board.side_to_move());
     const bool nmp_allowed_for_side =
         stop.nmp_color < 0 || us != stop.nmp_color || ply >= stop.nmp_min_ply;
+
+    // Hoist static_eval so NMP and futility share one call. Cheap
+    // when neither is on (the bool collapses) and a single eval call
+    // when at least one is. In-check positions skip — a forced
+    // response makes the position's static eval irrelevant for
+    // pruning decisions.
+    const bool in_check_now =
+        MoveGenerator::is_in_check(board, board.side_to_move());
+    const bool need_static_eval =
+        !in_check_now
+        && (stop.nmp_mode != SearchLimits::NmpMode::Off
+            || stop.enable_futility);
+    const int static_eval = need_static_eval
+        ? (stop.use_incremental_eval
+            ? board.evaluate_incremental()
+            : evaluate(board))
+        : 0;
+
     if (allow_null
         && stop.nmp_mode != SearchLimits::NmpMode::Off
         && nmp_allowed_for_side
         && !stop.disable_alpha_beta
         && ply > 0
         && depth >= 3
-        && !MoveGenerator::is_in_check(board, board.side_to_move())
+        && !in_check_now
         && has_non_pawn_material(board, board.side_to_move())) {
         ++stop.nmp_entered;
         constexpr int NMP_VERIFY_MIN_DEPTH = 13;
-        const int static_eval = stop.use_incremental_eval
-            ? board.evaluate_incremental()
-            : evaluate(board);
         if (static_eval >= beta) {
             // Reduction formula picked by --nmp-mode. The depth-
             // scaled variants prune harder at deep searches, where
@@ -801,6 +817,31 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             && buf[i].score < 50'000
             && i >= static_cast<std::size_t>(3 + depth * depth)) {
             continue;
+        }
+
+        // --- Forward futility pruning ---
+        // For quiet moves at low depth in non-PV-nodes, skip if the
+        // static eval plus a depth-scaled margin still can't reach α.
+        // Reasoning: the move is unlikely to swing eval by more than
+        // `margin` cp, so even a "lucky" outcome wouldn't beat the
+        // current α-bound — no point paying for the search. Captures
+        // / promotions / TT-move / killers (score ≥ 50'000) are
+        // exempt because their material swing can exceed the margin.
+        // Skipped in check (no static eval available) and at the root
+        // (ply == 0) where exact bounds matter.
+        if (stop.enable_futility
+            && is_non_pv
+            && !stop.disable_alpha_beta
+            && !in_check_now
+            && ply > 0
+            && depth >= 1 && depth <= 5
+            && buf[i].score < 50'000) {
+            constexpr std::array<int, 6> FUTILITY_MARGINS = {
+                0, 100, 175, 270, 380, 500};
+            if (static_eval + FUTILITY_MARGINS[
+                    static_cast<std::size_t>(depth)] <= alpha) {
+                continue;
+            }
         }
 
         // Per-move stat delta. Capture value is free from the
@@ -1041,6 +1082,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_pvs,
         limits.enable_check_ext,
         limits.enable_nmp_verify,
+        limits.enable_futility,
         limits.nmp_mode,
         0,    // nmp_min_ply
         -1,   // nmp_color (no constraint)

@@ -169,6 +169,13 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Null_Move_Pruning
     bool enable_nmp_verify = false;
 
+    /// Forward futility pruning. At low depths in non-PV-nodes, skip
+    /// quiet moves whose static eval + margin can't reach α. The
+    /// margin grows with depth (a deeper search has more wiggle
+    /// room to recover); captures / promotions / checks are exempt.
+    /// See https://www.chessprogramming.org/Futility_Pruning
+    bool enable_futility = false;
+
     /// Null-move-pruning reduction formula. Selects how aggressively
     /// the null search shortens depth — bigger R prunes more (faster)
     /// but risks missing tactical refutations.
