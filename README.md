@@ -137,6 +137,35 @@ python tools/blunder_hunt.py \
 adjacent verify with escalation to 5000 when the 95 % Elo CI still
 includes zero. All parameters are overridable; see `--help`.
 
+### Opening books for fairer matches
+
+The `--random-plies` opening generator is convenient but has bias —
+the same `--seed` always produces the same first openings, so a
+multi-chunk phase-2 verify can re-test the same positions instead
+of sampling new ones. For longer matches a curated opening book is
+the standard. We don't ship one in-tree (they're large and
+maintained externally); download into `tools/openings/` (gitignored)
+and point match.py at it:
+
+```bash
+mkdir -p tools/openings
+cd tools/openings
+
+# noob_3moves: ~11 000 positions after 3 fullmoves (= 6 ply).
+# Balanced, the usual recommendation for engines below SF strength.
+wget https://github.com/official-stockfish/books/raw/master/noob_3moves.epd.zip
+unzip noob_3moves.epd.zip
+
+# Or 8moves_v3 (deeper, ~7 000 positions after 16 ply) if the
+# engine handles middlegame structure well.
+wget https://github.com/official-stockfish/books/raw/master/8moves_v3.epd.zip
+unzip 8moves_v3.epd.zip
+```
+
+(Hooking these into match.py / tourney.py via an `--openings` flag
+is a future change; today the random-plies generator with a unique
+per-chunk seed is what's wired in.)
+
 ---
 
 ## Architecture at a glance

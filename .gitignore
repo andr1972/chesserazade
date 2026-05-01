@@ -1,6 +1,11 @@
 runs/
 wynik*.dat
 
+# Engine-test opening books — downloaded on demand (see README).
+tools/openings/*.epd
+tools/openings/*.epd.zip
+tools/openings/*.pgn
+
 # Prerequisites
 *.d
 
