@@ -554,8 +554,9 @@ def main() -> int:
                 cum_h, cum_l = sB, sA
             played = args.rough_games
             anchor_s = cum_h if anchor == higher else cum_l
+            other_s = cum_l if anchor == higher else cum_h
             say(f"  adj  {higher} vs {lower}  (seed from rough)")
-            say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
+            say(f"    N={played:<5} {anchor_s:.1f}-{other_s:.1f}  "
                 f"{fmt_multi_ci(anchor_s, played)}")
         else:
             cum_h = cum_l = 0.0
@@ -578,7 +579,8 @@ def main() -> int:
             match_counter[0] += 1
             cum_h += sH; cum_l += sL; played += n
             anchor_s = cum_h if anchor == higher else cum_l
-            say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
+            other_s = cum_l if anchor == higher else cum_h
+            say(f"    N={played:<5} {anchor_s:.1f}-{other_s:.1f}  "
                 f"{fmt_multi_ci(anchor_s, played)}  "
                 f"(+{n} in {fmt_duration(time.time()-t0)})")
 
