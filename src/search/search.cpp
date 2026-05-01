@@ -784,22 +784,38 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         const Color mover = board.side_to_move();
 
         // --- LMP: skip late quiet moves in non-PV-nodes ---
-        // Classical formula: at depth d ≤ 3, keep the first
-        // `3 + d*d` scored moves (4 at d=1, 7 at d=2, 12 at
-        // d=3) and drop the rest outright — no probe, no
-        // re-search. PV-nodes need every move because they
-        // aim at the exact best; non-PV-nodes only prove a
-        // bound, so the speculative cut is safe. Quiet bucket
-        // check (score < 50'000) spares captures, killers,
-        // promotions and the TT move. Ties on-and-off with
-        // PVS since without PVS there are essentially no
-        // non-PV-nodes to prune on.
+        // At each depth keep the first N scored moves (table below)
+        // and drop the rest outright — no probe, no re-search.
+        // PV-nodes need every move because they aim at the exact
+        // best; non-PV-nodes only prove a bound, so the speculative
+        // cut is safe. Quiet bucket check (`score < 50'000`) spares
+        // captures, killers, promotions and the TT move. Effective
+        // only with PVS on, since without it there are essentially
+        // no non-PV-nodes to prune on.
+        //
+        // Extended (May 2026) from the original 'depth ≤ 3' clamp:
+        // SF-classical-style thresholds up to depth 7. The growth is
+        // ~depth² · 5/8 + 3 — flatter than the old `3 + depth*depth`
+        // (which would be 4/7/12/19/28/39/52 — way too aggressive
+        // late). Numbers tuned so quiet ordering at typical
+        // chesserazade strength still places the best ≤ first 6
+        // entries, leaving the long tail for safe pruning.
+        constexpr std::array<std::size_t, 8> LMP_THRESHOLDS = {
+            0,   //  d=0 — never reached
+            4,   //  d=1
+            6,   //  d=2
+            9,   //  d=3
+            13,  //  d=4
+            18,  //  d=5
+            24,  //  d=6
+            32,  //  d=7
+        };
         if (stop.enable_pvs
             && is_non_pv
             && !stop.disable_alpha_beta
-            && depth <= 3
+            && depth >= 1 && depth <= 7
             && buf[i].score < 50'000
-            && i >= static_cast<std::size_t>(3 + depth * depth)) {
+            && i >= LMP_THRESHOLDS[static_cast<std::size_t>(depth)]) {
             continue;
         }
 
