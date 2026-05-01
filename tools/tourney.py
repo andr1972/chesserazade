@@ -95,12 +95,15 @@ _GAME_LINE = re.compile(
     r"^\[(\d+)/(\d+)\]\s+(\S+)\s+-\s+(\S+):\s+(1-0|0-1|1/2-1/2)\b"
 )
 
-# ANSI colours for per-game progress dots: green when engine1 wins,
-# red when it loses, default-foreground for draws. Emitted only on
-# real TTYs so log-file captures stay clean.
-_DOT_GREEN = "\033[32m.\033[0m"
-_DOT_RED = "\033[31m.\033[0m"
-_DOT_PLAIN = "."
+# ANSI colours + glyph for per-game progress markers: '*' is wider
+# than '.' and reads at a glance even on a high-density progress
+# row. Bright-red (code 91) instead of regular red (31) for
+# loss markers — the regular red is hard to distinguish from
+# default-foreground on dark terminals. Emitted only on real
+# TTYs so log-file captures stay clean.
+_DOT_GREEN = "\033[32m*\033[0m"
+_DOT_RED = "\033[91m*\033[0m"
+_DOT_PLAIN = "*"
 
 
 def _lower_cmdline(a: str, b: str, order: list) -> str:
