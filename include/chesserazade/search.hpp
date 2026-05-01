@@ -176,6 +176,15 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Futility_Pruning
     bool enable_futility = false;
 
+    /// Reverse futility / static null move pruning — at shallow
+    /// depth in non-PV-nodes, if static_eval already exceeds β by
+    /// a depth-scaled margin, return static_eval. Mirror of forward
+    /// futility: that one prunes when we're hopeless, this one
+    /// prunes when we're already winning by enough that even the
+    /// opponent's best response can't bring us below β.
+    /// See https://www.chessprogramming.org/Reverse_Futility_Pruning
+    bool enable_reverse_futility = false;
+
     /// Null-move-pruning reduction formula. Selects how aggressively
     /// the null search shortens depth — bigger R prunes more (faster)
     /// but risks missing tactical refutations.

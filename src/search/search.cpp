@@ -164,6 +164,7 @@ struct Stop {
     bool enable_check_ext = false;
     bool enable_nmp_verify = false;
     bool enable_futility = false;
+    bool enable_reverse_futility = false;
     SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R3_PlusDepthDiv4;
     /// Transient state for the NMP verification re-search: while
     /// non-zero, NMP is suppressed for `nmp_color` until a node's
@@ -751,6 +752,33 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     const bool improving =
         ancestor_eval != EVAL_UNKNOWN && static_eval > ancestor_eval;
 
+    // --- Reverse futility / static null move pruning ------------------
+    // If static_eval already beats β by a depth-scaled margin, the
+    // position is so good that even the opponent's best reply on the
+    // next move (≈ −margin worst case) can't pull us under β. Return
+    // static_eval directly; no recursive search needed. Symmetric
+    // mirror of forward futility (which prunes hopeless quiets).
+    {
+        const bool is_non_pv_here = (beta - alpha == 1);
+        if (stop.enable_reverse_futility
+            && is_non_pv_here
+            && !stop.disable_alpha_beta
+            && !in_check_now
+            && ply > 0
+            && depth >= 1 && depth <= 6
+            && need_static_eval) {
+            // Margin grows linearly with depth; smaller when
+            // improving (we trust the eval more). 80 cp/depth
+            // matches the rough scale of forward-futility margins.
+            const int margin = 80 * depth - (improving ? 30 : 0);
+            if (static_eval - margin >= beta
+                && static_eval < Search::MATE_SCORE - 1000) {
+                out_stats = {};
+                return {static_eval, false};
+            }
+        }
+    }
+
     if (allow_null
         && stop.nmp_mode != SearchLimits::NmpMode::Off
         && nmp_allowed_for_side
@@ -1210,6 +1238,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_check_ext,
         limits.enable_nmp_verify,
         limits.enable_futility,
+        limits.enable_reverse_futility,
         limits.nmp_mode,
         0,    // nmp_min_ply
         -1,   // nmp_color (no constraint)
