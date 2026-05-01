@@ -37,6 +37,11 @@ struct UciSession {
     /// long-standing R=1 behaviour; GUIs / match.py can override
     /// via 'setoption name LmrMode value <X>'.
     SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
+    /// PVS scout window and LMP cut, controllable via UCI options
+    /// EnablePvs / EnableLmp. PVS defaults on, LMP off (chesserazade's
+    /// quiet ordering doesn't yet make LMP a net win).
+    bool enable_pvs = true;
+    bool enable_lmp = false;
     /// Zobrist keys of every position reached *before* the
     /// current `board` — i.e. start position + after each move
     /// played, with the very last position (= `board` itself)

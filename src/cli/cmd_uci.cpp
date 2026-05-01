@@ -133,6 +133,8 @@ void handle_uci(std::ostream& out) {
     out << "option name LmrMode type combo default Constant1"
            " var Off var Constant1 var LogDepthLogIndex"
            " var DepthDiv4LogIdxHalf var DepthDiv4LogIndex\n";
+    out << "option name EnablePvs type check default true\n";
+    out << "option name EnableLmp type check default false\n";
     out << "uciok\n" << std::flush;
 }
 
@@ -179,6 +181,10 @@ void handle_setoption(UciSession& s,
             s.hash_mb = mb;
             s.tt = TranspositionTable{entries_for_mb(mb)};
         }
+    } else if (name == "EnablePvs") {
+        s.enable_pvs = (value == "true");
+    } else if (name == "EnableLmp") {
+        s.enable_lmp = (value == "true");
     } else if (name == "LmrMode") {
         // Map combo-name → enum. Unknown values silently keep
         // the previous setting (GUIs sometimes probe with case-
@@ -404,13 +410,13 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
         lim.enable_lmr        = true;
         lim.enable_history    = true;
         lim.enable_aspiration = true;
-        lim.enable_pvs        = true;
+        lim.enable_pvs        = s.enable_pvs;
         // LMP off by default for chesserazade — its quiet ordering
         // (no continuation history, simple [color][from][to] history)
         // doesn't reliably keep good moves in the first 4-12 ranks
         // that the threshold table requires. Toggle on via UCI option
         // when continuation/capture history land.
-        lim.enable_lmp        = false;
+        lim.enable_lmp        = s.enable_lmp;
         lim.enable_check_ext  = true;
         lim.enable_nmp_verify = true;
         lim.enable_futility   = true;
