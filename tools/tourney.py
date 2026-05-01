@@ -238,9 +238,13 @@ def fmt_multi_ci(score: float, n: int) -> str:
     return (head + " " + " ".join(parts)).strip() + f"  N={n}"
 
 
-def _print_ranking(ranking: list, adj_results: list, tc_desc: str) -> None:
+def _print_ranking(ranking: list, adj_results: list, tc_desc: str,
+                   names_order: list) -> None:
     """Render the final ranking table. Each row shows Elo gap to the
-    next-ranked engine with 50/75/90/95 % CIs. Final row reads (last)."""
+    next-ranked engine with 50/75/90/95 % CIs, oriented so positive
+    Elo means 'the lower-cmdline-index engine of the pair won'. Same
+    rule as dot colours, so signs and colours stay consistent. Final
+    row reads (last)."""
     print()
     print(f"# === tournament ranking ({tc_desc}) ===")
     if ranking:
@@ -249,7 +253,10 @@ def _print_ranking(ranking: list, adj_results: list, tc_desc: str) -> None:
     for i, name in enumerate(ranking):
         if i < len(adj_results):
             r = adj_results[i]
-            cell = fmt_multi_ci(r["score_higher"], r["n"])
+            anchor = _lower_cmdline(r["higher"], r["lower"], names_order)
+            anchor_score = (r["score_higher"] if anchor == r["higher"]
+                            else r["score_lower"])
+            cell = fmt_multi_ci(anchor_score, r["n"])
         else:
             cell = "(last)"
         print(f"{i+1:<4}  {name:<24}  {cell}")
@@ -465,7 +472,7 @@ def main() -> int:
                 })
         say("# phase 2 skipped (--precise-games not set;"
             " pass e.g. --precise-games 1000 to enable)")
-        _print_ranking(ranking, adj_results, tc_desc)
+        _print_ranking(ranking, adj_results, tc_desc, names)
         return 0
 
     adj_count = max(0, len(ranking) - 1)
@@ -483,6 +490,11 @@ def main() -> int:
     chunk_size = args.rough_games
     for i in range(len(ranking) - 1):
         higher, lower = ranking[i], ranking[i + 1]
+        # `anchor` = lower-cmdline-index engine of the pair, same
+        # rule as the dot colours. Elo + score in this row's display
+        # is from anchor's perspective, so signs and colours stay
+        # consistent: green dot ↔ anchor wins ↔ Elo positive.
+        anchor = _lower_cmdline(higher, lower, names)
         # Reuse the rough-phase score for this pair as a down-payment
         # against the precise target. mergesort guarantees adjacency
         # implies a direct comparison was made; if that pair somehow
@@ -495,9 +507,10 @@ def main() -> int:
             else:
                 cum_h, cum_l = sB, sA
             played = args.rough_games
+            anchor_s = cum_h if anchor == higher else cum_l
             say(f"  adj  {higher} vs {lower}  (seed from rough)")
             say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
-                f"{fmt_multi_ci(cum_h, played)}")
+                f"{fmt_multi_ci(anchor_s, played)}")
         else:
             cum_h = cum_l = 0.0
             played = 0
@@ -513,14 +526,16 @@ def main() -> int:
                 mt2=mt2 if mt2 != movetime else None,
                 name1=higher, name2=lower, jobs=args.jobs,
                 progress=not args.quiet,
-                track=_lower_cmdline(higher, lower, names))
+                track=anchor)
             cum_h += sH; cum_l += sL; played += n
+            anchor_s = cum_h if anchor == higher else cum_l
             say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
-                f"{fmt_multi_ci(cum_h, played)}  "
+                f"{fmt_multi_ci(anchor_s, played)}  "
                 f"(+{n} in {fmt_duration(time.time()-t0)})")
 
         def is_decisive() -> bool:
-            _, lo, hi = elo_interval(cum_h, played)
+            anchor_s = cum_h if anchor == higher else cum_l
+            _, lo, hi = elo_interval(anchor_s, played)
             return lo > 0 or hi < 0
 
         # Run chunks until the precise target is met. Then, if the
@@ -539,7 +554,7 @@ def main() -> int:
         })
     say(f"# phase 2 done in {fmt_duration(time.time() - t_phase2)}")
 
-    _print_ranking(ranking, adj_results, tc_desc)
+    _print_ranking(ranking, adj_results, tc_desc, names)
     return 0
 
 
