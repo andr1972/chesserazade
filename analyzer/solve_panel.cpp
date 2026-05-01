@@ -274,7 +274,7 @@ SolvePanel::SolvePanel(QWidget* parent)
     lmr_mode_combo_->addItem(tr("LMR log(d)·log(i)/2"));
     lmr_mode_combo_->addItem(tr("LMR (d/4)·log(i)/2"));
     lmr_mode_combo_->addItem(tr("LMR (d/4)·log(i)"));
-    lmr_mode_combo_->setCurrentIndex(1);  // R=1 = engine default
+    lmr_mode_combo_->setCurrentIndex(2);  // LogDepthLogIndex = engine default
     lmr_mode_combo_->setToolTip(tr(
         "Late-Move-Reduction reduction policy. The PVS probe runs at"
         " depth - 1 - R; if it beats α, the move is re-searched at"

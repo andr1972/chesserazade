@@ -230,7 +230,7 @@ struct SearchLimits {
         DepthDiv4LogIdxHalf,
         DepthDiv4LogIndex,
     };
-    LmrMode lmr_mode = LmrMode::Constant1;
+    LmrMode lmr_mode = LmrMode::LogDepthLogIndex;
 
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget

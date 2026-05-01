@@ -130,7 +130,7 @@ void handle_uci(std::ostream& out) {
     out << "option name Hash type spin default " << DEFAULT_HASH_MB
         << " min " << MIN_HASH_MB << " max " << MAX_HASH_MB << '\n';
     out << "option name Threads type spin default 1 min 1 max 1\n";
-    out << "option name LmrMode type combo default Constant1"
+    out << "option name LmrMode type combo default LogDepthLogIndex"
            " var Off var Constant1 var LogDepthLogIndex"
            " var DepthDiv4LogIdxHalf var DepthDiv4LogIndex\n";
     out << "option name EnablePvs type check default true\n";

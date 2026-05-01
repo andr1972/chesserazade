@@ -53,7 +53,7 @@ struct SolveBudget {
     bool enable_lmp         = true;   ///< Late-Move Pruning at shallow depth.
     bool enable_check_ext   = true;   ///< Extend depth on check-giving moves.
     SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R2_PlusDepthDiv3;
-    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
+    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::LogDepthLogIndex;
 };
 
 /// Lives on a worker thread once `moveToThread` has been called

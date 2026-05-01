@@ -36,7 +36,7 @@ struct UciSession {
     /// LMR reduction policy for this session. Default is the
     /// long-standing R=1 behaviour; GUIs / match.py can override
     /// via 'setoption name LmrMode value <X>'.
-    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
+    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::LogDepthLogIndex;
     /// PVS scout window and LMP cut, controllable via UCI options
     /// EnablePvs / EnableLmp. PVS defaults on, LMP off (chesserazade's
     /// quiet ordering doesn't yet make LMP a net win).

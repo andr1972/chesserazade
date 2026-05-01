@@ -173,7 +173,7 @@ struct Stop {
     bool enable_futility = false;
     bool enable_reverse_futility = false;
     SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R2_PlusDepthDiv3;
-    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
+    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::LogDepthLogIndex;
     /// Transient state for the NMP verification re-search: while
     /// non-zero, NMP is suppressed for `nmp_color` until a node's
     /// `ply` exceeds `nmp_min_ply`. Always 0 outside the verification
