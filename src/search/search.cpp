@@ -130,8 +130,13 @@ struct HistoryTable {
 /// targeted than full continuation history; usually +5-10 Elo on
 /// engines that didn't have it.
 struct CounterMoveTable {
-    // [color-of-prev-mover][prev-piece-type 0..5][prev-to 0..63]
-    std::array<std::array<std::array<Move, 64>, 6>, 2> table{};
+    // [color][prev-piece-type 0..6 = None..King][prev-to 0..63].
+    // PieceType is 0..6 (None=0, King=6), so the second dim is 7.
+    // Slot 0 (None) is reserved so values index directly without
+    // an offset — saves a subtraction in the hot path. The earlier
+    // size 6 missed King (index 6) and tripped a debug-build
+    // assertion at the end of every game.
+    std::array<std::array<std::array<Move, 64>, 7>, 2> table{};
 
     [[nodiscard]] Move get(Color prev_stm, PieceType prev_piece,
                            Square prev_to) const noexcept {
