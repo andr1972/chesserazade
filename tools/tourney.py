@@ -320,6 +320,11 @@ def main() -> int:
                          " phase 2. Set equal to --precise-games to"
                          " disable escalation. Ignored when phase 2"
                          " itself is disabled.")
+    ap.add_argument("--max-moves", type=int, default=0,
+                    help="full-move cap per game (passed to match.py),"
+                         " adjudicates a draw when reached. Default 0 ="
+                         " no cap. Useful to stop marathon endgames"
+                         " from stretching long phase-2 verifies.")
     ap.add_argument("--openings", type=Path, default=None,
                     help="EPD opening book passed through to match.py."
                          " Each match.py invocation samples positions"
@@ -397,6 +402,8 @@ def main() -> int:
     match_extra: list[str] = []
     if args.openings is not None:
         match_extra += ["--openings", str(args.openings)]
+    if args.max_moves > 0:
+        match_extra += ["--max-moves", str(args.max_moves)]
 
     if args.estimate:
         if args.n is None and not args.engines:
