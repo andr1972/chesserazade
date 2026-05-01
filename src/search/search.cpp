@@ -102,9 +102,43 @@ struct HistoryTable {
         return table[static_cast<std::size_t>(stm)]
                     [to_index(from)][to_index(to)];
     }
+    /// Bump with Stockfish-style gravity: the increment shrinks as
+    /// the slot approaches `HISTORY_MAX`, so frequently-bumped moves
+    /// self-saturate instead of growing without bound. Without this,
+    /// a long search lets old hot moves dominate ordering long after
+    /// they've stopped being relevant; with it, the table tracks
+    /// recency naturally.
+    static constexpr std::int32_t HISTORY_MAX = 16384;
     void bump(Color stm, Square from, Square to, int depth) noexcept {
-        table[static_cast<std::size_t>(stm)]
-             [to_index(from)][to_index(to)] += depth * depth;
+        auto& v = table[static_cast<std::size_t>(stm)]
+                       [to_index(from)][to_index(to)];
+        const std::int32_t bonus =
+            std::min(depth * depth, HISTORY_MAX);
+        v += bonus - v * bonus / HISTORY_MAX;
+    }
+};
+
+/// Counter-move heuristic — for each previous move (`prev_piece`,
+/// `prev_to`), remember which quiet move most recently caused a
+/// β-cutoff against it. Used as an ordering bonus: that response
+/// gets searched ahead of generic-history quiets. Smaller and more
+/// targeted than full continuation history; usually +5-10 Elo on
+/// engines that didn't have it.
+struct CounterMoveTable {
+    // [color-of-prev-mover][prev-piece-type 0..5][prev-to 0..63]
+    std::array<std::array<std::array<Move, 64>, 6>, 2> table{};
+
+    [[nodiscard]] Move get(Color prev_stm, PieceType prev_piece,
+                           Square prev_to) const noexcept {
+        return table[static_cast<std::size_t>(prev_stm)]
+                    [static_cast<std::size_t>(prev_piece)]
+                    [to_index(prev_to)];
+    }
+    void set(Color prev_stm, PieceType prev_piece,
+             Square prev_to, Move m) noexcept {
+        table[static_cast<std::size_t>(prev_stm)]
+             [static_cast<std::size_t>(prev_piece)]
+             [to_index(prev_to)] = m;
     }
 };
 
@@ -245,11 +279,13 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
 ///   ~ 1'000'000 — captures (spread by MVV-LVA).
 ///   ~   900'000 — first killer.
 ///   ~   800'000 — second killer.
+///   ~   850'000 — counter-move (preferred quiet response to prev move).
 ///   ~    50'000 — promotions without capture.
 ///   0..49'999   — quiet moves, ranked by history heuristic.
 [[nodiscard]] int score_move(const Move& m, const Move& tt_move,
                              const KillerTable& killers,
                              const HistoryTable& history,
+                             const Move& counter_move,
                              bool use_history,
                              Color stm,
                              std::size_t ply) noexcept {
@@ -261,6 +297,14 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
     }
     if (m == killers.killers[ply][0]) return 900'000;
     if (m == killers.killers[ply][1]) return 800'000;
+    // Counter-move bonus — slots between killer 1 and killer 2 so
+    // it competes with the second killer but never displaces the
+    // first. The counter table is keyed on the previous move; a
+    // null-or-empty `counter_move` (no prev move at root, or the
+    // slot has never been bumped) skips this branch trivially.
+    if (counter_move.from != Square::None && m == counter_move) {
+        return 850'000;
+    }
     if (m.kind == MoveKind::Promotion) {
         return 50'000 + piece_value(m.promotion);
     }
@@ -291,6 +335,7 @@ std::size_t score_and_sort(const MoveList& legal,
                            const Move& tt_move,
                            const KillerTable& killers,
                            const HistoryTable& history,
+                           const Move& counter_move,
                            bool use_history,
                            Color stm,
                            std::size_t ply) noexcept {
@@ -298,7 +343,7 @@ std::size_t score_and_sort(const MoveList& legal,
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = legal.moves[i];
         buf[i] = {m, score_move(m, tt_move, killers, history,
-                                use_history, stm, ply)};
+                                counter_move, use_history, stm, ply)};
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
     return n;
@@ -487,9 +532,11 @@ struct PathGuard {
 NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                       std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
                       HistoryTable& history,
+                      CounterMoveTable& counters,
                       Stop& stop, TranspositionTable* tt,
                       TreeRecorder* rec, BranchStats& out_stats,
-                      bool allow_null = true) {
+                      bool allow_null = true,
+                      Move prev_move = Move{}) {
     ++nodes;
     out_stats = {};
 
@@ -699,7 +746,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             const NegamaxResult nr = negamax(
                 board, depth - NMP_R, ply + 1,
                 -beta, -beta + 1,
-                nodes, pv, killers, history, stop, tt,
+                nodes, pv, killers, history, counters, stop, tt,
                 /*rec=*/nullptr, null_stats,
                 /*allow_null=*/false);
             board.unmake_null_move();
@@ -732,7 +779,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                 const NegamaxResult vr = negamax(
                     board, depth - NMP_R, ply,
                     beta - 1, beta,
-                    nodes, pv, killers, history, stop, tt,
+                    nodes, pv, killers, history, counters, stop, tt,
                     /*rec=*/nullptr, verify_stats,
                     /*allow_null=*/true);
                 stop.nmp_min_ply = 0;
@@ -763,9 +810,23 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     }
 
     // --- Move ordering ------------------------------------------------
+    // Look up the counter-move recorded against `prev_move`. At the
+    // root or after a null-move shadow search prev_move is empty;
+    // counter_move stays empty in that case and the bonus simply
+    // doesn't fire.
+    Move counter_move{};
+    if (prev_move.from != Square::None) {
+        // Previous mover was the *opponent* of the current side.
+        const Color prev_stm = (board.side_to_move() == Color::White)
+            ? Color::Black : Color::White;
+        counter_move = counters.get(prev_stm,
+                                    prev_move.moved_piece.type,
+                                    prev_move.to);
+    }
     std::array<ScoredMove, MoveList::CAPACITY> buf;
     const std::size_t n =
         score_and_sort(legal, buf, tt_move, killers, history,
+                       counter_move,
                        stop.enable_history,
                        board.side_to_move(), p);
 
@@ -944,16 +1005,16 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         NegamaxResult child =
             negamax(board, depth - 1 - R + ext, child_ply,
                     probe_alpha, probe_beta,
-                    nodes, pv, killers, history, stop, tt,
+                    nodes, pv, killers, history, counters, stop, tt,
                     detach_rec_for_probe ? nullptr : rec,
-                    child_stats);
+                    child_stats, /*allow_null=*/true, m);
         int score = -child.score;
         if (detach_rec_for_probe && !stop.abort && score > alpha) {
             child_stats = {};
             child = negamax(board, depth - 1 + ext, child_ply,
                             recurse_alpha, recurse_beta,
-                            nodes, pv, killers, history, stop, tt,
-                            rec, child_stats);
+                            nodes, pv, killers, history, counters, stop, tt,
+                            rec, child_stats, /*allow_null=*/true, m);
             score = -child.score;
         }
         board.unmake_move(m);
@@ -994,6 +1055,19 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             if (stop.enable_history) {
                 remember_history(history, mover, m, depth);
             }
+            // Record counter-move only for genuinely quiet cutoffs.
+            // Captures already get strong ordering from MVV-LVA so
+            // the counter table stays focused on the harder problem
+            // of "which quiet to try after this opponent move".
+            if (prev_move.from != Square::None
+                && !is_capture(m)
+                && m.kind != MoveKind::Promotion) {
+                const Color prev_stm = (mover == Color::White)
+                    ? Color::Black : Color::White;
+                counters.set(prev_stm,
+                             prev_move.moved_piece.type,
+                             prev_move.to, m);
+            }
             if (tt != nullptr) {
                 tt->store(key, depth, to_tt_score(score, ply),
                           TtBound::Lower, m);
@@ -1020,13 +1094,14 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 int iteration(Board& board, int depth, std::uint64_t& nodes,
               PvTable& pv, KillerTable& killers,
               HistoryTable& history,
+              CounterMoveTable& counters,
               Stop& stop, TranspositionTable* tt,
               TreeRecorder* rec, BranchStats& out_stats,
               int alpha, int beta) {
     const NegamaxResult r =
         negamax(board, depth, /*ply=*/0,
                 alpha, beta,
-                nodes, pv, killers, history, stop, tt,
+                nodes, pv, killers, history, counters, stop, tt,
                 rec, out_stats);
     return r.score;
 }
@@ -1133,6 +1208,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
     // a plausible cut at depth D.
     KillerTable killers;
     HistoryTable history;
+    CounterMoveTable counters;
 
     // Aspiration windows: initial half-width around the
     // previous iteration's score. 50 cp is comfortable margin
@@ -1165,7 +1241,8 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
             if (recorder != nullptr) recorder->begin_iteration(d);
             score =
                 iteration(board, d, result.nodes, pv, killers, history,
-                          stop, tt, recorder, pv_stats, asp_a, asp_b);
+                          counters, stop, tt, recorder, pv_stats,
+                          asp_a, asp_b);
             if (stop.abort) break;
 
             // Fail-low / fail-high check only matters when the
