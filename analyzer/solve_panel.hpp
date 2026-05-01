@@ -119,6 +119,7 @@ private:
     QCheckBox*    history_check_  = nullptr;
     QCheckBox*    asp_check_      = nullptr;
     QCheckBox*    pvs_check_      = nullptr;
+    QCheckBox*    lmp_check_      = nullptr;
     QCheckBox*    check_ext_check_ = nullptr;
     QComboBox*    nmp_mode_combo_  = nullptr;
     QComboBox*    lmr_mode_combo_  = nullptr;

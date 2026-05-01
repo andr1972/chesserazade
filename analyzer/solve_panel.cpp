@@ -206,22 +206,29 @@ SolvePanel::SolvePanel(QWidget* parent)
         "cutoffs without changing the search result."));
     cap_row->addWidget(asp_check_);
 
-    pvs_check_ = new QCheckBox(tr("PVS+LMP"), right);
+    pvs_check_ = new QCheckBox(tr("PVS"), right);
     pvs_check_->setChecked(true);
     pvs_check_->setToolTip(tr(
-        "Principal Variation Search + Late Move Pruning.\n"
-        "PVS: only the first move after sorting runs with the "
-        "full α-β window; later moves are probed with a "
-        "zero-width window [α, α+1] that only proves 'does "
-        "not beat α'. A probe that beats α triggers a "
-        "full-window re-search.\n"
-        "LMP: in non-PV-nodes (those zero-width probes) at "
-        "depth ≤ 3, skip late quiet moves outright — no "
-        "probe, no re-search. Threshold: 3 + depth², so 4 "
-        "moves at d=1, 7 at d=2, 12 at d=3.\n"
-        "They're bundled because LMP needs non-PV-nodes to "
-        "act on, and PVS is what creates them."));
+        "Principal Variation Search. Only the first move after "
+        "sorting runs with the full α-β window; later moves are "
+        "probed with a zero-width window [α, α+1] that only "
+        "proves 'does not beat α'. A probe that beats α triggers "
+        "a full-window re-search.\n"
+        "On simple-eval engines the zero-width probe can mis-"
+        "reject genuinely-good moves whose true score is just a "
+        "few cp above α — toggle this off to spot that case."));
     cap_row->addWidget(pvs_check_);
+
+    lmp_check_ = new QCheckBox(tr("LMP"), right);
+    lmp_check_->setChecked(true);
+    lmp_check_->setToolTip(tr(
+        "Late-Move Pruning. In non-PV-nodes at depth ≤ 3, skip "
+        "late quiet moves outright — no probe, no re-search. "
+        "Threshold: 3 + depth², so 4 moves at d=1, 7 at d=2, "
+        "12 at d=3. Effective only with PVS on (PVS is what "
+        "creates non-PV-nodes), but the two are now controlled "
+        "separately so each can be A/B-tested in isolation."));
+    cap_row->addWidget(lmp_check_);
 
     check_ext_check_ = new QCheckBox(tr("check ext"), right);
     check_ext_check_->setChecked(true);
@@ -247,7 +254,7 @@ SolvePanel::SolvePanel(QWidget* parent)
     nmp_mode_combo_->addItem(tr("NMP R=4+depth/4"));
     nmp_mode_combo_->addItem(tr("NMP R=3+depth/4"));
     nmp_mode_combo_->addItem(tr("NMP R=2+depth/3"));
-    nmp_mode_combo_->setCurrentIndex(4);  // R3+depth/4 = engine default
+    nmp_mode_combo_->setCurrentIndex(5);  // R2+depth/3 = engine default
     nmp_mode_combo_->setToolTip(tr(
         "Null-Move Pruning reduction formula. Bigger R prunes more "
         "aggressively (faster) but risks missing tactical refutations.\n"
@@ -498,6 +505,7 @@ SolveBudget SolvePanel::current_budget() const {
     b.enable_history       = history_check_->isChecked();
     b.enable_aspiration    = asp_check_->isChecked();
     b.enable_pvs           = pvs_check_->isChecked();
+    b.enable_lmp           = lmp_check_->isChecked();
     b.enable_check_ext     = check_ext_check_->isChecked();
     // Combo index → enum order in search.hpp.
     b.nmp_mode = static_cast<SearchLimits::NmpMode>(

@@ -167,11 +167,12 @@ struct Stop {
     bool enable_history = false;
     bool enable_aspiration = false;
     bool enable_pvs = false;
+    bool enable_lmp = false;
     bool enable_check_ext = false;
     bool enable_nmp_verify = false;
     bool enable_futility = false;
     bool enable_reverse_futility = false;
-    SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R3_PlusDepthDiv4;
+    SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R2_PlusDepthDiv3;
     SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
     /// Transient state for the NMP verification re-search: while
     /// non-zero, NMP is suppressed for `nmp_color` until a node's
@@ -951,7 +952,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         // promotions and the TT move. Ties on-and-off with
         // PVS since without PVS there are essentially no
         // non-PV-nodes to prune on.
-        if (stop.enable_pvs
+        if (stop.enable_lmp
             && is_non_pv
             && !stop.disable_alpha_beta
             && depth <= 3
@@ -1098,21 +1099,21 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                     const double v =
                         std::log(double(depth))
                         * std::log(double(i + 1)) / 2.0;
-                    R = std::max(0, int(v));
+                    R = std::max(1, int(v));
                     break;
                 }
                 case SearchLimits::LmrMode::DepthDiv4LogIdxHalf: {
                     const double v =
                         (double(depth) / 4.0)
                         * std::log(double(i + 1)) / 2.0;
-                    R = std::max(0, int(v));
+                    R = std::max(1, int(v));
                     break;
                 }
                 case SearchLimits::LmrMode::DepthDiv4LogIndex: {
                     const double v =
                         (double(depth) / 4.0)
                         * std::log(double(i + 1));
-                    R = std::max(0, int(v));
+                    R = std::max(1, int(v));
                     break;
                 }
             }
@@ -1127,6 +1128,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                 const int max_R = depth - 5;
                 if (max_R < 0) R = 0;
                 else if (R > max_R) R = max_R;
+                R = std::max(1, int(R));
             }
         }
         int probe_alpha = recurse_alpha;
@@ -1291,6 +1293,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_history,
         limits.enable_aspiration,
         limits.enable_pvs,
+        limits.enable_lmp,
         limits.enable_check_ext,
         limits.enable_nmp_verify,
         limits.enable_futility,

@@ -49,9 +49,10 @@ struct SolveBudget {
     bool enable_lmr         = true;   ///< Late Move Reductions.
     bool enable_history     = true;   ///< History heuristic ordering.
     bool enable_aspiration  = true;   ///< Aspiration windows at root.
-    bool enable_pvs         = true;   ///< PVS + LMP in non-PV-nodes.
+    bool enable_pvs         = true;   ///< PVS scout window in non-PV-nodes.
+    bool enable_lmp         = true;   ///< Late-Move Pruning at shallow depth.
     bool enable_check_ext   = true;   ///< Extend depth on check-giving moves.
-    SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R3_PlusDepthDiv3;
+    SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R2_PlusDepthDiv3;
     SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
 };
 

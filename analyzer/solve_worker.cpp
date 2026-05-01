@@ -84,6 +84,7 @@ void SolveWorker::start() {
         lim.enable_history = budget_.enable_history;
         lim.enable_aspiration = budget_.enable_aspiration;
         lim.enable_pvs = budget_.enable_pvs;
+        lim.enable_lmp = budget_.enable_lmp;
         lim.enable_check_ext = budget_.enable_check_ext;
         lim.nmp_mode = budget_.nmp_mode;
         lim.lmr_mode = budget_.lmr_mode;

@@ -158,6 +158,13 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Check_Extensions
     bool enable_check_ext = false;
 
+    /// Late-Move Pruning. Was previously gated on `enable_pvs`
+    /// because in chesserazade's bundling the two were always
+    /// turned on together; now separate so they can be A/B-tested
+    /// independently. LMP skips late quiets in non-PV nodes at
+    /// shallow depth (see search.cpp for the threshold table).
+    bool enable_lmp = false;
+
     /// Verification re-search for null-move pruning. When the
     /// regular NMP fails high at depth ≥ NMP_VERIFY_MIN_DEPTH,
     /// a second search of the same reduced depth is run for our
@@ -202,7 +209,7 @@ struct SearchLimits {
         R3_PlusDepthDiv4,   // Gentler scaling — null-search depth ≥ 5 from d=10.
         R2_PlusDepthDiv3,   // Same shape as above at d=10, lower at d≤6.
     };
-    NmpMode nmp_mode = NmpMode::R3_PlusDepthDiv4;
+    NmpMode nmp_mode = NmpMode::R2_PlusDepthDiv3;
 
     /// Late-Move-Reduction reduction-amount policy. Picks how much
     /// to shorten the depth on a late quiet move before its probe.
