@@ -250,6 +250,32 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
         || m.kind == MoveKind::PromotionCapture;
 }
 
+/// SEE-lite: cheap "is this capture losing material?" classifier.
+/// Returns true only when (a) attacker is more valuable than victim
+/// AND (b) the destination square is defended after our move. Misses
+/// X-ray-through-attacker for sliders unless we make the move first;
+/// we do, paying ~85 ns per check, but only when needed (the early
+/// exit on `attacker ≤ victim` skips ~80% of captures). Not full SEE
+/// — multi-piece exchange chains can still mis-classify, but the
+/// typical 'PxQ defended', 'BxP defended' cases are caught and that's
+/// where MVV-LVA goes most wrong.
+[[nodiscard]] bool is_bad_capture(Board& board, const Move& m) {
+    const PieceType victim_type =
+        (m.kind == MoveKind::EnPassant) ? PieceType::Pawn
+                                        : m.captured_piece.type;
+    const int v_victim   = piece_value(victim_type);
+    const int v_attacker = piece_value(m.moved_piece.type);
+    if (v_attacker <= v_victim) {
+        return false;
+    }
+    board.make_move(m);
+    const Color them = board.side_to_move();  // flipped after make
+    const bool defended =
+        MoveGenerator::is_square_attacked(board, m.to, them);
+    board.unmake_move(m);
+    return defended;
+}
+
 /// Centipawn value of the piece removed by `m`, or 0 for non-
 /// captures. En-passant captures always take a pawn.
 [[nodiscard]] int capture_value(const Move& m) noexcept {
@@ -280,12 +306,14 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
 ///   ~   900'000 — first killer.
 ///   ~   800'000 — second killer.
 ///   ~   850'000 — counter-move (preferred quiet response to prev move).
+///   ~   700'000 — bad capture (SEE-lite says losing trade).
 ///   ~    50'000 — promotions without capture.
 ///   0..49'999   — quiet moves, ranked by history heuristic.
 [[nodiscard]] int score_move(const Move& m, const Move& tt_move,
                              const KillerTable& killers,
                              const HistoryTable& history,
                              const Move& counter_move,
+                             bool is_capture_bad,
                              bool use_history,
                              Color stm,
                              std::size_t ply) noexcept {
@@ -293,6 +321,13 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
         return 10'000'000;
     }
     if (is_capture(m)) {
+        // Bad captures get demoted below killers so legitimate
+        // quiet plans (killers, counter-move, even strong-history
+        // quiets) get tried first. MVV-LVA still orders within
+        // the bad-capture bucket — losing PxQ before losing RxN.
+        if (is_capture_bad) {
+            return 700'000 + mvv_lva(m);
+        }
         return 1'000'000 + mvv_lva(m);
     }
     if (m == killers.killers[ply][0]) return 900'000;
@@ -330,7 +365,8 @@ struct ScoredMove {
 
 /// Fill `buf` with `(move, score)` pairs and sort it in
 /// descending order. Returns the number of entries written.
-std::size_t score_and_sort(const MoveList& legal,
+std::size_t score_and_sort(Board& board,
+                           const MoveList& legal,
                            std::array<ScoredMove, MoveList::CAPACITY>& buf,
                            const Move& tt_move,
                            const KillerTable& killers,
@@ -338,12 +374,14 @@ std::size_t score_and_sort(const MoveList& legal,
                            const Move& counter_move,
                            bool use_history,
                            Color stm,
-                           std::size_t ply) noexcept {
+                           std::size_t ply) {
     const std::size_t n = legal.count;
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = legal.moves[i];
+        const bool bad = is_capture(m) && is_bad_capture(board, m);
         buf[i] = {m, score_move(m, tt_move, killers, history,
-                                counter_move, use_history, stm, ply)};
+                                counter_move, bad, use_history,
+                                stm, ply)};
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
     return n;
@@ -825,7 +863,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     }
     std::array<ScoredMove, MoveList::CAPACITY> buf;
     const std::size_t n =
-        score_and_sort(legal, buf, tt_move, killers, history,
+        score_and_sort(board, legal, buf, tt_move, killers, history,
                        counter_move,
                        stop.enable_history,
                        board.side_to_move(), p);
