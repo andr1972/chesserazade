@@ -162,9 +162,10 @@ wget https://github.com/official-stockfish/books/raw/master/8moves_v3.epd.zip
 unzip 8moves_v3.epd.zip
 ```
 
-(Hooking these into match.py / tourney.py via an `--openings` flag
-is a future change; today the random-plies generator with a unique
-per-chunk seed is what's wired in.)
+Both `match.py` and `tourney.py` accept `--openings <epd-file>`
+(e.g. `--openings tools/openings/noob_3moves.epd`). With it set
+each pair of games starts from a position sampled from the file
+instead of the random-plies walk; `--random-plies` is ignored.
 
 ---
 

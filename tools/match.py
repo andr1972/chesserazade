@@ -180,6 +180,30 @@ def physical_cores() -> int:
     return os.cpu_count() or 1
 
 
+def load_epd_openings(path: Path) -> list[str]:
+    """Read an EPD opening book and return one FEN per line.
+    EPD's six fields are board, side, castling, en-passant, then
+    optional opcodes (`id "..."`, `bm ...`, …) — same as the first
+    four FEN fields without the halfmove / fullmove counters. We
+    drop the opcodes and append '0 1' so python-chess accepts the
+    string as a FEN. Blank and `#`-comment lines are skipped."""
+    fens: list[str] = []
+    with path.open() as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Cut off opcodes (split on the first ';' or after 4 fields).
+            head = line.split(";", 1)[0].strip()
+            tokens = head.split()
+            if len(tokens) < 4:
+                continue
+            fens.append(" ".join(tokens[:4]) + " 0 1")
+    if not fens:
+        raise RuntimeError(f"no positions parsed from {path}")
+    return fens
+
+
 def random_opening(plies: int, rng: random.Random) -> chess.Board:
     """Walk `plies` random legal moves from startpos. Avoid positions
     that are already terminated (mate / stalemate / repetition)."""
@@ -353,12 +377,19 @@ class Engine:
         self._wait_for("readyok", timeout=10)
 
     def go(self, board: chess.Board, movetime_ms: int,
-           depth: Optional[int] = None) -> chess.Move:
+           depth: Optional[int] = None,
+           start_fen: Optional[str] = None) -> chess.Move:
+        # If a custom starting position is supplied (EPD-book opening),
+        # send `position fen ...` instead of the default `startpos`.
+        # Either form accepts a `moves ...` suffix for plies played
+        # from that root.
         moves = " ".join(m.uci() for m in board.move_stack)
+        prefix = (f"position fen {start_fen}" if start_fen is not None
+                  else "position startpos")
         if moves:
-            self._send(f"position startpos moves {moves}")
+            self._send(f"{prefix} moves {moves}")
         else:
-            self._send("position startpos")
+            self._send(prefix)
         # Both depth and movetime can be sent — search stops at
         # whichever fires first.
         cmd = f"go movetime {movetime_ms}"
@@ -461,15 +492,31 @@ def play_game(white: Engine, black: Engine, *,
     """
     white.new_game()
     black.new_game()
-    board = opening.copy() if opening is not None else chess.Board()
+    # Rebuild from the opening's FEN with an empty move_stack so the
+    # UCI position string only carries plies played in *this* game.
+    # For EPD openings the FEN is the literal book entry; for the
+    # random-plies generator it's the post-walk position. Engines
+    # see a clean game starting from start_fen, regardless of source.
+    if opening is not None:
+        start_fen = opening.fen()
+        board = chess.Board(start_fen)
+    else:
+        start_fen = None  # plain startpos
+        board = chess.Board()
     if status_ref is not None:
         status_ref["last_move"] = "—"
     if fen_log is not None:
         fen_log(f"start {white.name} vs {black.name}  fen {board.fen()}")
     if game_label:
-        opening_str = " ".join(m.uci() for m in board.move_stack)
-        if opening_str:
+        # Preserve the original opening trail / FEN label even though
+        # we re-anchored the search board with an empty move_stack:
+        # random-walk openings have moves to print, EPD openings have
+        # only a FEN.
+        if opening is not None and opening.move_stack:
+            opening_str = " ".join(m.uci() for m in opening.move_stack)
             print(f"{game_label} opening: {opening_str}", flush=True)
+        elif opening is not None:
+            print(f"{game_label} opening: fen {start_fen}", flush=True)
         sys.stdout.write(f"{game_label} ")
         sys.stdout.flush()
     while not board.is_game_over(claim_draw=True):
@@ -492,7 +539,8 @@ def play_game(white: Engine, black: Engine, *,
         # cheating opponent could otherwise eat half our budget.
         idle.suspend()
         engine.resume()
-        move = engine.go(board, movetime_ms, depth_cap)
+        move = engine.go(board, movetime_ms, depth_cap,
+                         start_fen=start_fen)
         if move not in board.legal_moves:
             # Forfeit: engine returned an illegal move.
             losing_color = "White" if board.turn == chess.WHITE else "Black"
@@ -551,7 +599,16 @@ def main() -> int:
     ap.add_argument("--random-plies", type=int, default=4,
                     help="Random plies played from startpos before the engines"
                          " take over. Pairs of games share the same opening,"
-                         " played from each side. 0 = pure startpos.")
+                         " played from each side. 0 = pure startpos. Ignored"
+                         " when --openings is set.")
+    ap.add_argument("--openings", type=Path, default=None,
+                    help="EPD file of starting positions (one position per"
+                         " line, first four FEN fields are enough). Each pair"
+                         " of games shares one position picked at random from"
+                         " the file (paired-openings: same position from each"
+                         " side). Overrides --random-plies. Get a curated"
+                         " book at github.com/official-stockfish/books, e.g."
+                         " noob_3moves.epd.")
     ap.add_argument("--seed", type=int, default=12345,
                     help="seed for random openings (reproducible matches)")
     ap.add_argument("--pgn", type=Path, default=None,
@@ -627,8 +684,15 @@ def main() -> int:
     # Pre-generate one opening per *pair* of games so we can play it twice
     # (once from each side) — gives a fair sample at half the openings cost.
     pair_count = (args.games + 1) // 2
-    openings = [random_opening(args.random_plies, rng)
-                for _ in range(pair_count)] if args.random_plies > 0 else None
+    if args.openings is not None:
+        epd_fens = load_epd_openings(args.openings)
+        openings = [chess.Board(rng.choice(epd_fens))
+                    for _ in range(pair_count)]
+    elif args.random_plies > 0:
+        openings = [random_opening(args.random_plies, rng)
+                    for _ in range(pair_count)]
+    else:
+        openings = None
 
     pin_desc = (f", pinned to CPUs {pin_cpus}" if pin_cpus
                 else (", no pin" if jobs > 1 else ""))

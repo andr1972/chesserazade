@@ -320,6 +320,12 @@ def main() -> int:
                          " phase 2. Set equal to --precise-games to"
                          " disable escalation. Ignored when phase 2"
                          " itself is disabled.")
+    ap.add_argument("--openings", type=Path, default=None,
+                    help="EPD opening book passed through to match.py."
+                         " Each match.py invocation samples positions"
+                         " seeded by tourney's per-call seed, so book"
+                         " entries don't repeat across chunks. See"
+                         " match.py --help for the file format.")
     ap.add_argument("--seed", type=int, default=None,
                     help="base seed for opening selection. Default uses"
                          " current wall time so successive runs see"
@@ -385,6 +391,12 @@ def main() -> int:
     say_seed_msg(f"# seed base: {base_seed}"
                  f" (override with --seed for reproducible runs)")
     match_counter = [0]  # list-as-cell so nested closures can mutate
+    # Extra args appended to every match.py call. Pass-through for
+    # options tourney itself doesn't model — currently just the
+    # opening-book file.
+    match_extra: list[str] = []
+    if args.openings is not None:
+        match_extra += ["--openings", str(args.openings)]
 
     if args.estimate:
         if args.n is None and not args.engines:
@@ -464,7 +476,8 @@ def main() -> int:
                 name1=a, name2=b, jobs=args.jobs,
                 progress=not args.quiet,
                 track=_lower_cmdline(a, b, names),
-                seed=base_seed + match_counter[0])
+                seed=base_seed + match_counter[0],
+                extra_args=match_extra)
             match_counter[0] += 1
             dt = time.time() - t0
             say(f"  rough {a} vs {b}: {sA:.1f} - {sB:.1f}  "
@@ -560,7 +573,8 @@ def main() -> int:
                 name1=higher, name2=lower, jobs=args.jobs,
                 progress=not args.quiet,
                 track=anchor,
-                seed=base_seed + match_counter[0])
+                seed=base_seed + match_counter[0],
+                extra_args=match_extra)
             match_counter[0] += 1
             cum_h += sH; cum_l += sL; played += n
             anchor_s = cum_h if anchor == higher else cum_l
