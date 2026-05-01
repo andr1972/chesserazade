@@ -1092,21 +1092,21 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                 case SearchLimits::LmrMode::LogDepthLogIndex: {
                     const double v =
                         std::log(double(depth))
-                        * std::log(double(i)) / 2.0;
+                        * std::log(double(i + 1)) / 2.0;
                     R = std::max(0, int(v));
                     break;
                 }
                 case SearchLimits::LmrMode::DepthDiv4LogIdxHalf: {
                     const double v =
                         (double(depth) / 4.0)
-                        * std::log(double(i)) / 2.0;
+                        * std::log(double(i + 1)) / 2.0;
                     R = std::max(0, int(v));
                     break;
                 }
                 case SearchLimits::LmrMode::DepthDiv4LogIndex: {
                     const double v =
                         (double(depth) / 4.0)
-                        * std::log(double(i));
+                        * std::log(double(i + 1));
                     R = std::max(0, int(v));
                     break;
                 }
