@@ -169,6 +169,25 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Null_Move_Pruning
     bool enable_nmp_verify = false;
 
+    /// Null-move-pruning reduction formula. Selects how aggressively
+    /// the null search shortens depth — bigger R prunes more (faster)
+    /// but risks missing tactical refutations.
+    ///   Off              — disable NMP entirely (baseline for A/B).
+    ///   R4               — fixed R = 4. Very aggressive.
+    ///   R3_PlusDepthDiv3 — R = 3 + depth/3. Scales with depth, the
+    ///                      default for most modern engines.
+    ///   R4_PlusDepthDiv4 — R = 4 + depth/4. More aggressive shallow,
+    ///                      similar deep growth as the above.
+    enum class NmpMode {
+        Off,
+        R4,
+        R3_PlusDepthDiv3,   // SF-classical-ish, very aggressive at depth.
+        R4_PlusDepthDiv4,   // Even more aggressive shallow.
+        R3_PlusDepthDiv4,   // Gentler scaling — null-search depth ≥ 5 from d=10.
+        R2_PlusDepthDiv3,   // Same shape as above at d=10, lower at d≤6.
+    };
+    NmpMode nmp_mode = NmpMode::R3_PlusDepthDiv4;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The

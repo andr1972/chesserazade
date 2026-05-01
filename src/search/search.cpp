@@ -125,6 +125,7 @@ struct Stop {
     bool enable_pvs = false;
     bool enable_check_ext = false;
     bool enable_nmp_verify = false;
+    SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R3_PlusDepthDiv4;
     /// Transient state for the NMP verification re-search: while
     /// non-zero, NMP is suppressed for `nmp_color` until a node's
     /// `ply` exceeds `nmp_min_ply`. Always 0 outside the verification
@@ -640,6 +641,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     const bool nmp_allowed_for_side =
         stop.nmp_color < 0 || us != stop.nmp_color || ply >= stop.nmp_min_ply;
     if (allow_null
+        && stop.nmp_mode != SearchLimits::NmpMode::Off
         && nmp_allowed_for_side
         && !stop.disable_alpha_beta
         && ply > 0
@@ -652,7 +654,30 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             ? board.evaluate_incremental()
             : evaluate(board);
         if (static_eval >= beta) {
-            const int NMP_R = 4;
+            // Reduction formula picked by --nmp-mode. The depth-
+            // scaled variants prune harder at deep searches, where
+            // the null move is a stronger signal that we have
+            // breathing room.
+            int NMP_R = 4;
+            switch (stop.nmp_mode) {
+                case SearchLimits::NmpMode::Off:
+                    break;  // unreachable — guarded above
+                case SearchLimits::NmpMode::R4:
+                    NMP_R = 4;
+                    break;
+                case SearchLimits::NmpMode::R3_PlusDepthDiv3:
+                    NMP_R = 3 + depth / 3;
+                    break;
+                case SearchLimits::NmpMode::R4_PlusDepthDiv4:
+                    NMP_R = 4 + depth / 4;
+                    break;
+                case SearchLimits::NmpMode::R3_PlusDepthDiv4:
+                    NMP_R = 3 + depth / 4;
+                    break;
+                case SearchLimits::NmpMode::R2_PlusDepthDiv3:
+                    NMP_R = 2 + depth / 3;
+                    break;
+            }
             board.make_null_move();
             BranchStats null_stats;
             const NegamaxResult nr = negamax(
@@ -1016,6 +1041,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_pvs,
         limits.enable_check_ext,
         limits.enable_nmp_verify,
+        limits.nmp_mode,
         0,    // nmp_min_ply
         -1,   // nmp_color (no constraint)
         0, 0, 0, 0, 0, 0,  // nmp_{rejected,entered,failed_high,verify_attempts,verified,aborted}

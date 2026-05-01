@@ -238,6 +238,27 @@ SolvePanel::SolvePanel(QWidget* parent)
         "depth are tactically stronger."));
     cap_row->addWidget(check_ext_check_);
 
+    nmp_mode_combo_ = new QComboBox(right);
+    // Indices 0..3 must stay in sync with the enum order in
+    // current_budget() / build_limits().
+    nmp_mode_combo_->addItem(tr("NMP off"));
+    nmp_mode_combo_->addItem(tr("NMP R=4"));
+    nmp_mode_combo_->addItem(tr("NMP R=3+depth/3"));
+    nmp_mode_combo_->addItem(tr("NMP R=4+depth/4"));
+    nmp_mode_combo_->addItem(tr("NMP R=3+depth/4"));
+    nmp_mode_combo_->addItem(tr("NMP R=2+depth/3"));
+    nmp_mode_combo_->setCurrentIndex(4);  // R3+depth/4 = engine default
+    nmp_mode_combo_->setToolTip(tr(
+        "Null-Move Pruning reduction formula. Bigger R prunes more "
+        "aggressively (faster) but risks missing tactical refutations.\n"
+        "  off — disable NMP entirely (baseline for A/B).\n"
+        "  R=4 — fixed; very aggressive at all depths.\n"
+        "  R=3+depth/3 — SF-classical-ish; agressive at depth.\n"
+        "  R=4+depth/4 — more aggressive shallow.\n"
+        "  R=3+depth/4 — gentler scaling (default for chesserazade).\n"
+        "  R=2+depth/3 — even gentler shallow, same as above mid-depth."));
+    cap_row->addWidget(nmp_mode_combo_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -456,6 +477,9 @@ SolveBudget SolvePanel::current_budget() const {
     b.enable_aspiration    = asp_check_->isChecked();
     b.enable_pvs           = pvs_check_->isChecked();
     b.enable_check_ext     = check_ext_check_->isChecked();
+    // Combo index → enum order in search.hpp.
+    b.nmp_mode = static_cast<SearchLimits::NmpMode>(
+        nmp_mode_combo_->currentIndex());
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();
