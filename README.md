@@ -98,9 +98,9 @@ chesserazade fetch
 
 ## Engine matches and tournaments
 
-Two Python helpers under `tools/` drive head-to-head play between
-UCI engines. Both need `python-chess` — activate a venv that has
-it before running.
+Three Python helpers under `tools/` drive head-to-head play and
+post-match analysis. All need `python-chess` — activate a venv
+that has it before running.
 
 ```bash
 # Single head-to-head match (40 games × 1000 ms/move, 11 workers)
@@ -123,6 +123,14 @@ python tools/tourney.py --movetime1 100 --movetime2 1000 a b
 
 # Quiet mode — only the final ranking table is printed
 python tools/tourney.py --quiet --movetime 1000 a b c
+
+# Blunder hunt — diff a candidate build against a reference, find
+# where they disagreed during a lost game, and rank both moves with
+# Stockfish so it's clear which choice was the actual blunder.
+python tools/blunder_hunt.py \
+       --candidate ./build/release/chesserazade \
+       --reference ./build/release/a \
+       --movetime 1000
 ```
 
 `tourney.py` defaults: 100 games per rough comparison, 1000 per
