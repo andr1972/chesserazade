@@ -272,7 +272,7 @@ def analyse_loss(game: chess.pgn.Game,
         ref_depth, ref_rank = deepest_rank(observations, ref_uci)
         print(f"{ply_idx:<4} {cand_uci:<8} {ref_uci:<8} "
               f"{cand_depth:<10} {cand_rank:<9} "
-              f"{ref_depth:<9} {ref_rank:<8}", flush=True)
+              f"{ref_depth:<9} {ref_rank:<8} fen {fen}", flush=True)
         board.push(move)
 
 
