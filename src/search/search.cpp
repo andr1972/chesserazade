@@ -934,36 +934,22 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         const Color mover = board.side_to_move();
 
         // --- LMP: skip late quiet moves in non-PV-nodes ---
-        // Keep only the first N scored moves at each depth (table
-        // below); drop the rest. PV-nodes need every move; non-PV
-        // only prove a bound, speculative cut is safe. Quiet bucket
-        // check (`score < 50'000`) spares the TT move, both good
-        // (1M+) and bad (700K+) captures, killers, counter-move,
-        // and promotions.
-        //
-        // Fourth attempt at the extended threshold table (depth ≤ 7).
-        // First three (ead8b75, 27dc060, cf345e5) regressed because
-        // the 'top 32 moves' assumption was hostile to chesserazade's
-        // ordering. With v1.6.0 in place — full SEE for capture
-        // separation, improving flag for trend awareness, reverse
-        // futility for fail-high cuts — the move loop sees a much
-        // cleaner first 30 ranks, so the table can be tried again.
-        constexpr std::array<std::size_t, 8> LMP_THRESHOLDS = {
-            0,   //  d=0 — never reached
-            4,   //  d=1
-            6,   //  d=2
-            9,   //  d=3
-            13,  //  d=4
-            18,  //  d=5
-            24,  //  d=6
-            32,  //  d=7
-        };
+        // Classical formula: at depth d ≤ 3, keep the first
+        // `3 + d*d` scored moves (4 at d=1, 7 at d=2, 12 at
+        // d=3) and drop the rest outright — no probe, no
+        // re-search. PV-nodes need every move because they
+        // aim at the exact best; non-PV-nodes only prove a
+        // bound, so the speculative cut is safe. Quiet bucket
+        // check (score < 50'000) spares captures, killers,
+        // promotions and the TT move. Ties on-and-off with
+        // PVS since without PVS there are essentially no
+        // non-PV-nodes to prune on.
         if (stop.enable_pvs
             && is_non_pv
             && !stop.disable_alpha_beta
-            && depth >= 1 && depth <= 7
+            && depth <= 3
             && buf[i].score < 50'000
-            && i >= LMP_THRESHOLDS[static_cast<std::size_t>(depth)]) {
+            && i >= static_cast<std::size_t>(3 + depth * depth)) {
             continue;
         }
 
