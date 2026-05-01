@@ -13,6 +13,7 @@
 #include "board/board8x8_mailbox.hpp"
 
 #include <chesserazade/board.hpp>
+#include <chesserazade/search.hpp>
 #include <chesserazade/transposition_table.hpp>
 
 #include <iosfwd>
@@ -32,6 +33,10 @@ struct UciSession {
     Board8x8Mailbox board;
     TranspositionTable tt;
     int hash_mb;
+    /// LMR reduction policy for this session. Default is the
+    /// long-standing R=1 behaviour; GUIs / match.py can override
+    /// via 'setoption name LmrMode value <X>'.
+    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
     /// Zobrist keys of every position reached *before* the
     /// current `board` — i.e. start position + after each move
     /// played, with the very last position (= `board` itself)

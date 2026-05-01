@@ -121,6 +121,7 @@ private:
     QCheckBox*    pvs_check_      = nullptr;
     QCheckBox*    check_ext_check_ = nullptr;
     QComboBox*    nmp_mode_combo_  = nullptr;
+    QComboBox*    lmr_mode_combo_  = nullptr;
     QCheckBox*    relative_score_check_ = nullptr;
 
     QPushButton*  run_btn_  = nullptr;

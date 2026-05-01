@@ -325,6 +325,17 @@ def main() -> int:
                          " adjudicates a draw when reached. Default 0 ="
                          " no cap. Useful to stop marathon endgames"
                          " from stretching long phase-2 verifies.")
+    ap.add_argument("--option1", action="append", default=[],
+                    metavar="NAME=VALUE",
+                    help="UCI setoption sent to engine1 of every match"
+                         " (passed through to match.py). Repeatable."
+                         " Useful for A/B testing engine modes without"
+                         " rebuilding, e.g. --option1 LmrMode=DepthDiv4LogIdxHalf"
+                         " on the cmdline-first engine to compare against the"
+                         " other engine's default.")
+    ap.add_argument("--option2", action="append", default=[],
+                    metavar="NAME=VALUE",
+                    help="Same as --option1 but for engine2.")
     ap.add_argument("--openings", type=Path, default=None,
                     help="EPD opening book passed through to match.py."
                          " Each match.py invocation samples positions"
@@ -404,6 +415,10 @@ def main() -> int:
         match_extra += ["--openings", str(args.openings)]
     if args.max_moves > 0:
         match_extra += ["--max-moves", str(args.max_moves)]
+    for opt in args.option1:
+        match_extra += ["--option1", opt]
+    for opt in args.option2:
+        match_extra += ["--option2", opt]
 
     if args.estimate:
         if args.n is None and not args.engines:

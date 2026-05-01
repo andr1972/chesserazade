@@ -259,6 +259,28 @@ SolvePanel::SolvePanel(QWidget* parent)
         "  R=2+depth/3 — even gentler shallow, same as above mid-depth."));
     cap_row->addWidget(nmp_mode_combo_);
 
+    lmr_mode_combo_ = new QComboBox(right);
+    // Indices 0..4 must stay in sync with the enum order in
+    // SearchLimits::LmrMode.
+    lmr_mode_combo_->addItem(tr("LMR off"));
+    lmr_mode_combo_->addItem(tr("LMR R=1"));
+    lmr_mode_combo_->addItem(tr("LMR log(d)·log(i)/2"));
+    lmr_mode_combo_->addItem(tr("LMR (d/4)·log(i)/2"));
+    lmr_mode_combo_->addItem(tr("LMR (d/4)·log(i)"));
+    lmr_mode_combo_->setCurrentIndex(1);  // R=1 = engine default
+    lmr_mode_combo_->setToolTip(tr(
+        "Late-Move-Reduction reduction policy. The PVS probe runs at"
+        " depth - 1 - R; if it beats α, the move is re-searched at"
+        " full depth. Re-search makes every choice safe — bigger R"
+        " just trades probe-cost for more re-searches.\n"
+        "  off — disable LMR entirely.\n"
+        "  R=1 — fixed (engine default).\n"
+        "  log(d)·log(i)/2 — Stockfish-classical formula.\n"
+        "  (d/4)·log(i)/2 — matches SF near depth 12, gentler shallow,"
+        " deeper at high depth.\n"
+        "  (d/4)·log(i) — most aggressive, biggest reductions."));
+    cap_row->addWidget(lmr_mode_combo_);
+
     cap_row->addStretch(1);
     rlay->addLayout(cap_row);
 
@@ -480,6 +502,8 @@ SolveBudget SolvePanel::current_budget() const {
     // Combo index → enum order in search.hpp.
     b.nmp_mode = static_cast<SearchLimits::NmpMode>(
         nmp_mode_combo_->currentIndex());
+    b.lmr_mode = static_cast<SearchLimits::LmrMode>(
+        lmr_mode_combo_->currentIndex());
     if (rb_depth_->isChecked()) {
         b.kind = SolveBudget::Kind::Depth;
         b.depth = depth_spin_->value();

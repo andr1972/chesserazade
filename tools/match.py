@@ -290,7 +290,8 @@ def _resolve_names(cmd1: str, cmd2: str,
 
 class Engine:
     def __init__(self, cmd: str, name: Optional[str] = None,
-                 pin_cpu: Optional[int] = None) -> None:
+                 pin_cpu: Optional[int] = None,
+                 options: Optional[list[tuple[str, str]]] = None) -> None:
         self.cmd = cmd
         # stderr → /tmp/<name>-<pid>.err so a crashing engine
         # leaves an audit trail (assertion text, sanitizer report,
@@ -324,6 +325,13 @@ class Engine:
         self._suspended = False
         self._send("uci")
         self._wait_for("uciok", timeout=10)
+        # Per-engine UCI options — sent before the first isready so
+        # the option takes effect for all subsequent `go` calls.
+        # Caller passes name/value pairs already split; we trust the
+        # engine to ignore unknowns silently (match.py-supplied set
+        # of supported options stays out of here).
+        for opt_name, opt_value in (options or []):
+            self._send(f"setoption name {opt_name} value {opt_value}")
         self._send("isready")
         self._wait_for("readyok", timeout=10)
 
@@ -577,6 +585,15 @@ def main() -> int:
     ap.add_argument("--engine2", required=True, help="UCI command for engine 2")
     ap.add_argument("--name1", default=None)
     ap.add_argument("--name2", default=None)
+    ap.add_argument("--option1", action="append", default=[],
+                    metavar="NAME=VALUE",
+                    help="UCI 'setoption name NAME value VALUE' sent to"
+                         " engine1 right after the uci handshake. May be"
+                         " repeated for multiple options. e.g."
+                         " --option1 LmrMode=DepthDiv4LogIdxHalf.")
+    ap.add_argument("--option2", action="append", default=[],
+                    metavar="NAME=VALUE",
+                    help="Same as --option1 but for engine2.")
     ap.add_argument("--games", type=int, default=10)
     ap.add_argument("--movetime", type=int, default=1000, help="ms per move (default for both)")
     ap.add_argument("--movetime1", type=int, default=None,
@@ -680,6 +697,20 @@ def main() -> int:
     mt2 = args.movetime2 if args.movetime2 is not None else args.movetime
     dp1 = args.depth1 if args.depth1 is not None else args.depth
     dp2 = args.depth2 if args.depth2 is not None else args.depth
+    # Parse --option1 / --option2 from NAME=VALUE strings into pairs.
+    # Trim whitespace so the user can write `--option1 'Name = Value'`
+    # for readability when the value contains a space.
+    def parse_options(raw: list) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = []
+        for s in raw:
+            if "=" not in s:
+                raise SystemExit(f"--option must be NAME=VALUE: {s!r}")
+            n, v = s.split("=", 1)
+            out.append((n.strip(), v.strip()))
+        return out
+    e1_options = parse_options(args.option1)
+    e2_options = parse_options(args.option2)
+
     rng = random.Random(args.seed)
     # Pre-generate one opening per *pair* of games so we can play it twice
     # (once from each side) — gives a fair sample at half the openings cost.
@@ -809,11 +840,11 @@ def main() -> int:
         # so the first-spawned-process micro-advantage averages out
         # rather than landing on a deterministic half of workers.
         if spawn_e1_first[wid]:
-            e1: Optional[Engine] = Engine(args.engine1, name1, pin_cpu=pin)
-            e2: Optional[Engine] = Engine(args.engine2, name2, pin_cpu=pin)
+            e1: Optional[Engine] = Engine(args.engine1, name1, pin_cpu=pin, options=e1_options)
+            e2: Optional[Engine] = Engine(args.engine2, name2, pin_cpu=pin, options=e2_options)
         else:
-            e2 = Engine(args.engine2, name2, pin_cpu=pin)
-            e1 = Engine(args.engine1, name1, pin_cpu=pin)
+            e2 = Engine(args.engine2, name2, pin_cpu=pin, options=e2_options)
+            e1 = Engine(args.engine1, name1, pin_cpu=pin, options=e1_options)
         try:
             while True:
                 try:
@@ -850,11 +881,11 @@ def main() -> int:
                             except Exception:
                                 pass
                     if spawn_e1_first[wid]:
-                        e1 = Engine(args.engine1, name1, pin_cpu=pin)
-                        e2 = Engine(args.engine2, name2, pin_cpu=pin)
+                        e1 = Engine(args.engine1, name1, pin_cpu=pin, options=e1_options)
+                        e2 = Engine(args.engine2, name2, pin_cpu=pin, options=e2_options)
                     else:
-                        e2 = Engine(args.engine2, name2, pin_cpu=pin)
-                        e1 = Engine(args.engine1, name1, pin_cpu=pin)
+                        e2 = Engine(args.engine2, name2, pin_cpu=pin, options=e2_options)
+                        e1 = Engine(args.engine1, name1, pin_cpu=pin, options=e1_options)
         finally:
             for e in (e1, e2):
                 if e is not None:

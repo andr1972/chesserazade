@@ -86,6 +86,7 @@ void SolveWorker::start() {
         lim.enable_pvs = budget_.enable_pvs;
         lim.enable_check_ext = budget_.enable_check_ext;
         lim.nmp_mode = budget_.nmp_mode;
+        lim.lmr_mode = budget_.lmr_mode;
         lim.cancel = cancel_;
         lim.progress_nodes = progress_nodes_;
         if (budget_ms > 0) {

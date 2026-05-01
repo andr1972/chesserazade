@@ -48,6 +48,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -166,6 +167,7 @@ struct Stop {
     bool enable_futility = false;
     bool enable_reverse_futility = false;
     SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R3_PlusDepthDiv4;
+    SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::Constant1;
     /// Transient state for the NMP verification re-search: while
     /// non-zero, NMP is suppressed for `nmp_color` until a node's
     /// `ply` exceeds `nmp_min_ply`. Always 0 outside the verification
@@ -1062,6 +1064,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         // confirmed subtree exactly once.
         const bool lmr_candidate =
                stop.enable_lmr
+            && stop.lmr_mode != SearchLimits::LmrMode::Off
             && !stop.disable_alpha_beta
             && depth >= 3
             && i >= 3
@@ -1072,7 +1075,43 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             && !(stop.root_full_window && ply == 0)
             && i > 0;
 
-        const int R = lmr_candidate ? 1 : 0;
+        // Reduction policy. `lmr_candidate` already vouched for
+        // 'late quiet move at non-leaf depth'; the mode picks how
+        // far to shorten. Re-search on probe-fail-high keeps us
+        // safe — over-reducing only costs the saved time, never
+        // correctness. Floor at 0 means 'no reduction'; we never
+        // negative-reduce.
+        int R = 0;
+        if (lmr_candidate) {
+            switch (stop.lmr_mode) {
+                case SearchLimits::LmrMode::Off:
+                    break;  // unreachable — guarded above
+                case SearchLimits::LmrMode::Constant1:
+                    R = 1;
+                    break;
+                case SearchLimits::LmrMode::LogDepthLogIndex: {
+                    const double v =
+                        std::log(double(depth))
+                        * std::log(double(i)) / 2.0;
+                    R = std::max(0, int(v));
+                    break;
+                }
+                case SearchLimits::LmrMode::DepthDiv4LogIdxHalf: {
+                    const double v =
+                        (double(depth) / 4.0)
+                        * std::log(double(i)) / 2.0;
+                    R = std::max(0, int(v));
+                    break;
+                }
+                case SearchLimits::LmrMode::DepthDiv4LogIndex: {
+                    const double v =
+                        (double(depth) / 4.0)
+                        * std::log(double(i));
+                    R = std::max(0, int(v));
+                    break;
+                }
+            }
+        }
         int probe_alpha = recurse_alpha;
         int probe_beta  = recurse_beta;
         if (pvs_probe) {
@@ -1240,6 +1279,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_futility,
         limits.enable_reverse_futility,
         limits.nmp_mode,
+        limits.lmr_mode,
         0,    // nmp_min_ply
         -1,   // nmp_color (no constraint)
         0, 0, 0, 0, 0, 0,  // nmp_{rejected,entered,failed_high,verify_attempts,verified,aborted}

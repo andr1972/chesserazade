@@ -204,6 +204,27 @@ struct SearchLimits {
     };
     NmpMode nmp_mode = NmpMode::R3_PlusDepthDiv4;
 
+    /// Late-Move-Reduction reduction-amount policy. Picks how much
+    /// to shorten the depth on a late quiet move before its probe.
+    /// Re-search on probe-fail-high keeps every choice safe — the
+    /// trade-off is purely 'cheaper probes vs. more re-searches'.
+    ///   Off                  — disable LMR.
+    ///   Constant1            — R = 1 always (current default).
+    ///   LogDepthLogIndex     — Stockfish-style log(d)·log(i)/2.
+    ///   DepthDiv4LogIdxHalf  — (d/4)·log(i)/2; matches SF near
+    ///                          d=12, gentler shallow, deeper at
+    ///                          high depth.
+    ///   DepthDiv4LogIndex    — (d/4)·log(i); aggressive, biggest
+    ///                          single-move reduction in the set.
+    enum class LmrMode {
+        Off,
+        Constant1,
+        LogDepthLogIndex,
+        DepthDiv4LogIdxHalf,
+        DepthDiv4LogIndex,
+    };
+    LmrMode lmr_mode = LmrMode::Constant1;
+
     /// Optional external cancel — setting the pointed-to flag
     /// to `true` makes the search abort at the next budget
     /// check (same cadence as the time / node budgets). The

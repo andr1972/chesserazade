@@ -130,6 +130,9 @@ void handle_uci(std::ostream& out) {
     out << "option name Hash type spin default " << DEFAULT_HASH_MB
         << " min " << MIN_HASH_MB << " max " << MAX_HASH_MB << '\n';
     out << "option name Threads type spin default 1 min 1 max 1\n";
+    out << "option name LmrMode type combo default Constant1"
+           " var Off var Constant1 var LogDepthLogIndex"
+           " var DepthDiv4LogIdxHalf var DepthDiv4LogIndex\n";
     out << "uciok\n" << std::flush;
 }
 
@@ -175,6 +178,22 @@ void handle_setoption(UciSession& s,
             if (mb > MAX_HASH_MB) mb = MAX_HASH_MB;
             s.hash_mb = mb;
             s.tt = TranspositionTable{entries_for_mb(mb)};
+        }
+    } else if (name == "LmrMode") {
+        // Map combo-name → enum. Unknown values silently keep
+        // the previous setting (GUIs sometimes probe with case-
+        // insensitive variants; we don't normalise — user is
+        // expected to send the exact name we advertise).
+        if (value == "Off") {
+            s.lmr_mode = SearchLimits::LmrMode::Off;
+        } else if (value == "Constant1") {
+            s.lmr_mode = SearchLimits::LmrMode::Constant1;
+        } else if (value == "LogDepthLogIndex") {
+            s.lmr_mode = SearchLimits::LmrMode::LogDepthLogIndex;
+        } else if (value == "DepthDiv4LogIdxHalf") {
+            s.lmr_mode = SearchLimits::LmrMode::DepthDiv4LogIdxHalf;
+        } else if (value == "DepthDiv4LogIndex") {
+            s.lmr_mode = SearchLimits::LmrMode::DepthDiv4LogIndex;
         }
     }
     // "Threads" is accepted but no-op (single-threaded engine).
@@ -390,6 +409,7 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
         lim.enable_nmp_verify = true;
         lim.enable_futility   = true;
         lim.enable_reverse_futility = true;
+        lim.lmr_mode = s.lmr_mode;
         // Past-game zobrists so the search detects 3-fold lines
         // reaching back into actually-played moves, plus a small
         // contempt so the engine prefers fighting on over a
