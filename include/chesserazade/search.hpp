@@ -176,6 +176,13 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Futility_Pruning
     bool enable_futility = false;
 
+    /// Razoring — at very shallow depth in non-PV-nodes, if the
+    /// static eval plus a generous margin can't reach α, drop to
+    /// quiescence; if qsearch confirms (still ≤ α), return its
+    /// score and skip the full search at this node.
+    /// See https://www.chessprogramming.org/Razoring
+    bool enable_razoring = false;
+
     /// Null-move-pruning reduction formula. Selects how aggressively
     /// the null search shortens depth — bigger R prunes more (faster)
     /// but risks missing tactical refutations.

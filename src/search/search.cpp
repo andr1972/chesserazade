@@ -164,6 +164,7 @@ struct Stop {
     bool enable_check_ext = false;
     bool enable_nmp_verify = false;
     bool enable_futility = false;
+    bool enable_razoring = false;
     SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R3_PlusDepthDiv4;
     /// Transient state for the NMP verification re-search: while
     /// non-zero, NMP is suppressed for `nmp_color` until a node's
@@ -751,6 +752,38 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     const bool improving =
         ancestor_eval != EVAL_UNKNOWN && static_eval > ancestor_eval;
 
+    // --- Razoring -----------------------------------------------------
+    // At very shallow depth in non-PV-nodes, if the static eval plus a
+    // depth-scaled margin still can't reach α, the position is so far
+    // below α that even a quiet move's wiggle won't recover. Drop to
+    // quiescence; if qsearch confirms (≤ α), return early. Different
+    // from futility because it's a *node-level* short-circuit, not a
+    // per-move skip — saves the entire move loop at unrecoverable nodes.
+    {
+        const bool is_non_pv_here = (beta - alpha == 1);
+        if (stop.enable_razoring
+            && is_non_pv_here
+            && !stop.disable_alpha_beta
+            && !in_check_now
+            && ply > 0
+            && depth >= 1 && depth <= 3
+            && need_static_eval) {
+            constexpr std::array<int, 4> RAZOR_MARGINS = {0, 200, 350, 500};
+            const int margin = RAZOR_MARGINS[
+                static_cast<std::size_t>(depth)];
+            if (static_eval + margin <= alpha) {
+                BranchStats q_stats;
+                const NegamaxResult q =
+                    quiesce(board, alpha, beta, nodes, stop, q_stats);
+                if (stop.abort) return {0, false};
+                if (q.score <= alpha) {
+                    out_stats = q_stats;
+                    return q;
+                }
+            }
+        }
+    }
+
     if (allow_null
         && stop.nmp_mode != SearchLimits::NmpMode::Off
         && nmp_allowed_for_side
@@ -1210,6 +1243,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_check_ext,
         limits.enable_nmp_verify,
         limits.enable_futility,
+        limits.enable_razoring,
         limits.nmp_mode,
         0,    // nmp_min_ply
         -1,   // nmp_color (no constraint)
