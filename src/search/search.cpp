@@ -50,6 +50,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace chesserazade {
@@ -199,6 +200,14 @@ struct Stop {
     /// key already in this stack only if the line is a
     /// repetition.
     std::vector<ZobristKey> search_path{};
+    /// Per-ply static eval cache used by the `improving` flag —
+    /// each negamax frame writes its static_eval here so a child
+    /// 2 plies down can compare and decide whether the position is
+    /// trending up for our side. Indexed by ply; INT_MIN means
+    /// 'not computed yet at that ply' (in-check or before this
+    /// search reached that depth).
+    std::array<int, static_cast<std::size_t>(Search::MAX_DEPTH)>
+        ply_static_eval{};
     bool abort = false;
 
     bool should_stop(std::uint64_t nodes_so_far) noexcept {
@@ -722,6 +731,25 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             ? board.evaluate_incremental()
             : evaluate(board))
         : 0;
+    // Per-ply static_eval cache for the `improving` flag. INT_MIN
+    // marks 'unknown' (in-check ancestors, or not reached yet);
+    // children at ply+2 read this slot and treat INT_MIN as 'not
+    // improving' (conservative — larger futility margin).
+    constexpr int EVAL_UNKNOWN = std::numeric_limits<int>::min();
+    if (static_cast<std::size_t>(ply)
+            < stop.ply_static_eval.size()) {
+        stop.ply_static_eval[static_cast<std::size_t>(ply)] =
+            need_static_eval ? static_eval : EVAL_UNKNOWN;
+    }
+    // `improving` = our position got better than 2 plies ago (same
+    // side to move). Used to scale futility / NMP thresholds —
+    // we can prune more aggressively when the trend is up because
+    // a quiet move is unlikely to recover what we lost.
+    const int ancestor_eval = (ply >= 2)
+        ? stop.ply_static_eval[static_cast<std::size_t>(ply - 2)]
+        : EVAL_UNKNOWN;
+    const bool improving =
+        ancestor_eval != EVAL_UNKNOWN && static_eval > ancestor_eval;
 
     if (allow_null
         && stop.nmp_mode != SearchLimits::NmpMode::Off
@@ -916,8 +944,15 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             && buf[i].score < 50'000) {
             constexpr std::array<int, 6> FUTILITY_MARGINS = {
                 0, 100, 175, 270, 380, 500};
-            if (static_eval + FUTILITY_MARGINS[
-                    static_cast<std::size_t>(depth)] <= alpha) {
+            // `improving` shrinks the margin so we prune harder when
+            // the trend is up. The shrink is depth-scaled so deep
+            // searches (where the wiggle room matters more) keep
+            // most of their margin; depth=1 cut by 30, depth=5 by ~75.
+            const int base = FUTILITY_MARGINS[
+                static_cast<std::size_t>(depth)];
+            const int margin = improving ? base - 30 * depth / 2
+                                         : base;
+            if (static_eval + margin <= alpha) {
                 continue;
             }
         }
