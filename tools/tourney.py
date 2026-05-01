@@ -128,6 +128,7 @@ def run_match(eng1: str, eng2: str, *,
               jobs: Optional[int] = None,
               progress: bool = False,
               track: Optional[str] = None,
+              seed: Optional[int] = None,
               extra_args: Optional[list[str]] = None
               ) -> tuple[float, float, int]:
     """Run match.py and return (score1, score2, draws). When
@@ -150,6 +151,8 @@ def run_match(eng1: str, eng2: str, *,
         cmd += ["-j"]
     else:
         cmd += ["-j", str(jobs)]
+    if seed is not None:
+        cmd += ["--seed", str(seed)]
     if extra_args:
         cmd += extra_args
     if not progress:
@@ -314,6 +317,15 @@ def main() -> int:
                          " phase 2. Set equal to --precise-games to"
                          " disable escalation. Ignored when phase 2"
                          " itself is disabled.")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="base seed for opening selection. Default uses"
+                         " current wall time so successive runs see"
+                         " different opening pools. Each match.py call"
+                         " gets `seed + match_index` so chunks within"
+                         " phase 2 don't replay the same first-N pairs"
+                         " (which would make their cumulative score a"
+                         " 10× re-test of the same positions instead of"
+                         " 10× as many independent samples).")
     ap.add_argument("-j", "--jobs", type=int, default=None,
                     help="passed through to match.py")
     ap.add_argument("--estimate", action="store_true",
@@ -354,6 +366,22 @@ def main() -> int:
         mt1 = mt2 = movetime
 
     jobs_for_estimate = args.jobs if args.jobs is not None else 11
+
+    # Resolve the base seed once. Each match.py invocation gets a
+    # distinct derived seed (`base_seed + match_counter`) so chunks
+    # within phase 2 explore different opening pools instead of
+    # replaying the same first-N pairs match.py would generate from
+    # a fixed seed. `match_counter` starts at 0 and is bumped on
+    # every run_match call inside this run.
+    if args.seed is not None:
+        base_seed = args.seed
+    else:
+        base_seed = int(time.time())
+    say_seed_msg = (lambda *a, **k: None) if args.quiet else (
+        lambda *a, **k: print(*a, **k, flush=True))
+    say_seed_msg(f"# seed base: {base_seed}"
+                 f" (override with --seed for reproducible runs)")
+    match_counter = [0]  # list-as-cell so nested closures can mutate
 
     if args.estimate:
         if args.n is None and not args.engines:
@@ -432,7 +460,9 @@ def main() -> int:
                 mt2=mt2 if mt2 != movetime else None,
                 name1=a, name2=b, jobs=args.jobs,
                 progress=not args.quiet,
-                track=_lower_cmdline(a, b, names))
+                track=_lower_cmdline(a, b, names),
+                seed=base_seed + match_counter[0])
+            match_counter[0] += 1
             dt = time.time() - t0
             say(f"  rough {a} vs {b}: {sA:.1f} - {sB:.1f}  "
                 f"({fmt_duration(dt)})")
@@ -526,7 +556,9 @@ def main() -> int:
                 mt2=mt2 if mt2 != movetime else None,
                 name1=higher, name2=lower, jobs=args.jobs,
                 progress=not args.quiet,
-                track=anchor)
+                track=anchor,
+                seed=base_seed + match_counter[0])
+            match_counter[0] += 1
             cum_h += sH; cum_l += sL; played += n
             anchor_s = cum_h if anchor == higher else cum_l
             say(f"    N={played:<5} {cum_h:.1f}-{cum_l:.1f}  "
