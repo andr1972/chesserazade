@@ -1111,6 +1111,19 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                     break;
                 }
             }
+            // Soften the log-based policies (option B): cap R so the
+            // child still gets at least depth-R = 4 plies of search.
+            // Diagnosis: aggressive LMR + aggressive NMP starved the
+            // child's null-search of the depth needed to spot a
+            // tactic — capping LMR's contribution leaves NMP some
+            // room to operate. Constant1 already respects this
+            // (R=1 → depth-R = depth-1 ≥ 2 at our LMR gate).
+            if (stop.lmr_mode != SearchLimits::LmrMode::Constant1
+                && stop.lmr_mode != SearchLimits::LmrMode::Off) {
+                const int max_R = depth - 4;
+                if (max_R < 0) R = 0;
+                else if (R > max_R) R = max_R;
+            }
         }
         int probe_alpha = recurse_alpha;
         int probe_beta  = recurse_beta;
