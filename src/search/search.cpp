@@ -36,6 +36,9 @@
 ///   https://www.chessprogramming.org/Quiescence_Search
 #include <chesserazade/search.hpp>
 
+#include "board/board_bitboard.hpp"
+#include "search/see.hpp"
+
 #include <chesserazade/board.hpp>
 #include <chesserazade/evaluator.hpp>
 #include <chesserazade/move.hpp>
@@ -276,16 +279,18 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
 
 /// Ordering priority buckets. Higher is earlier.
 ///   ~10'000'000 — TT move (the previous best move at this key).
-///   ~ 1'000'000 — captures (spread by MVV-LVA).
+///   ~ 1'000'000 — good capture (SEE ≥ 0 — winning or neutral exchange).
 ///   ~   900'000 — first killer.
-///   ~   800'000 — second killer.
 ///   ~   850'000 — counter-move (preferred quiet response to prev move).
+///   ~   800'000 — second killer.
+///   ~   700'000 — bad capture (SEE < 0 — losing exchange chain).
 ///   ~    50'000 — promotions without capture.
 ///   0..49'999   — quiet moves, ranked by history heuristic.
 [[nodiscard]] int score_move(const Move& m, const Move& tt_move,
                              const KillerTable& killers,
                              const HistoryTable& history,
                              const Move& counter_move,
+                             bool capture_is_bad,
                              bool use_history,
                              Color stm,
                              std::size_t ply) noexcept {
@@ -293,6 +298,11 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
         return 10'000'000;
     }
     if (is_capture(m)) {
+        // Bad captures fall below killers/counter so legitimate quiet
+        // plans get tried first; MVV-LVA still orders within bucket.
+        if (capture_is_bad) {
+            return 700'000 + mvv_lva(m);
+        }
         return 1'000'000 + mvv_lva(m);
     }
     if (m == killers.killers[ply][0]) return 900'000;
@@ -329,8 +339,10 @@ struct ScoredMove {
 }
 
 /// Fill `buf` with `(move, score)` pairs and sort it in
-/// descending order. Returns the number of entries written.
-std::size_t score_and_sort(const MoveList& legal,
+/// descending order. When `bb` is non-null, captures are classified
+/// as good/bad via full SEE; otherwise all captures share the
+/// good-capture bucket (mailbox board, no cheap SEE available).
+std::size_t score_and_sort(const Board& board, const MoveList& legal,
                            std::array<ScoredMove, MoveList::CAPACITY>& buf,
                            const Move& tt_move,
                            const KillerTable& killers,
@@ -338,12 +350,17 @@ std::size_t score_and_sort(const MoveList& legal,
                            const Move& counter_move,
                            bool use_history,
                            Color stm,
-                           std::size_t ply) noexcept {
+                           std::size_t ply) {
+    const auto* bb = dynamic_cast<const BoardBitboard*>(&board);
     const std::size_t n = legal.count;
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = legal.moves[i];
+        const bool bad = bb != nullptr
+                         && is_capture(m)
+                         && see(*bb, m) < 0;
         buf[i] = {m, score_move(m, tt_move, killers, history,
-                                counter_move, use_history, stm, ply)};
+                                counter_move, bad, use_history,
+                                stm, ply)};
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
     return n;
@@ -825,7 +842,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     }
     std::array<ScoredMove, MoveList::CAPACITY> buf;
     const std::size_t n =
-        score_and_sort(legal, buf, tt_move, killers, history,
+        score_and_sort(board, legal, buf, tt_move, killers, history,
                        counter_move,
                        stop.enable_history,
                        board.side_to_move(), p);

@@ -67,6 +67,7 @@ add_library(chesserazade_core STATIC
     src/net/curl_fetcher.cpp
     src/search/game_analyzer.cpp
     src/search/search.cpp
+    src/search/see.cpp
     src/search/puzzle_solver.cpp
     src/search/transposition_table.cpp
 )
