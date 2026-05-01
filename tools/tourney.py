@@ -627,6 +627,30 @@ def main() -> int:
         })
     say(f"# phase 2 done in {fmt_duration(time.time() - t_phase2)}")
 
+    # Re-rank from phase-2 evidence. Phase-1 rough ranking can put
+    # the wrong engine on top when the rough pair was within noise
+    # — phase 2 is the precise verdict and should win. Single bubble
+    # pass over adjacent pairs is enough for the common cases:
+    # 2-engine matches always converge in one pass, N-engine
+    # tournaments fix immediate inversions but can't re-test
+    # non-adjacent pairs (would need re-running phase 2).
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(ranking) - 1):
+            if i >= len(adj_results):
+                break
+            r = adj_results[i]
+            if r["score_lower"] > r["score_higher"]:
+                ranking[i], ranking[i + 1] = ranking[i + 1], ranking[i]
+                adj_results[i] = {
+                    "higher": r["lower"], "lower": r["higher"],
+                    "score_higher": r["score_lower"],
+                    "score_lower": r["score_higher"],
+                    "n": r["n"],
+                }
+                changed = True
+
     _print_ranking(ranking, adj_results, tc_desc, names)
     return 0
 
