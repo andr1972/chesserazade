@@ -15,6 +15,9 @@
 
 #include <chesserazade/evaluator.hpp>
 
+#include "board/board_bitboard.hpp"
+
+#include <chesserazade/bitboard.hpp>
 #include <chesserazade/board.hpp>
 #include <chesserazade/types.hpp>
 
@@ -166,6 +169,54 @@ int psqt_delta(Piece p, Square from, Square to) noexcept {
     const std::uint8_t t_idx = (p.color == Color::White) ? ti : mirror(ti);
     const int delta = tbl[t_idx] - tbl[f_idx];
     return (p.color == Color::White) ? delta : -delta;
+}
+
+namespace {
+
+constexpr int MOBILITY_KNIGHT = 4;
+constexpr int MOBILITY_BISHOP = 3;
+constexpr int MOBILITY_ROOK   = 2;
+constexpr int MOBILITY_QUEEN  = 1;
+
+[[nodiscard]] int mobility_for_color(const BoardBitboard& b,
+                                     Color c) noexcept {
+    int score = 0;
+    const Bitboard occ = b.occupancy();
+    const Bitboard own = b.color_occupancy(c);
+    const Bitboard not_own = ~own;
+
+    Bitboard knights = b.pieces(c, PieceType::Knight);
+    while (knights != 0) {
+        const Square sq = pop_lsb(knights);
+        score += popcount(Attacks::knight(sq) & not_own) * MOBILITY_KNIGHT;
+    }
+    Bitboard bishops = b.pieces(c, PieceType::Bishop);
+    while (bishops != 0) {
+        const Square sq = pop_lsb(bishops);
+        score += popcount(Attacks::bishop(sq, occ) & not_own) * MOBILITY_BISHOP;
+    }
+    Bitboard rooks = b.pieces(c, PieceType::Rook);
+    while (rooks != 0) {
+        const Square sq = pop_lsb(rooks);
+        score += popcount(Attacks::rook(sq, occ) & not_own) * MOBILITY_ROOK;
+    }
+    Bitboard queens = b.pieces(c, PieceType::Queen);
+    while (queens != 0) {
+        const Square sq = pop_lsb(queens);
+        const Bitboard atk =
+            (Attacks::bishop(sq, occ) | Attacks::rook(sq, occ));
+        score += popcount(atk & not_own) * MOBILITY_QUEEN;
+    }
+    return score;
+}
+
+} // namespace
+
+int mobility_score_stm(const BoardBitboard& b) noexcept {
+    const int diff =
+        mobility_for_color(b, Color::White)
+        - mobility_for_color(b, Color::Black);
+    return (b.side_to_move() == Color::White) ? diff : -diff;
 }
 
 } // namespace chesserazade
