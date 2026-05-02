@@ -91,16 +91,4 @@ struct PieceValue {
 /// `from` and `to`. Used by move ordering.
 [[nodiscard]] int psqt_delta(Piece p, Square from, Square to) noexcept;
 
-class BoardBitboard;
-
-/// King-safety score from the side-to-move's perspective. Counts
-/// enemy pieces attacking the 8-square king ring around each side's
-/// king; with at least two attackers, a piece-weighted danger value
-/// scales linearly with the count of attackers. Simple version —
-/// no pawn shelter / storm / safe-checks term yet, but already
-/// captures the dominant 'many attackers around a king = trouble'
-/// signal that material+PST misses entirely.
-/// See https://www.chessprogramming.org/King_Safety
-[[nodiscard]] int king_safety_stm(const BoardBitboard& b) noexcept;
-
 } // namespace chesserazade
