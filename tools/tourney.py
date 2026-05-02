@@ -259,10 +259,14 @@ def _print_ranking(ranking: list, adj_results: list, tc_desc: str,
     for i, name in enumerate(ranking):
         if i < len(adj_results):
             r = adj_results[i]
-            anchor = _lower_cmdline(r["higher"], r["lower"], names_order)
-            anchor_score = (r["score_higher"] if anchor == r["higher"]
-                            else r["score_lower"])
-            cell = fmt_multi_ci(anchor_score, r["n"])
+            # Δ on each row is from *that row's engine* (the higher
+            # of the pair) — always non-negative, matching the
+            # 'higher beats lower' framing of the ranked table.
+            # Dot colours during the run still use the cmdline-anchor
+            # perspective (so signs match the dot coloring across
+            # phase 1/2 boundaries) but the final table reads
+            # naturally: row 1 always shows a non-negative gap to row 2.
+            cell = fmt_multi_ci(r["score_higher"], r["n"])
         else:
             cell = "(last)"
         print(f"{i+1:<4}  {name:<24}  {cell}")
