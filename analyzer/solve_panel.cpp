@@ -671,22 +671,30 @@ void SolvePanel::on_finished(const QString& best_uci, int final_score,
               .arg(Search::plies_to_mate(final_score))
         : QStringLiteral("cp %1").arg(final_score);
 
+    // Speed = total nodes (incl. unfinished last iteration) /
+    // wall-clock. The unfinished iteration is the one the user
+    // paid for in time, so excluding it would inflate the displayed
+    // speed compared to what the search actually did.
+    const double secs = static_cast<double>(elapsed_ms) / 1000.0;
+    const double mn   = static_cast<double>(nodes) / 1.0e6;
+    const double mnps = (secs > 0.0) ? (mn / secs) : 0.0;
     append_log(QStringLiteral(
-        "— done: bestmove %1  score %2  depth %3  nodes %4  time %5 ms")
+        "— done: bestmove %1  score %2  depth %3  nodes %4"
+        "  time %5 ms  speed %6 Mn/s")
         .arg(best_uci).arg(score).arg(depth_reached)
-        .arg(nodes).arg(elapsed_ms));
+        .arg(nodes).arg(elapsed_ms)
+        .arg(mnps, 0, 'f', 2));
 
     // Stop polling and write the exact final tallies into the
     // progress label. The timer's atomic reads lag by up to
     // ~2048 nodes (STOP_CHECK_MASK cadence); the `finished`
     // signal carries the true totals, so we render those.
     progress_timer_->stop();
-    const double s  = static_cast<double>(elapsed_ms) / 1000.0;
-    const double mn = static_cast<double>(nodes) / 1.0e6;
     progress_label_->setText(
-        QStringLiteral("%1 s   %2 M nodes")
-            .arg(s, 0, 'f', 1)
-            .arg(mn, 0, 'f', 2));
+        QStringLiteral("%1 s   %2 M nodes   %3 Mn/s")
+            .arg(secs, 0, 'f', 1)
+            .arg(mn, 0, 'f', 2)
+            .arg(mnps, 0, 'f', 2));
 
     // Tree was already installed by the last
     // `iteration_tree_ready` signal from the deepest completed

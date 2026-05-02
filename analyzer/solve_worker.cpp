@@ -66,6 +66,7 @@ void SolveWorker::start() {
 
     SearchResult last;
     bool have_result = false;
+    std::uint64_t total_nodes = 0;
 
     // Recorder is reset before every iteration so the final
     // tree in `tree_` reflects the deepest iteration that ran
@@ -127,6 +128,12 @@ void SolveWorker::start() {
         const SearchResult r =
             Search::find_best(*work, lim, tt_arg, &recorder);
 
+        // Accumulate every iteration's node count, even the one that
+        // was cut short. Total / wall-clock at the end gives the
+        // honest speed including budget-exhausting iterations the
+        // user paid for but didn't see in `last`.
+        total_nodes += r.nodes;
+
         if (r.completed_depth < d) {
             // Budget exhausted mid-iteration — the tree in
             // `tree_` has dangling `enter`s without matching
@@ -169,7 +176,7 @@ void SolveWorker::start() {
 
     emit finished(best_uci, last.score,
                   last.completed_depth,
-                  static_cast<quint64>(last.nodes),
+                  static_cast<quint64>(total_nodes),
                   static_cast<qint64>(elapsed_ms));
 }
 
