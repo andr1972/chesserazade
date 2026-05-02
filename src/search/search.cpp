@@ -1124,7 +1124,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         if (stop.enable_singular_ext
             && excluded_move.from == Square::None
             && ply > 0
-            && depth >= 6
+            && depth >= 8
             && i == 0
             && tt_hit
             && tt_move.from != Square::None
