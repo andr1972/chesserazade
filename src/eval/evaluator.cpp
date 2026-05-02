@@ -157,4 +157,15 @@ int piece_contribution(Piece p, Square sq) noexcept {
     return (p.color == Color::White) ? total : -total;
 }
 
+int psqt_delta(Piece p, Square from, Square to) noexcept {
+    if (p.is_none()) return 0;
+    const PstTable& tbl = pst_for(p.type);
+    const std::uint8_t fi = static_cast<std::uint8_t>(from);
+    const std::uint8_t ti = static_cast<std::uint8_t>(to);
+    const std::uint8_t f_idx = (p.color == Color::White) ? fi : mirror(fi);
+    const std::uint8_t t_idx = (p.color == Color::White) ? ti : mirror(ti);
+    const int delta = tbl[t_idx] - tbl[f_idx];
+    return (p.color == Color::White) ? delta : -delta;
+}
+
 } // namespace chesserazade

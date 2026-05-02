@@ -83,4 +83,12 @@ struct PieceValue {
 /// at O(1).
 [[nodiscard]] int piece_contribution(Piece p, Square sq) noexcept;
 
+/// PSQT-only delta for a piece moving `from` → `to`. Returns the
+/// purely-positional change (no material) from white's perspective,
+/// i.e. negated for black. Cheaper than `piece_contribution(to) -
+/// piece_contribution(from)` because it skips two material lookups
+/// and one PST table dispatch — the same table is reused for
+/// `from` and `to`. Used by move ordering.
+[[nodiscard]] int psqt_delta(Piece p, Square from, Square to) noexcept;
+
 } // namespace chesserazade
