@@ -52,6 +52,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <vector>
 
 namespace chesserazade {
@@ -149,6 +150,49 @@ struct CounterMoveTable {
         table[static_cast<std::size_t>(prev_stm)]
              [static_cast<std::size_t>(prev_piece)]
              [to_index(prev_to)] = m;
+    }
+};
+
+/// Continuation history — `[prev_piece][prev_to][cur_piece][cur_to]`
+/// score, bumped by depth² when a quiet move triggers a β-cutoff
+/// *given* the prev_move's identity. Different from the basic
+/// History table in two ways: indexed by piece-type rather than just
+/// from-square (so different pieces using the same target square
+/// don't share a slot), and conditioned on the prev move (so
+/// 'this move was good after that move' is a separate signal from
+/// 'this move was good in unrelated positions'). Lets LMP/LMR keep
+/// genuinely-good 'late' quiets from being skipped.
+/// See https://www.chessprogramming.org/History_Heuristic#Continuation_History
+struct ContinuationHistoryTable {
+    // [prev-piece 0..6][prev-to 0..63][cur-piece 0..6][cur-to 0..63].
+    // PieceType is 0..6 with None=0 reserved (always a real piece
+    // moving in cutoffs). 7×64×7×64 × int32 ≈ 800 KiB — fits in L2.
+    std::array<
+        std::array<
+            std::array<std::array<std::int32_t, 64>, 7>,
+            64>,
+        7> table{};
+
+    static constexpr std::int32_t CONT_HIST_MAX = 16384;
+
+    [[nodiscard]] std::int32_t get(PieceType prev_piece, Square prev_to,
+                                    PieceType cur_piece,
+                                    Square cur_to) const noexcept {
+        return table[static_cast<std::size_t>(prev_piece)]
+                    [to_index(prev_to)]
+                    [static_cast<std::size_t>(cur_piece)]
+                    [to_index(cur_to)];
+    }
+    void bump(PieceType prev_piece, Square prev_to,
+              PieceType cur_piece, Square cur_to,
+              int depth) noexcept {
+        auto& v = table[static_cast<std::size_t>(prev_piece)]
+                       [to_index(prev_to)]
+                       [static_cast<std::size_t>(cur_piece)]
+                       [to_index(cur_to)];
+        const std::int32_t bonus =
+            std::min(depth * depth, CONT_HIST_MAX);
+        v += bonus - v * bonus / CONT_HIST_MAX;
     }
 };
 
@@ -308,6 +352,7 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
                              const KillerTable& killers,
                              const HistoryTable& history,
                              const Move& counter_move,
+                             std::int32_t cont_hist_score,
                              bool capture_is_bad,
                              bool use_history,
                              Color stm,
@@ -336,14 +381,19 @@ constexpr std::uint64_t STOP_CHECK_MASK = 2047;
     if (m.kind == MoveKind::Promotion) {
         return 50'000 + piece_value(m.promotion);
     }
-    // Quiet move: use history. Clamped below the promotion
-    // bucket so a very old, over-accumulated (from,to) can't
-    // leapfrog categories. LMR keys on "score == 0" to detect
-    // genuinely untested quiets, so we also floor at 0.
+    // Quiet move: blend basic history with continuation history.
+    // Continuation history lifts moves that have cut after this
+    // exact prev_move pattern, so a position-correct response gets
+    // ranked above a generically-good quiet. Both signals capped at
+    // the same scale; sum then clamped below the promotion bucket
+    // so an over-accumulated slot can't leapfrog categories. LMR
+    // keys on "score == 0" to detect untested quiets so we floor
+    // at 0 for negative-summing edge cases.
     if (!use_history) return 0;
     const std::int32_t h = history.get(stm, m.from, m.to);
-    if (h <= 0) return 0;
-    return h < 49'999 ? static_cast<int>(h) : 49'999;
+    const std::int32_t blended = h + cont_hist_score;
+    if (blended <= 0) return 0;
+    return blended < 49'999 ? static_cast<int>(blended) : 49'999;
 }
 
 struct ScoredMove {
@@ -366,18 +416,27 @@ std::size_t score_and_sort(const Board& board, const MoveList& legal,
                            const KillerTable& killers,
                            const HistoryTable& history,
                            const Move& counter_move,
+                           const ContinuationHistoryTable& cont_hist,
+                           const Move& prev_move,
                            bool use_history,
                            Color stm,
                            std::size_t ply) {
     const auto* bb = dynamic_cast<const BoardBitboard*>(&board);
+    const bool have_prev = prev_move.from != Square::None;
     const std::size_t n = legal.count;
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = legal.moves[i];
         const bool bad = bb != nullptr
                          && is_capture(m)
                          && see(*bb, m) < 0;
+        std::int32_t ch = 0;
+        if (have_prev && !is_capture(m)
+            && m.kind != MoveKind::Promotion) {
+            ch = cont_hist.get(prev_move.moved_piece.type, prev_move.to,
+                               m.moved_piece.type, m.to);
+        }
         buf[i] = {m, score_move(m, tt_move, killers, history,
-                                counter_move, bad, use_history,
+                                counter_move, ch, bad, use_history,
                                 stm, ply)};
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
@@ -568,6 +627,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                       std::uint64_t& nodes, PvTable& pv, KillerTable& killers,
                       HistoryTable& history,
                       CounterMoveTable& counters,
+                      ContinuationHistoryTable& cont_hist,
                       Stop& stop, TranspositionTable* tt,
                       TreeRecorder* rec, BranchStats& out_stats,
                       bool allow_null = true,
@@ -827,7 +887,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             const NegamaxResult nr = negamax(
                 board, depth - NMP_R, ply + 1,
                 -beta, -beta + 1,
-                nodes, pv, killers, history, counters, stop, tt,
+                nodes, pv, killers, history, counters, cont_hist, stop, tt,
                 /*rec=*/nullptr, null_stats,
                 /*allow_null=*/false);
             board.unmake_null_move();
@@ -860,7 +920,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                 const NegamaxResult vr = negamax(
                     board, depth - NMP_R, ply,
                     beta - 1, beta,
-                    nodes, pv, killers, history, counters, stop, tt,
+                    nodes, pv, killers, history, counters, cont_hist, stop, tt,
                     /*rec=*/nullptr, verify_stats,
                     /*allow_null=*/true);
                 stop.nmp_min_ply = 0;
@@ -907,7 +967,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     std::array<ScoredMove, MoveList::CAPACITY> buf;
     const std::size_t n =
         score_and_sort(board, legal, buf, tt_move, killers, history,
-                       counter_move,
+                       counter_move, cont_hist, prev_move,
                        stop.enable_history,
                        board.side_to_move(), p);
 
@@ -1143,7 +1203,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         NegamaxResult child =
             negamax(board, depth - 1 - R + ext, child_ply,
                     probe_alpha, probe_beta,
-                    nodes, pv, killers, history, counters, stop, tt,
+                    nodes, pv, killers, history, counters, cont_hist, stop, tt,
                     detach_rec_for_probe ? nullptr : rec,
                     child_stats, /*allow_null=*/true, m);
         int score = -child.score;
@@ -1151,7 +1211,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             child_stats = {};
             child = negamax(board, depth - 1 + ext, child_ply,
                             recurse_alpha, recurse_beta,
-                            nodes, pv, killers, history, counters, stop, tt,
+                            nodes, pv, killers, history, counters, cont_hist, stop, tt,
                             rec, child_stats, /*allow_null=*/true, m);
             score = -child.score;
         }
@@ -1205,6 +1265,12 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                 counters.set(prev_stm,
                              prev_move.moved_piece.type,
                              prev_move.to, m);
+                // Continuation history bump: 'this move cut after
+                // that prev move'. Only quiet cutoffs (no captures
+                // / promotions) get bumped — same gating as counter-
+                // move, same depth² gravity formula.
+                cont_hist.bump(prev_move.moved_piece.type, prev_move.to,
+                               m.moved_piece.type, m.to, depth);
             }
             if (tt != nullptr) {
                 tt->store(key, depth, to_tt_score(score, ply),
@@ -1233,13 +1299,14 @@ int iteration(Board& board, int depth, std::uint64_t& nodes,
               PvTable& pv, KillerTable& killers,
               HistoryTable& history,
               CounterMoveTable& counters,
+              ContinuationHistoryTable& cont_hist,
               Stop& stop, TranspositionTable* tt,
               TreeRecorder* rec, BranchStats& out_stats,
               int alpha, int beta) {
     const NegamaxResult r =
         negamax(board, depth, /*ply=*/0,
                 alpha, beta,
-                nodes, pv, killers, history, counters, stop, tt,
+                nodes, pv, killers, history, counters, cont_hist, stop, tt,
                 rec, out_stats);
     return r.score;
 }
@@ -1350,6 +1417,8 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
     KillerTable killers;
     HistoryTable history;
     CounterMoveTable counters;
+    auto cont_hist_owner = std::make_unique<ContinuationHistoryTable>();
+    ContinuationHistoryTable& cont_hist = *cont_hist_owner;
 
     // Aspiration windows: initial half-width around the
     // previous iteration's score. 50 cp is comfortable margin
@@ -1382,7 +1451,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
             if (recorder != nullptr) recorder->begin_iteration(d);
             score =
                 iteration(board, d, result.nodes, pv, killers, history,
-                          counters, stop, tt, recorder, pv_stats,
+                          counters, cont_hist, stop, tt, recorder, pv_stats,
                           asp_a, asp_b);
             if (stop.abort) break;
 
