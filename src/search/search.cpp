@@ -435,9 +435,24 @@ std::size_t score_and_sort(const Board& board, const MoveList& legal,
             ch = cont_hist.get(prev_move.moved_piece.type, prev_move.to,
                                m.moved_piece.type, m.to);
         }
+        // PSQT delta — cheap fresh signal that doesn't need history
+        // to warm up. For a quiet move the material part of
+        // piece_contribution() cancels (same piece on both sides of
+        // the diff), so the result is the pure PSQT delta from the
+        // mover's perspective. Multiply by 8 so the typical ±30 PSQT
+        // delta nudges the score by ±240 — noticeable next to history
+        // (∈ [0, 16384]) but not dominant. Captures / promotions
+        // already get their own ordering buckets.
+        std::int32_t psqt_bonus = 0;
+        if (!is_capture(m) && m.kind != MoveKind::Promotion) {
+            const int delta =
+                piece_contribution(m.moved_piece, m.to)
+                - piece_contribution(m.moved_piece, m.from);
+            psqt_bonus = static_cast<std::int32_t>(delta) * 8;
+        }
         buf[i] = {m, score_move(m, tt_move, killers, history,
-                                counter_move, ch, bad, use_history,
-                                stm, ply)};
+                                counter_move, ch + psqt_bonus,
+                                bad, use_history, stm, ply)};
     }
     std::sort(buf.begin(), buf.begin() + n, scored_desc);
     return n;
