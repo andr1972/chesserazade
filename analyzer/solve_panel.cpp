@@ -223,7 +223,7 @@ SolvePanel::SolvePanel(QWidget* parent)
     cap_row->addWidget(pvs_check_);
 
     lmp_check_ = new QCheckBox(tr("LMP"), right);
-    lmp_check_->setChecked(false);
+    lmp_check_->setChecked(true);
     lmp_check_->setToolTip(tr(
         "Late-Move Pruning. In non-PV-nodes at depth ≤ 3, skip "
         "late quiet moves outright — no probe, no re-search. "

@@ -1313,6 +1313,26 @@ int iteration(Board& board, int depth, std::uint64_t& nodes,
 
 } // namespace
 
+SearchLimits default_engine_limits() noexcept {
+    SearchLimits l;
+    // Search optimisations the engine plays with at the UCI level.
+    // Mirror these in the analyzer's checkbox initial state so a
+    // single edit here propagates everywhere.
+    l.use_incremental_eval = true;
+    l.enable_lmr           = true;
+    l.enable_history       = true;
+    l.enable_aspiration    = true;
+    l.enable_pvs           = true;
+    l.enable_lmp           = true;
+    l.enable_check_ext     = true;
+    l.enable_nmp_verify    = true;
+    l.enable_futility      = true;
+    l.enable_reverse_futility = true;
+    // nmp_mode / lmr_mode keep their SearchLimits-default values;
+    // those are already the chesserazade choice.
+    return l;
+}
+
 SearchResult Search::find_best(Board& board, int depth) {
     SearchLimits l;
     l.max_depth = depth;

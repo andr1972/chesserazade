@@ -134,7 +134,7 @@ void handle_uci(std::ostream& out) {
            " var Off var Constant1 var LogDepthLogIndex"
            " var DepthDiv4LogIdxHalf var DepthDiv4LogIndex\n";
     out << "option name EnablePvs type check default true\n";
-    out << "option name EnableLmp type check default false\n";
+    out << "option name EnableLmp type check default true\n";
     out << "uciok\n" << std::flush;
 }
 
@@ -402,26 +402,16 @@ void handle_go(UciSession& s, const std::vector<std::string>& toks,
 
     for (int d = 1; d <= max_depth; ++d) {
         SearchLimits lim;
+        // Single source of truth — `default_engine_limits()` carries
+        // all optimisation flags so a flip there propagates here and
+        // to the analyzer simultaneously. Per-session overrides
+        // (UCI `setoption`) come last so the user can flip individual
+        // toggles without rebuilding.
+        lim = default_engine_limits();
         lim.max_depth = d;
-        // Match the analyzer / solve CLI optimization stack so
-        // games played through UCI use the engine's strongest
-        // configuration (LMR, history, aspiration, PVS, check
-        // extensions; TT is already shared via `s.tt`).
-        lim.enable_lmr        = true;
-        lim.enable_history    = true;
-        lim.enable_aspiration = true;
-        lim.enable_pvs        = s.enable_pvs;
-        // LMP off by default for chesserazade — its quiet ordering
-        // (no continuation history, simple [color][from][to] history)
-        // doesn't reliably keep good moves in the first 4-12 ranks
-        // that the threshold table requires. Toggle on via UCI option
-        // when continuation/capture history land.
-        lim.enable_lmp        = s.enable_lmp;
-        lim.enable_check_ext  = true;
-        lim.enable_nmp_verify = true;
-        lim.enable_futility   = true;
-        lim.enable_reverse_futility = true;
-        lim.lmr_mode = s.lmr_mode;
+        lim.enable_pvs = s.enable_pvs;
+        lim.enable_lmp = s.enable_lmp;
+        lim.lmr_mode   = s.lmr_mode;
         // Past-game zobrists so the search detects 3-fold lines
         // reaching back into actually-played moves, plus a small
         // contempt so the engine prefers fighting on over a

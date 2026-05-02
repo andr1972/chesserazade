@@ -41,7 +41,7 @@ struct UciSession {
     /// EnablePvs / EnableLmp. PVS defaults on, LMP off (chesserazade's
     /// quiet ordering doesn't yet make LMP a net win).
     bool enable_pvs = true;
-    bool enable_lmp = false;
+    bool enable_lmp = true;
     /// Zobrist keys of every position reached *before* the
     /// current `board` — i.e. start position + after each move
     /// played, with the very last position (= `board` itself)

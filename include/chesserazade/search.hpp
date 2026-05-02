@@ -270,6 +270,13 @@ struct SearchLimits {
     std::span<const ZobristKey> position_history{};
 };
 
+/// Canonical 'in-game configuration' for chesserazade — the set of
+/// SearchLimits flags and modes the engine actually plays with at
+/// the UCI level (and that the analyzer should mirror so the GUI
+/// reflects what match.py / cute-chess sees). One source of truth:
+/// flip a default here, both cmd_uci.cpp and the analyzer pick it up.
+[[nodiscard]] SearchLimits default_engine_limits() noexcept;
+
 /// Cumulative capture-value and check-giving counts along a
 /// principal-variation branch. Captures are expressed in
 /// centipawn units (pawn = 100, knight = 320, …; see

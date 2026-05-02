@@ -74,7 +74,10 @@ void SolveWorker::start() {
     SearchTreeRecorder recorder(tree_, budget_.tree_cap);
 
     for (int d = 1; d <= max_depth; ++d) {
-        SearchLimits lim;
+        // Single source of truth: start from the engine-default
+        // optimisation stack, then overlay per-budget overrides
+        // (analyzer checkboxes / mode combos / 'minimax' switches).
+        SearchLimits lim = default_engine_limits();
         lim.max_depth = d;
         lim.disable_alpha_beta = budget_.disable_alpha_beta;
         lim.disable_quiescence = budget_.disable_quiescence;
