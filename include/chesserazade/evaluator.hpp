@@ -91,6 +91,17 @@ struct PieceValue {
 /// `from` and `to`. Used by move ordering.
 [[nodiscard]] int psqt_delta(Piece p, Square from, Square to) noexcept;
 
+class BoardBitboard;
+
+/// King-safety score from the side-to-move's perspective. Counts
+/// enemy pieces attacking the 8-square king ring around each side's
+/// king; with at least two attackers, a piece-weighted danger value
+/// scales linearly with the count of attackers. Phase-aware via
+/// caller — in a pure-pawn endgame king activity dominates exposure
+/// concerns, so callers should multiply by phase / MAX_PHASE before
+/// adding to the final score.
+[[nodiscard]] int king_safety_stm(const BoardBitboard& b) noexcept;
+
 /// Tagged-pair eval — middlegame value and endgame value carried
 /// separately so the final score can blend by game phase. Both
 /// values are in centipawns from white's perspective. With current

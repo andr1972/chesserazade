@@ -806,11 +806,27 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         !in_check_now
         && (stop.nmp_mode != SearchLimits::NmpMode::Off
             || stop.enable_futility);
-    const int static_eval = need_static_eval
-        ? (stop.use_incremental_eval
+    int static_eval = 0;
+    if (need_static_eval) {
+        static_eval = stop.use_incremental_eval
             ? board.evaluate_incremental()
-            : evaluate(board))
-        : 0;
+            : evaluate(board);
+        // Phase-scaled king safety: in a pure-pawn endgame the king
+        // is an active piece, so exposure concerns vanish; in the
+        // middlegame attackers around the king dominate. Linear
+        // blend by phase (24 = full material, 0 = pawn endgame).
+        // BoardBitboard-only — needs per-piece bitboards and slider
+        // attacks.
+        if (const auto* bb = dynamic_cast<const BoardBitboard*>(&board)) {
+            // compute_phase takes Board& but its fast path already
+            // re-casts to BoardBitboard; passing `*bb` directly
+            // through the abstract reference avoids the second cast
+            // hop without changing the public API.
+            const int phase = compute_phase(*bb);
+            const int ks = king_safety_stm(*bb);
+            static_eval += ks * phase / MAX_PHASE;
+        }
+    }
     // Per-ply static_eval cache for the `improving` flag. INT_MIN
     // marks 'unknown' (in-check ancestors, or not reached yet);
     // children at ply+2 read this slot and treat INT_MIN as 'not
