@@ -192,6 +192,18 @@ struct SearchLimits {
     /// See https://www.chessprogramming.org/Reverse_Futility_Pruning
     bool enable_reverse_futility = false;
 
+    /// Singular Extensions. When the TT-move at sufficient depth
+    /// (`tt_depth >= depth - 3`, bound != Upper, non-mate score)
+    /// is markedly better than every alternative, extend it by 1
+    /// ply. The "markedly better" check is a verification re-search
+    /// at depth/2 with a zero-width window just below
+    /// `tt_score - margin`, with the TT-move excluded from the move
+    /// loop; if every other move fails low against that bound, the
+    /// TT-move is *singular* and earns the extension. Concentrates
+    /// search effort on lines where one move carries the position.
+    /// See https://www.chessprogramming.org/Singular_Extensions
+    bool enable_singular_ext = false;
+
     /// Null-move-pruning reduction formula. Selects how aggressively
     /// the null search shortens depth — bigger R prunes more (faster)
     /// but risks missing tactical refutations.

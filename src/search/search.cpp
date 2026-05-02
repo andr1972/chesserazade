@@ -216,6 +216,7 @@ struct Stop {
     bool enable_nmp_verify = false;
     bool enable_futility = false;
     bool enable_reverse_futility = false;
+    bool enable_singular_ext = false;
     SearchLimits::NmpMode nmp_mode = SearchLimits::NmpMode::R2_PlusDepthDiv3;
     SearchLimits::LmrMode lmr_mode = SearchLimits::LmrMode::LogDepthLogIndex;
     /// Transient state for the NMP verification re-search: while
@@ -626,10 +627,12 @@ NegamaxResult quiesce(Board& board, int alpha, int beta,
 /// subtree) automatically restores the stack.
 struct PathGuard {
     std::vector<ZobristKey>& path;
-    PathGuard(std::vector<ZobristKey>& p, ZobristKey k) : path(p) {
-        path.push_back(k);
+    bool active;
+    PathGuard(std::vector<ZobristKey>& p, ZobristKey k, bool active_ = true)
+        : path(p), active(active_) {
+        if (active) path.push_back(k);
     }
-    ~PathGuard() { path.pop_back(); }
+    ~PathGuard() { if (active) path.pop_back(); }
     PathGuard(const PathGuard&) = delete;
     PathGuard& operator=(const PathGuard&) = delete;
 };
@@ -642,7 +645,8 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                       Stop& stop, TranspositionTable* tt,
                       TreeRecorder* rec, BranchStats& out_stats,
                       bool allow_null = true,
-                      Move prev_move = Move{}) {
+                      Move prev_move = Move{},
+                      Move excluded_move = Move{}) {
     ++nodes;
     out_stats = {};
 
@@ -681,7 +685,12 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     // draw score for the side hoping to improve. Skip at the root
     // (ply 0) — repetitions of the root itself are detected from
     // ply ≥ 1 once the root key has been pushed onto the path.
-    if (ply > 0) {
+    // Skip repetition / 50-move check during a Singular-Extensions
+    // verify search (`excluded_move` set): we are recursing at the
+    // same `ply` and same `key` as the parent, whose PathGuard has
+    // already pushed this key — the loop below would falsely fire
+    // and return draw_score immediately, defeating the verification.
+    if (ply > 0 && excluded_move.from == Square::None) {
         // The draw score is `-contempt_cp` from the side-to-
         // move's perspective: a positive contempt makes draws
         // *less* attractive to whoever is on move at this node,
@@ -701,7 +710,9 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         }
     }
 
-    PathGuard path_guard(stop.search_path, key);
+    // SE-verify uses parent's already-pushed key — don't double-push.
+    PathGuard path_guard(stop.search_path, key,
+                         /*active=*/excluded_move.from == Square::None);
 
     // --- TT probe -----------------------------------------------------
     // On a probe-cut we reconstruct `exact` from the stored bound.
@@ -710,10 +721,22 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     // children were visited" in our sense. A `Lower` store only
     // happens at a β-cutoff, which is precisely `exact=false`.
     Move tt_move{};
-    if (tt != nullptr) {
+    bool tt_hit = false;
+    int tt_score_value = 0;
+    int tt_depth_value = 0;
+    TtBound tt_bound = TtBound::None;
+    // Skip TT probe entirely during an SE-verify search (excluded_move
+    // set). The probe would return the parent's own entry — which was
+    // computed *with* the to-be-excluded move in the move list — and
+    // its bound would short-circuit the verification.
+    if (tt != nullptr && excluded_move.from == Square::None) {
         const TtProbe probe = tt->probe(key);
         if (probe.hit) {
+            tt_hit = true;
             tt_move = probe.entry.move;
+            tt_score_value = from_tt_score(probe.entry.score, ply);
+            tt_depth_value = static_cast<int>(probe.entry.depth);
+            tt_bound = probe.entry.bound();
             if (ply > 0
                 && static_cast<int>(probe.entry.depth) >= depth) {
                 const int s = from_tt_score(probe.entry.score, ply);
@@ -817,7 +840,8 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
     // improving' (conservative — larger futility margin).
     constexpr int EVAL_UNKNOWN = std::numeric_limits<int>::min();
     if (static_cast<std::size_t>(ply)
-            < stop.ply_static_eval.size()) {
+            < stop.ply_static_eval.size()
+        && excluded_move.from == Square::None) {
         stop.ply_static_eval[static_cast<std::size_t>(ply)] =
             need_static_eval ? static_eval : EVAL_UNKNOWN;
     }
@@ -845,7 +869,8 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             && !in_check_now
             && ply > 0
             && depth >= 1 && depth <= 6
-            && need_static_eval) {
+            && need_static_eval
+            && excluded_move.from == Square::None) {
             // Margin grows linearly with depth; smaller when
             // improving (we trust the eval more). 80 cp/depth
             // matches the rough scale of forward-futility margins.
@@ -865,6 +890,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         && ply > 0
         && depth >= 3
         && !in_check_now
+        && excluded_move.from == Square::None
         && has_non_pawn_material(board, board.side_to_move())) {
         ++stop.nmp_entered;
         constexpr int NMP_VERIFY_MIN_DEPTH = 13;
@@ -1010,6 +1036,15 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
 
     for (std::size_t i = 0; i < n; ++i) {
         const Move& m = buf[i].move;
+
+        // Singular-Extensions verify excludes one move from the loop.
+        // The excluded move was the TT-move at the parent's call site;
+        // the parent uses `vr.score < s_beta` (i.e. *no* alternative
+        // came close) as the trigger to extend the TT-move by 1 ply.
+        if (excluded_move.from != Square::None && m == excluded_move) {
+            continue;
+        }
+
         const Color mover = board.side_to_move();
 
         // --- LMP: skip late quiet moves in non-PV-nodes ---
@@ -1074,6 +1109,44 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
             else                       delta.captures_black = cap_val;
         }
 
+        // --- Singular Extensions probe ------------------------------------
+        // Only on the (single) TT-move, which is sorted to slot 0. Verify
+        // that no other move at this node can reach `tt_score - margin`
+        // even at half depth; if so, the TT-move is "singular" and we
+        // extend its child search by 1 ply. Skip when already inside a
+        // verify (excluded_move set) — no nested SE — and when a check
+        // extension is going to fire on this move anyway, since extensions
+        // don't compound here. The verify call passes `excluded_move=m`,
+        // which makes the nested call skip TT probe/store, NMP, RFP, the
+        // repetition check, and the move itself in the loop — it sees
+        // the position with this one move removed.
+        int ext_singular = 0;
+        if (stop.enable_singular_ext
+            && excluded_move.from == Square::None
+            && ply > 0
+            && depth >= 6
+            && i == 0
+            && tt_hit
+            && tt_move.from != Square::None
+            && m == tt_move
+            && tt_bound != TtBound::Upper
+            && tt_depth_value >= depth - 3
+            && !Search::is_mate_score(tt_score_value)) {
+            const int s_beta = tt_score_value - 2 * depth;
+            const int v_depth = (depth - 1) / 2;
+            BranchStats v_stats;
+            const NegamaxResult vr = negamax(
+                board, v_depth, ply, s_beta - 1, s_beta,
+                nodes, pv, killers, history, counters, cont_hist,
+                stop, tt, /*rec=*/nullptr, v_stats,
+                /*allow_null=*/false, prev_move,
+                /*excluded_move=*/m);
+            if (stop.abort) return {0, false};
+            if (vr.score < s_beta) {
+                ext_singular = 1;
+            }
+        }
+
         if (report_children) rec->enter(child_ply, m);
 
         board.make_move(m);
@@ -1093,7 +1166,11 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                 }
             }
         }
-        const int ext = (stop.enable_check_ext && gives_check) ? 1 : 0;
+        // Cap at +1: check ext and singular ext don't compound, so a
+        // checking TT-move that is also singular still gets only one
+        // extra ply — keeps the depth growth bounded.
+        const int ext_check = (stop.enable_check_ext && gives_check) ? 1 : 0;
+        const int ext = std::max(ext_check, ext_singular);
 
         // Snapshot the α the child will actually see. `alpha`
         // may have improved earlier in this loop; that current
@@ -1283,7 +1360,10 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
                 cont_hist.bump(prev_move.moved_piece.type, prev_move.to,
                                m.moved_piece.type, m.to, depth);
             }
-            if (tt != nullptr) {
+            // Don't store SE-verify results — the position was searched
+            // with one move excluded, so the score isn't a valid bound
+            // for the regular position.
+            if (tt != nullptr && excluded_move.from == Square::None) {
                 tt->store(key, depth, to_tt_score(score, ply),
                           TtBound::Lower, m);
             }
@@ -1294,7 +1374,7 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         }
     }
 
-    if (tt != nullptr) {
+    if (tt != nullptr && excluded_move.from == Square::None) {
         const TtBound bound = (best_score > original_alpha)
                                   ? TtBound::Exact
                                   : TtBound::Upper;
@@ -1339,6 +1419,7 @@ SearchLimits default_engine_limits() noexcept {
     l.enable_nmp_verify    = true;
     l.enable_futility      = true;
     l.enable_reverse_futility = true;
+    l.enable_singular_ext  = true;
     // nmp_mode / lmr_mode keep their SearchLimits-default values;
     // those are already the chesserazade choice.
     return l;
@@ -1396,6 +1477,7 @@ SearchResult Search::find_best(Board& board, const SearchLimits& limits,
         limits.enable_nmp_verify,
         limits.enable_futility,
         limits.enable_reverse_futility,
+        limits.enable_singular_ext,
         limits.nmp_mode,
         limits.lmr_mode,
         0,    // nmp_min_ply
