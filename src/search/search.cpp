@@ -806,18 +806,11 @@ NegamaxResult negamax(Board& board, int depth, int ply, int alpha, int beta,
         !in_check_now
         && (stop.nmp_mode != SearchLimits::NmpMode::Off
             || stop.enable_futility);
-    int static_eval = 0;
-    if (need_static_eval) {
-        static_eval = stop.use_incremental_eval
+    const int static_eval = need_static_eval
+        ? (stop.use_incremental_eval
             ? board.evaluate_incremental()
-            : evaluate(board);
-        // Mobility is computed per-call (depends on occupancy after
-        // each move so can't be incrementally maintained the way
-        // material+PST is). BoardBitboard-only — mailbox path skips.
-        if (const auto* bb = dynamic_cast<const BoardBitboard*>(&board)) {
-            static_eval += mobility_score_stm(*bb);
-        }
-    }
+            : evaluate(board))
+        : 0;
     // Per-ply static_eval cache for the `improving` flag. INT_MIN
     // marks 'unknown' (in-check ancestors, or not reached yet);
     // children at ply+2 read this slot and treat INT_MIN as 'not

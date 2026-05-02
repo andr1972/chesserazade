@@ -91,16 +91,4 @@ struct PieceValue {
 /// `from` and `to`. Used by move ordering.
 [[nodiscard]] int psqt_delta(Piece p, Square from, Square to) noexcept;
 
-class BoardBitboard;
-
-/// Mobility score from the side-to-move's perspective. For each
-/// non-pawn / non-king piece on each side, count the squares it
-/// attacks excluding its own pieces (not legality-checked — pinned
-/// pieces still contribute their potential mobility, which is
-/// the standard simplification). Per-piece weight: knight 4 cp,
-/// bishop 3 cp, rook 2 cp, queen 1 cp per square. Subtracts the
-/// opponent's mobility, then signs to side-to-move. BoardBitboard-
-/// only because it relies on per-piece bitboard slider attacks.
-[[nodiscard]] int mobility_score_stm(const BoardBitboard& b) noexcept;
-
 } // namespace chesserazade
