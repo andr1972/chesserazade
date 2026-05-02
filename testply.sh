@@ -29,7 +29,7 @@ ENG2="$2"
 
 GAMES="${GAMES:-40}"
 TIME="${TIME:-1000}"
-PLIES="${PLIES:-1 2 3 4 5 6 7 8 9 11 13 15}"
+PLIES="${PLIES:-1 2 3 4 5 6 7}"
 JOBS="${JOBS:--j}"
 
 mkdir -p runs

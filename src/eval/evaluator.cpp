@@ -168,4 +168,23 @@ int psqt_delta(Piece p, Square from, Square to) noexcept {
     return (p.color == Color::White) ? delta : -delta;
 }
 
+int compute_phase(const Board& b) noexcept {
+    // Sum each non-pawn piece's contribution. Initial position has
+    // 4 N + 4 B + 4 R + 2 Q = 4*1 + 4*1 + 4*2 + 2*4 = 24 = MAX_PHASE.
+    // Pawn-only endgames give 0; transitions are smooth.
+    int p = 0;
+    for (std::uint8_t i = 0; i < NUM_SQUARES; ++i) {
+        const Piece pc = b.piece_at(static_cast<Square>(i));
+        switch (pc.type) {
+            case PieceType::Knight: ++p; break;
+            case PieceType::Bishop: ++p; break;
+            case PieceType::Rook:   p += 2; break;
+            case PieceType::Queen:  p += 4; break;
+            default: break;
+        }
+    }
+    if (p > MAX_PHASE) p = MAX_PHASE;
+    return p;
+}
+
 } // namespace chesserazade

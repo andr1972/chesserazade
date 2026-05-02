@@ -91,4 +91,37 @@ struct PieceValue {
 /// `from` and `to`. Used by move ordering.
 [[nodiscard]] int psqt_delta(Piece p, Square from, Square to) noexcept;
 
+/// Tagged-pair eval — middlegame value and endgame value carried
+/// separately so the final score can blend by game phase. Both
+/// values are in centipawns from white's perspective. With current
+/// PST/material data mg == eg, so the blend is a no-op; future
+/// king-PST / mobility / king-safety work can introduce the split.
+struct Score {
+    int mg = 0;
+    int eg = 0;
+    constexpr Score operator+(const Score& o) const noexcept {
+        return {mg + o.mg, eg + o.eg};
+    }
+    constexpr Score operator-(const Score& o) const noexcept {
+        return {mg - o.mg, eg - o.eg};
+    }
+    constexpr Score operator-() const noexcept { return {-mg, -eg}; }
+    constexpr Score& operator+=(const Score& o) noexcept {
+        mg += o.mg; eg += o.eg; return *this;
+    }
+};
+
+/// Phase of the position: 0 = pure pawn endgame, MAX_PHASE = full
+/// material (initial position-ish). Knights/bishops contribute 1
+/// each, rooks 2, queens 4 — same scheme as Stockfish-classical.
+constexpr int MAX_PHASE = 24;
+[[nodiscard]] int compute_phase(const Board& b) noexcept;
+
+/// Blend a (mg, eg) Score by phase, returning an integer centipawn.
+/// `phase == MAX_PHASE` reads `mg`; `phase == 0` reads `eg`; linear
+/// interpolation in between.
+[[nodiscard]] constexpr int blend(Score s, int phase) noexcept {
+    return (s.mg * phase + s.eg * (MAX_PHASE - phase)) / MAX_PHASE;
+}
+
 } // namespace chesserazade
